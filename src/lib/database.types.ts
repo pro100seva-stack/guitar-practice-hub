@@ -1,0 +1,418 @@
+﻿export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.15"
+  }
+  public: {
+    Tables: {
+      app_settings: {
+        Row: {
+          metronome_beats: number
+          metronome_bpm: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          metronome_beats?: number
+          metronome_bpm?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          metronome_beats?: number
+          metronome_bpm?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      block_templates: {
+        Row: {
+          description: string | null
+          id: string
+          key: string
+          label: string
+          phase: string
+          sort_order: number
+          target_minutes: number
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          key: string
+          label: string
+          phase: string
+          sort_order?: number
+          target_minutes: number
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          key?: string
+          label?: string
+          phase?: string
+          sort_order?: number
+          target_minutes?: number
+        }
+        Relationships: []
+      }
+      plan_weeks: {
+        Row: {
+          created_at: string
+          end_date: string
+          focus: string
+          id: string
+          phase: string
+          start_date: string
+          tasks: string | null
+          updated_at: string
+          user_id: string
+          week_number: number
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          focus: string
+          id?: string
+          phase: string
+          start_date: string
+          tasks?: string | null
+          updated_at?: string
+          user_id?: string
+          week_number: number
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          focus?: string
+          id?: string
+          phase?: string
+          start_date?: string
+          tasks?: string | null
+          updated_at?: string
+          user_id?: string
+          week_number?: number
+        }
+        Relationships: []
+      }
+      session_blocks: {
+        Row: {
+          actual_minutes: number | null
+          block_key: string
+          done: boolean
+          id: string
+          label: string
+          session_id: string
+          target_minutes: number | null
+        }
+        Insert: {
+          actual_minutes?: number | null
+          block_key: string
+          done?: boolean
+          id?: string
+          label: string
+          session_id: string
+          target_minutes?: number | null
+        }
+        Update: {
+          actual_minutes?: number | null
+          block_key?: string
+          done?: boolean
+          id?: string
+          label?: string
+          session_id?: string
+          target_minutes?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_blocks_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sessions: {
+        Row: {
+          comment: string | null
+          id: string
+          logged_at: string
+          session_date: string
+          source: string
+          total_minutes: number
+          user_id: string
+          week_id: string | null
+        }
+        Insert: {
+          comment?: string | null
+          id?: string
+          logged_at?: string
+          session_date: string
+          source?: string
+          total_minutes?: number
+          user_id?: string
+          week_id?: string | null
+        }
+        Update: {
+          comment?: string | null
+          id?: string
+          logged_at?: string
+          session_date?: string
+          source?: string
+          total_minutes?: number
+          user_id?: string
+          week_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sessions_week_id_fkey"
+            columns: ["week_id"]
+            isOneToOne: false
+            referencedRelation: "plan_weeks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      songs: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          status: string
+          tuning: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          status?: string
+          tuning?: string | null
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          status?: string
+          tuning?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      topics: {
+        Row: {
+          done: boolean
+          id: string
+          name: string
+          sort_order: number
+          source: string | null
+          week_id: string
+        }
+        Insert: {
+          done?: boolean
+          id?: string
+          name: string
+          sort_order?: number
+          source?: string | null
+          week_id: string
+        }
+        Update: {
+          done?: boolean
+          id?: string
+          name?: string
+          sort_order?: number
+          source?: string | null
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topics_week_id_fkey"
+            columns: ["week_id"]
+            isOneToOne: false
+            referencedRelation: "plan_weeks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      week_songs: {
+        Row: {
+          song_id: string
+          week_id: string
+        }
+        Insert: {
+          song_id: string
+          week_id: string
+        }
+        Update: {
+          song_id?: string
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "week_songs_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "songs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "week_songs_week_id_fkey"
+            columns: ["week_id"]
+            isOneToOne: false
+            referencedRelation: "plan_weeks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
