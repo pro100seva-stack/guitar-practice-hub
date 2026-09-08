@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 
@@ -12,8 +12,44 @@ type EditableTopic = {
   done: boolean
 }
 
+function toIsoDate(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function addDays(date: Date, amount: number) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + amount)
+  return next
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function getMonthGrid(monthDate: Date) {
+  const first = startOfMonth(monthDate)
+  const gridStart = addDays(first, -((first.getDay() + 6) % 7))
+  const cells: Date[] = []
+
+  for (let index = 0; index < 42; index += 1) {
+    cells.push(addDays(gridStart, index))
+  }
+
+  return cells
+}
+
 export default function Plan() {
+  const [weeks, setWeeks] = useState<PlanWeek[]>([])
   const [week, setWeek] = useState<PlanWeek | null>(null)
+  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -22,23 +58,119 @@ export default function Plan() {
   const [tasks, setTasks] = useState('')
   const [topics, setTopics] = useState<EditableTopic[]>([])
   const [songText, setSongText] = useState('')
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date())
+  const weekListRef = useRef<HTMLDivElement | null>(null)
+
+  const coveredDates = useMemo(() => {
+    const availableDates = new Set<string>()
+    const weekByDate = new Map<string, PlanWeek>()
+
+    for (const planWeek of weeks) {
+      const start = parseIsoDate(planWeek.start_date)
+      const end = parseIsoDate(planWeek.end_date)
+      const cursor = new Date(start)
+
+      while (cursor <= end) {
+        const isoDate = toIsoDate(cursor)
+        availableDates.add(isoDate)
+        weekByDate.set(isoDate, planWeek)
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    }
+
+    return { availableDates, weekByDate }
+  }, [weeks])
 
   useEffect(() => {
-    void loadWeek()
+    void loadWeeks()
   }, [])
 
-  async function loadWeek() {
+  useEffect(() => {
+    if (!week) {
+      const firstWeek = weeks[0]
+      if (!firstWeek) return
+      setCalendarMonth(parseIsoDate(firstWeek.start_date))
+      return
+    }
+
+    setCalendarMonth(parseIsoDate(week.start_date))
+  }, [weeks, week])
+
+  useEffect(() => {
+    if (!selectedWeekId || !weekListRef.current) return
+
+    const selectedButton = weekListRef.current.querySelector<HTMLButtonElement>(`button[data-week-id="${selectedWeekId}"]`)
+    if (!selectedButton) return
+
+    const container = weekListRef.current
+    const containerRect = container.getBoundingClientRect()
+    const buttonRect = selectedButton.getBoundingClientRect()
+    const buttonTop = buttonRect.top - containerRect.top + container.scrollTop
+    const targetScroll = Math.max(0, buttonTop - (container.clientHeight - buttonRect.height) / 2)
+
+    if (buttonTop < container.scrollTop || buttonTop + buttonRect.height > container.scrollTop + container.clientHeight) {
+      container.scrollTo({ top: targetScroll, behavior: 'smooth' })
+    }
+  }, [loading, selectedWeekId])
+
+  async function loadWeeks() {
     setLoading(true)
     setError(null)
     setMessage(null)
 
+    const { data: weeksData, error: weeksError } = await supabase
+      .from('plan_weeks')
+      .select('*')
+      .order('start_date', { ascending: true })
+
+    if (weeksError) {
+      setError(weeksError.message)
+      setLoading(false)
+      return
+    }
+
+    const nextWeeks = (weeksData ?? []) as PlanWeek[]
+    setWeeks(nextWeeks)
+
     const today = new Date().toISOString().slice(0, 10)
+    const currentWeek = nextWeeks.find((item) => item.start_date <= today && item.end_date >= today) ?? nextWeeks[0] ?? null
+    const currentWeekId = currentWeek?.id ?? null
+    setSelectedWeekId(currentWeekId)
+
+    if (!currentWeekId) {
+      setWeek(null)
+      setFocus('')
+      setTasks('')
+      setTopics([])
+      setSongText('')
+      setLoading(false)
+      return
+    }
+
+    await loadWeek(currentWeekId)
+  }
+
+  async function loadWeek(weekId: string | null) {
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+
+    if (!weekId) {
+      setWeek(null)
+      setFocus('')
+      setTasks('')
+      setTopics([])
+      setSongText('')
+      setLoading(false)
+      return
+    }
+
     const { data: weekData, error: weekError } = await supabase
       .from('plan_weeks')
       .select('*')
-      .lte('start_date', today)
-      .gte('end_date', today)
-      .maybeSingle()
+      .eq('id', weekId)
+      .single()
 
     if (weekError) {
       setError(weekError.message)
@@ -47,6 +179,7 @@ export default function Plan() {
     }
 
     setWeek(weekData)
+    setSelectedWeekId(weekId)
     setFocus(weekData?.focus ?? '')
     setTasks(weekData?.tasks ?? '')
     setTopics([])
@@ -236,42 +369,219 @@ export default function Plan() {
 
     setMessage('Plan updated successfully.')
     setSaving(false)
-    await loadWeek()
+    await loadWeek(week.id)
   }
 
   if (loading) return <p>Loading…</p>
   if (error) return <p className="text-red-400">Error: {error}</p>
   if (!week) return <p>No plan_weeks row covers today's date.</p>
 
+  const monthGrid = getMonthGrid(calendarMonth)
+  const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const today = toIsoDate(new Date())
+  const currentWeek = weeks.find((weekItem) => weekItem.start_date <= today && weekItem.end_date >= today) ?? null
+  const isCurrentWeekSelected = currentWeek?.id === selectedWeekId
+
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-6xl space-y-5">
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">Current week</p>
-            <h1 className="mt-1 text-xl font-semibold">Week {week.week_number}: {week.focus}</h1>
-            <p className="mt-1 text-sm text-slate-400">{week.start_date} – {week.end_date} · {week.phase}</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Practice plan</p>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-100">Week overview</h1>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[240px]">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Plan status</p>
-            <p className="mt-1 text-sm text-slate-200">Editable in-app</p>
-            <p className="text-sm text-slate-400">Update the week focus, tasks, topics, and songs directly here.</p>
+          <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
+            <span className="text-slate-400">Status:</span> editable in-app
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+        <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Practice weeks</p>
+          </div>
+
+          <div className="flex w-full max-w-[440px] items-center gap-2">
+            <button
+              type="button"
+              disabled={!currentWeek || isCurrentWeekSelected}
+              onClick={() => {
+                if (currentWeek) {
+                  void loadWeek(currentWeek.id)
+                }
+              }}
+              className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+            >
+              Current week
+            </button>
+
+            <div className="relative min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => setCalendarOpen((current) => !current)}
+                className="flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm text-slate-200 focus:border-slate-500"
+              >
+                <span>{week ? `Week ${week.week_number} · ${week.start_date}` : 'Choose a covered week'}</span>
+                <span className="text-slate-400">▾</span>
+              </button>
+
+              {calendarOpen && (
+                <div className="absolute right-0 z-20 mt-2 w-[320px] rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
+                    }
+                    className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                  >
+                    Prev
+                  </button>
+                  <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
+                    }
+                    className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                  >
+                    Next
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.15em] text-slate-400">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayLabel) => (
+                    <div key={dayLabel} className="py-1">
+                      {dayLabel}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-2 grid grid-cols-7 gap-1">
+                  {monthGrid.map((day) => {
+                    const isoDate = toIsoDate(day)
+                    const isCovered = coveredDates.availableDates.has(isoDate)
+                    const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
+                    const isSelected = coveredDates.weekByDate.get(isoDate)?.id === selectedWeekId
+
+                    return (
+                      <button
+                        key={isoDate}
+                        type="button"
+                        disabled={!isCovered || !isCurrentMonth}
+                        onClick={() => {
+                          if (!isCovered) return
+                          const targetWeek = coveredDates.weekByDate.get(isoDate)
+                          if (targetWeek) {
+                            setCalendarOpen(false)
+                            void loadWeek(targetWeek.id)
+                          }
+                        }}
+                        className={[
+                          'aspect-square rounded-md text-sm transition',
+                          isCurrentMonth ? 'text-slate-200' : 'text-slate-500',
+                          isCovered ? 'hover:bg-slate-800' : 'cursor-not-allowed bg-slate-900/80 text-slate-600',
+                          isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
+                        ].join(' ')}
+                      >
+                        {day.getDate()}
+                      </button>
+                    )
+                  })}
+                </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div ref={weekListRef} className="plan-week-list max-h-[420px] overflow-y-auto pr-2">
+          <div className="space-y-3">
+            {weeks.map((weekItem) => {
+              const isSelected = weekItem.id === selectedWeekId
+              const isCurrentWeek =
+                weekItem.start_date <= new Date().toISOString().slice(0, 10) &&
+                weekItem.end_date >= new Date().toISOString().slice(0, 10)
+
+              return (
+                <button
+                  key={weekItem.id}
+                  type="button"
+                  data-week-id={weekItem.id}
+                  onClick={() => void loadWeek(weekItem.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition ${
+                    isSelected
+                      ? 'border-sky-500 bg-sky-500/10 text-sky-100'
+                      : 'border-slate-700 bg-slate-900/70 text-slate-200 hover:border-slate-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week {weekItem.week_number}</p>
+                    {isCurrentWeek && (
+                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.16em] text-emerald-300">
+                        Today
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="mt-2 text-base font-semibold text-slate-100">{weekItem.focus || 'Plan focus'}</p>
+                  <p className="mt-1 text-xs text-slate-400">{weekItem.start_date} – {weekItem.end_date}</p>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-300">
+                      {weekItem.phase}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{weekItem.tasks?.trim() ? 'Updated' : 'Draft'}</span>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
       </section>
 
       <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <label className="block space-y-2 text-sm">
-          <span className="block text-slate-300">Focus</span>
-          <input
-            value={focus}
-            onChange={(event) => setFocus(event.target.value)}
-            className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none ring-0 transition focus:border-slate-500"
-            required
-            placeholder="Short title for the week"
-          />
-        </label>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Selected week</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-100">Week {week.week_number}: {week.focus}</h2>
+            <p className="mt-1 text-sm text-slate-400">{week.start_date} – {week.end_date} · {week.phase}</p>
+          </div>
+
+          {week.start_date <= new Date().toISOString().slice(0, 10) && week.end_date >= new Date().toISOString().slice(0, 10) && (
+            <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-sky-300">
+              Current week
+            </span>
+          )}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
+          <label className="block space-y-2 text-sm">
+            <span className="block text-slate-300">Focus</span>
+            <input
+              value={focus}
+              onChange={(event) => setFocus(event.target.value)}
+              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none ring-0 transition focus:border-slate-500"
+              required
+              placeholder="Short title for the week"
+            />
+          </label>
+
+          <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week info</p>
+            <div className="mt-3 space-y-2 text-sm text-slate-300">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-400">Phase</span>
+                <span>{week.phase}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-400">Dates</span>
+                <span>{week.start_date} – {week.end_date}</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <label className="block space-y-2 text-sm">
           <span className="block text-slate-300">Tasks</span>

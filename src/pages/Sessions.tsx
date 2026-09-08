@@ -41,6 +41,8 @@ function formatTimerDuration(totalSeconds: number) {
 export default function Sessions() {
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
   const [planWeek, setPlanWeek] = useState<PlanWeek | null>(null)
+  const [weeks, setWeeks] = useState<PlanWeek[]>([])
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -51,6 +53,7 @@ export default function Sessions() {
   const [comment, setComment] = useState('')
   const [selectedBlocks, setSelectedBlocks] = useState<SelectedBlock[]>([])
   const [timers, setTimers] = useState<Record<string, BlockTimerState>>({})
+  const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
   const [bpmInput, setBpmInput] = useState('100')
   const [bpm, setBpm] = useState(100)
@@ -150,7 +153,11 @@ export default function Sessions() {
 
     const today = new Date().toISOString().slice(0, 10)
 
-    const [planResult, templatesResult, sessionsResult] = await Promise.all([
+    const [weeksResult, planResult, templatesResult, sessionsResult] = await Promise.all([
+      supabase
+        .from('plan_weeks')
+        .select('*')
+        .order('start_date', { ascending: true }),
       supabase
         .from('plan_weeks')
         .select('*')
@@ -167,6 +174,12 @@ export default function Sessions() {
         .order('session_date', { ascending: false })
         .limit(5),
     ])
+
+    if (weeksResult.error) {
+      setError(weeksResult.error.message)
+      setLoading(false)
+      return
+    }
 
     if (planResult.error) {
       setError(planResult.error.message)
@@ -186,14 +199,21 @@ export default function Sessions() {
       return
     }
 
-    const currentWeek = planResult.data as PlanWeek | null
+    const allWeeks = (weeksResult.data ?? []) as PlanWeek[]
+    const currentWeek = (planResult.data as PlanWeek | null) ?? allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
+    const currentWeekIndex = currentWeek ? allWeeks.findIndex((item) => item.id === currentWeek.id) : 0
     const allTemplates = (templatesResult.data ?? []) as BlockTemplate[]
 
     const dedupedTemplates = allTemplates.filter((template, index, array) => {
       return index === array.findIndex((candidate) => candidate.key === template.key)
     })
 
+    const defaultDate = getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
+
+    setWeeks(allWeeks)
     setPlanWeek(currentWeek)
+    setSelectedWeekIndex(currentWeekIndex >= 0 ? currentWeekIndex : 0)
+    setDate(defaultDate)
     setTemplates(dedupedTemplates)
     setSelectedBlocks(
       dedupedTemplates.map((template) => ({
@@ -208,6 +228,43 @@ export default function Sessions() {
     setTimers({})
     setSessions((sessionsResult.data as SessionWithBlocks[]) ?? [])
     setLoading(false)
+  }
+
+  function getWeekDates(week: PlanWeek | null) {
+    if (!week) return []
+
+    const start = new Date(`${week.start_date}T00:00:00`)
+    const end = new Date(`${week.end_date}T00:00:00`)
+    const result: string[] = []
+    const cursor = new Date(start)
+
+    while (cursor <= end) {
+      result.push(cursor.toISOString().slice(0, 10))
+      cursor.setDate(cursor.getDate() + 1)
+    }
+
+    return result
+  }
+
+  function isTodayDate(value: string) {
+    return value === new Date().toISOString().slice(0, 10)
+  }
+
+  function getDefaultDateForWeek(week: PlanWeek | null) {
+    if (!week) return new Date().toISOString().slice(0, 10)
+
+    const weekDates = getWeekDates(week)
+    return weekDates.find((value) => isTodayDate(value)) ?? week.start_date
+  }
+
+  function handleSelectWeek(week: PlanWeek) {
+    setPlanWeek(week)
+    setDate(getDefaultDateForWeek(week))
+    setSelectedWeekIndex(weeks.findIndex((item) => item.id === week.id))
+  }
+
+  function handleSelectDay(nextDate: string) {
+    setDate(nextDate)
   }
 
   function toggleBlock(templateId: string) {
@@ -531,18 +588,21 @@ export default function Sessions() {
     return sum + value
   }, 0)
 
+  const selectedWeekDates = getWeekDates(planWeek ?? weeks[selectedWeekIndex] ?? null)
+  const visibleWeeks = weeks.slice(Math.max(0, selectedWeekIndex - 2), Math.min(weeks.length, selectedWeekIndex + 3))
+
   if (loading) {
     return <p className="text-sm text-slate-400">Loading…</p>
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Session {formatHeadingDate(date)}</h1>
             <p className="mt-1 text-sm text-slate-400">
-              Use the current week plan as your practice guide for today.
+              Practice week navigator for the current cycle.
             </p>
           </div>
 
@@ -636,42 +696,264 @@ export default function Sessions() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Current week plan</p>
-          <p className="mt-2 font-medium text-slate-200">
-            {planWeek?.focus ?? 'No current week plan available.'}
-          </p>
-          <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-400">
-            {planWeek?.tasks ?? 'No plan details available yet.'}
-          </pre>
-        </div>
+        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Practice weeks</p>
+            </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-1 text-sm">
-              <span className="block text-slate-300">Date</span>
-              <input
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2"
-                required
-              />
-            </label>
-
-            <label className="space-y-1 text-sm">
-              <span className="block text-slate-300">Total minutes</span>
-              <input
-                type="number"
-                min="1"
-                value={totalMinutes}
-                onChange={(event) => setTotalMinutes(event.target.value)}
-                className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2"
-                required
-              />
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <span>Jump to</span>
+              <select
+                value={planWeek?.id ?? ''}
+                onChange={(event) => {
+                  const targetWeek = weeks.find((weekItem) => weekItem.id === event.target.value)
+                  if (targetWeek) {
+                    handleSelectWeek(targetWeek)
+                  }
+                }}
+                className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-200 focus:border-slate-500"
+              >
+                {weeks.map((weekItem) => (
+                  <option key={weekItem.id} value={weekItem.id}>
+                    Week {weekItem.week_number} · {weekItem.start_date}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 
+          <div className="mt-3 flex flex-wrap gap-3">
+            {visibleWeeks.map((weekItem) => {
+              const isCurrentWeek = weekItem.start_date <= new Date().toISOString().slice(0, 10) && weekItem.end_date >= new Date().toISOString().slice(0, 10)
+              const isSelected = weekItem.id === (planWeek?.id ?? weeks[selectedWeekIndex]?.id)
+
+              return (
+                <button
+                  key={weekItem.id}
+                  type="button"
+                  onClick={() => handleSelectWeek(weekItem)}
+                  className={`min-w-[150px] flex-1 rounded-lg border p-3 text-left transition ${
+                    isSelected
+                      ? 'border-sky-500 bg-sky-500/10 text-sky-100'
+                      : 'border-slate-700 bg-slate-950/80 text-slate-200 hover:border-slate-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week {weekItem.week_number}</p>
+                    {isCurrentWeek && (
+                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
+                        Today
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-lg font-semibold">{weekItem.focus || 'Plan focus'}</p>
+                  <p className="mt-1 text-xs text-slate-400">{weekItem.start_date} – {weekItem.end_date}</p>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Selected week</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-100">{planWeek?.focus ?? 'No week selected'}</h2>
+            </div>
+
+            {planWeek && planWeek.start_date <= new Date().toISOString().slice(0, 10) && planWeek.end_date >= new Date().toISOString().slice(0, 10) && (
+              <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-sky-300">
+                Current week
+              </span>
+            )}
+          </div>
+
+          <div className="mt-3 grid gap-2 text-sm text-slate-300 md:grid-cols-2">
+            <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Phase</p>
+              <p className="mt-1">{planWeek?.phase ?? '—'}</p>
+            </div>
+            <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Dates</p>
+              <p className="mt-1">{planWeek ? `${planWeek.start_date} – ${planWeek.end_date}` : '—'}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded border border-slate-800 bg-slate-950/70 p-3">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week description</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">
+              {planWeek?.tasks?.trim() || 'No description recorded for this week yet.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Days in selected week</p>
+            {selectedWeekDates.some((day) => isTodayDate(day)) && (
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
+                Today
+              </span>
+            )}
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-7">
+            {selectedWeekDates.map((day) => {
+              const isSelectedDay = day === date
+              const isToday = isTodayDate(day)
+
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => handleSelectDay(day)}
+                  className={`rounded-lg border px-2 py-3 text-center transition ${
+                    isSelectedDay
+                      ? 'border-sky-500 bg-sky-500/10 text-sky-100'
+                      : isToday
+                        ? 'border-emerald-500/50 bg-emerald-500/5 text-emerald-100'
+                        : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-slate-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                      {new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })}
+                    </p>
+                    {isToday && (
+                      <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-emerald-200">
+                        Today
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm font-medium">{new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Selected day</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-100">{formatHeadingDate(date)}</h3>
+            </div>
+            {isTodayDate(date) && (
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
+                Today
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {templates.length === 0 && (
+              <p className="text-sm text-slate-400">No practice blocks available for this week.</p>
+            )}
+
+            {templates.map((template) => {
+              const selected = selectedBlocks.find((block) => block.id === template.id)
+
+              if (!selected) return null
+
+              const timerMinutes = Math.max(0, Math.round((timers[template.id]?.elapsedSeconds ?? 0) / 60))
+
+              return (
+                <div key={template.id} className="flex flex-col gap-3 rounded border border-slate-800 bg-slate-950/60 p-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.done}
+                        onChange={() => toggleBlock(template.id)}
+                        className="h-4 w-4 rounded border-slate-700 bg-slate-950"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-100">{template.label}</p>
+                        <p className="text-xs text-slate-400">Target: {template.target_minutes ?? 0} min</p>
+                      </div>
+                    </div>
+
+                    <p className="mt-2 text-sm text-slate-300">
+                      {template.description?.trim() || 'No description available for this practice block.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-start gap-2 md:items-end">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleTimer(template.id)}
+                        className="rounded bg-slate-800 px-2 py-1 text-xs font-medium text-slate-200"
+                      >
+                        {timers[template.id]?.isRunning ? 'Pause' : 'Start'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => resetTimer(template.id)}
+                        className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                      >
+                        Reset
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Timer</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={timerMinutes}
+                        onChange={(event) => {
+                          const nextValue = Number(event.target.value)
+                          setTimers((current) => ({
+                            ...current,
+                            [template.id]: {
+                              ...(current[template.id] ?? { isRunning: false, elapsedSeconds: 0 }),
+                              elapsedSeconds: Number.isFinite(nextValue) ? Math.max(0, nextValue * 60) : 0,
+                            },
+                          }))
+                        }}
+                        className="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+                      />
+                      <span className="text-xs text-slate-400">min</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <span>Elapsed</span>
+                      <span className="font-mono text-sm text-slate-100">{formatTimerDuration(timers[template.id]?.elapsedSeconds ?? 0)}</span>
+                    </div>
+
+                    {(timers[template.id]?.elapsedSeconds ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => applyTimerAsActualMinutes(template.id)}
+                        className="text-[11px] font-medium text-cyan-400"
+                      >
+                        Use as actual minutes
+                      </button>
+                    )}
+
+                    {selected.done && (
+                      <label className="flex items-center gap-2 text-xs text-slate-400">
+                        <span>Actual</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={selected.actualMinutes}
+                          onChange={(event) => updateBlockMinutes(template.id, event.target.value)}
+                          className="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm"
+                          placeholder="Optional"
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <label className="block space-y-1 text-sm">
             <span className="block text-slate-300">Notes</span>
             <textarea
@@ -683,80 +965,7 @@ export default function Sessions() {
             />
           </label>
 
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-300">Practice blocks</p>
-            <div className="flex flex-wrap gap-3">
-              {templates.length === 0 && (
-                <p className="text-sm text-slate-400">No blocks available for the current week phase.</p>
-              )}
-
-              {templates.map((template) => {
-                const selected = selectedBlocks.find((block) => block.id === template.id)
-
-                if (!selected) return null
-
-                return (
-                  <div key={template.id} className="min-w-[220px] flex-1 basis-[220px] rounded border border-slate-800 bg-slate-900/70 p-3">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selected.done}
-                        onChange={() => toggleBlock(template.id)}
-                      />
-                      <span className="font-medium text-slate-200">{template.label}</span>
-                    </label>
-
-                    <div className="mt-3 rounded border border-dashed border-slate-700 bg-slate-950/60 p-2 text-center text-xs text-slate-500">
-                      <div className="font-mono text-lg text-slate-200">
-                        {formatTimerDuration(timers[template.id]?.elapsedSeconds ?? 0)}
-                      </div>
-                      <div className="mt-2 flex flex-wrap justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleTimer(template.id)}
-                          className="rounded bg-slate-800 px-2 py-1 text-xs font-medium text-slate-200"
-                        >
-                          {timers[template.id]?.isRunning ? 'Pause' : 'Start'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => resetTimer(template.id)}
-                          className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                        >
-                          Reset
-                        </button>
-                      </div>
-                      {(timers[template.id]?.elapsedSeconds ?? 0) > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => applyTimerAsActualMinutes(template.id)}
-                          className="mt-2 text-[11px] font-medium text-cyan-400"
-                        >
-                          Use as actual minutes
-                        </button>
-                      )}
-                    </div>
-
-                    {selected.done && (
-                      <div className="mt-2">
-                        <label className="text-xs text-slate-400">
-                          Actual minutes
-                          <input
-                            type="number"
-                            min="0"
-                            value={selected.actualMinutes}
-                            onChange={(event) => updateBlockMinutes(template.id, event.target.value)}
-                            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-                            placeholder="Optional"
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          
 
           {message && <p className="text-sm text-emerald-400">{message}</p>}
           {error && <p className="text-sm text-red-400">{error}</p>}
@@ -772,36 +981,49 @@ export default function Sessions() {
       </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <h2 className="text-lg font-semibold">Recent sessions</h2>
-        <div className="mt-3 space-y-3">
-          {sessions.length === 0 && <p className="text-sm text-slate-400">No sessions yet.</p>}
+        <button
+          type="button"
+          onClick={() => setIsRecentSessionsOpen((current) => !current)}
+          aria-expanded={isRecentSessionsOpen}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <h2 className="text-lg font-semibold">Recent sessions</h2>
+          <span className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300">
+            {isRecentSessionsOpen ? 'Hide' : 'Show'}
+          </span>
+        </button>
 
-          {sessions.map((session) => (
-            <div key={session.id} className="rounded border border-slate-800 bg-slate-900/70 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium text-slate-200">{session.session_date}</p>
-                  <p className="text-sm text-slate-400">{session.total_minutes} min</p>
+        {isRecentSessionsOpen && (
+          <div className="mt-3 space-y-3">
+            {sessions.length === 0 && <p className="text-sm text-slate-400">No sessions yet.</p>}
+
+            {sessions.map((session) => (
+              <div key={session.id} className="rounded border border-slate-800 bg-slate-900/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-slate-200">{session.session_date}</p>
+                    <p className="text-sm text-slate-400">{session.total_minutes} min</p>
+                  </div>
+                  <span className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">
+                    {session.source === 'notion_import' ? 'Imported' : 'App'}
+                  </span>
                 </div>
-                <span className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">
-                  {session.source === 'notion_import' ? 'Imported' : 'App'}
-                </span>
+
+                {session.comment && <p className="mt-2 text-sm text-slate-300">{session.comment}</p>}
+
+                {session.session_blocks.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {session.session_blocks.map((block) => (
+                      <span key={block.id} className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400">
+                        {block.label} {block.done ? '✓' : '—'}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {session.comment && <p className="mt-2 text-sm text-slate-300">{session.comment}</p>}
-
-              {session.session_blocks.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {session.session_blocks.map((block) => (
-                    <span key={block.id} className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400">
-                      {block.label} {block.done ? '✓' : '—'}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   )

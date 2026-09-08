@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+html {
+  color-scheme: dark;
+}
+
+.plan-week-list {
+  scrollbar-color: rgba(148, 163, 184, 0.8) rgba(15, 23, 42, 0.8);
+  scrollbar-width: thin;
+}
+
+.plan-week-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.plan-week-list::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 9999px;
+}
+
+.plan-week-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(100, 116, 139, 0.9), rgba(51, 65, 85, 0.9));
+  border: 2px solid rgba(15, 23, 42, 0.9);
+  border-radius: 9999px;
+}
+
+.plan-week-list::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.9), rgba(71, 85, 105, 0.9));
+}
