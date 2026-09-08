@@ -6,7 +6,7 @@ Guitar Practice Hub is a single-user practice tracking app for guitar, built as 
 
 ## Current status
 
-The app has a working core workflow and is in a stable UX-refinement state. One persistence design decision remains open around the session-block write path.
+The app has a working core workflow and is in a UX-refinement state. Session persistence was previously unverified: both production checks returned zero app-sourced rows. A live save on 2026-09-08 created one `sessions` row and one related `session_blocks` row, and both checks then returned `1`.
 
 ### Already working
 
@@ -18,6 +18,8 @@ The app has a working core workflow and is in a stable UX-refinement state. One 
 - weekly planning editor
 - stats dashboard
 - session write path currently replaces completed blocks with delete-then-insert
+
+The session write path is now explicitly marked with `source: 'app'`; the parent session upsert and completed-block replacement both passed live verification.
 
 ### Active work
 
@@ -81,4 +83,4 @@ The most logical next iteration is a focused responsive QA pass on Sessions and 
 
 ## Handoff note
 
-This project is already far enough along that future work should be guided by the actual code state, not by stale backlog assumptions. The docs and the code are now aligned around the same reality: the product works, and the remaining work is UX completion and validation.
+This project is already far enough along that future work should be guided by the actual code state and query-backed checks, not by stale backlog assumptions. The session persistence check is now verified; the remaining work is UX completion and validation.

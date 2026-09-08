@@ -1,11 +1,11 @@
 # Guitar Practice Hub — scope and backlog
 
-Status: the app has a working core v1 workflow and is in the UX refinement phase, with one persistence design decision still open for session blocks. The main remaining work is visual polish, validation, and that narrowly scoped data-integrity decision.
+Status: the app has a working core v1 workflow and is in the UX refinement phase. Session persistence was previously unverified because both production checks returned zero app-sourced rows; a live save on 2026-09-08 created one app-sourced session and one related block, and both checks then returned `1`. The remaining work is visual polish, validation, and the narrowly scoped session-block data-integrity decision.
 
 ## Current status (2026-09-08)
 
 - The project remains aligned with the original architecture: React frontend, Supabase as the app backend, and a PWA shell for phone and desktop use.
-- Sessions, Plan, and Stats are all connected to real Supabase data and are operational.
+- Sessions, Plan, and Stats are all connected to real Supabase data and are operational; session persistence is verified by a live save and count queries.
 - The app can log daily sessions, maintain weekly plans, and review progress trends.
 - Session logging, per-block completion, timers, and metronome behavior are implemented and connected to Supabase.
 - The session write path upserts the parent session, then deletes and reinserts its completed blocks; it is not yet a `session_blocks` upsert.
@@ -103,7 +103,8 @@ These items are captured for prioritization after the current responsive QA and 
 - 2026-09-01 — Keep all current app behavior and persistence logic intact while redesigning the layout only.
 - 2026-09-08 — Plan week navigation: use a fixed-height vertical list, styled scrollbar, and covered-date calendar picker; selecting a week keeps it in view and updates the editor below.
 - 2026-09-08 — Future backlog captured for next grooming: Sessions tuner, active navigation highlighting, and a learning-materials viewer for the “Учебные материалы” block.
-- 2026-09-08 — Status reconciliation: the session write path is live, but completed session blocks are currently replaced with delete-then-insert because `session_blocks` has no `(session_id, block_key)` uniqueness constraint.
+- 2026-09-08 — Status reconciliation: before live verification, both app-source count queries returned zero, so session persistence was marked unverified rather than stable.
+- 2026-09-08 — Session persistence verification: saving a fresh session created one `sessions` row with `source = 'app'` and one related `session_blocks` row; both exact count queries returned `1`. The client now sets `source: 'app'` explicitly. Completed blocks still use delete-then-insert because `session_blocks` has no `(session_id, block_key)` uniqueness constraint.
 - 2026-09-08 — Dependency check: `tailwindcss` and `vite-plugin-pwa` are already development dependencies, and `react-router-dom` is absent.
 
 ## Recommended next steps
@@ -120,7 +121,7 @@ These items are captured for prioritization after the current responsive QA and 
 ## Completed milestones
 
 - app shell and routing are in place
-- Supabase integration is working
+- Supabase integration is working, with session persistence verified by live count queries
 - Sessions, Plan, and Stats are live
 - metronome and timer helpers are in place
 - historical imports and seed data exist

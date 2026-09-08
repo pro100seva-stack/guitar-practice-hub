@@ -517,6 +517,7 @@ export default function Sessions() {
           total_minutes: Number(totalMinutes),
           comment: comment.trim() ? comment.trim() : null,
           week_id: planWeek?.id ?? null,
+          source: 'app',
         },
         { onConflict: 'user_id,session_date' }
       )
