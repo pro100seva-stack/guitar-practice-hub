@@ -237,6 +237,7 @@ No blocking items.
 - 2026-09-11 — Added a non-blocking `canPlayType()` warning for local videos that may need conversion to H.264/AAC MP4 or WebM/Opus; unsupported files remain local and the viewer still reports playback errors.
 - 2026-09-11 — Local materials now show Saving locally, Saved on this device, and error states; IndexedDB writes do not expose byte-level progress because they are local atomic writes rather than network uploads.
 - 2026-09-11 — Account handling now shows live password requirements during create/reset, enforces matching server-side rules, and loads the configured security question before password reset.
+- 2026-09-11 — Existing Auth account linking was removed after the standard UI account flow was confirmed as the only supported registration path. The existing master profile remains valid in `user_profiles`.
 - 2026-09-11 — User validated live password requirements, server-side password rejection, and security-question display during reset. Account handling refinement passes.
 - 2026-09-11 — Added migration `06-user-delete-cascade.sql` so Supabase Auth user deletion cascades through owned plan weeks, songs, sessions, settings, and dependent rows. Migration application is required before admin deletion.
 - 2026-09-11 — Added native A/B loop controls for inline local/direct videos: Set A, Set B, Loop A-B, and Clear. YouTube A/B looping remains deferred to a future IFrame API integration.
@@ -250,6 +251,7 @@ No blocking items.
 
 - **Done:** core Sessions, Plan, Stats, navigation, persistence, UX polish, session-block upsert, and multi-user account foundation.
 - **Done:** New User, Password Recovery, and validated sign-in/sign-out flow.
+- **Done:** Existing master Auth account linked to `user_profiles` through the signed-in Account profile flow.
 - **Done:** default five-week practice program for new users, validated through account creation.
 - **Done:** Sessions tuner presets and continuous reference tones, validated in browser/device QA.
 - **Done:** first learning-materials viewer slice using device-local IndexedDB files and trusted URLs, validated across all seven QA checks.
