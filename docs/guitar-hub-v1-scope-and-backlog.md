@@ -76,11 +76,22 @@ That means the remaining work is lower-risk and more UX-centric than product-arc
 
 ### Medium priority
 
-22. Re-edit and continue daily sessions
+22. **In progress:** Re-edit and continue daily sessions
    - after saving the current day's session, the user can return to it later the same day
    - load the existing session values, completed blocks, timer progress, notes, and total minutes for editing
    - allow the user to add new practice progress to the already saved session without overwriting unrelated progress
    - preserve the existing daily-session uniqueness and Supabase-backed save flow
+
+23. **In progress:** Open saved sessions from Recent sessions
+   - clicking a recent session opens that session in the current Sessions editor
+   - select the matching week and day when the saved session is opened
+   - preserve the loaded blocks, completion state, timer values, notes, and total time
+
+24. **In progress:** Align week and session QA behavior
+   - new weeks start on Monday rather than Sunday or the current weekday
+   - keep the Plan week selector inside the mobile viewport
+   - show `Updated` on populated or edited week cards and reserve `Draft` for untouched new weeks
+   - show whole-minute, rounded-down values in the Stats practice-block breakdown
 
 ### Notion-derived implementation backlog
 
@@ -196,18 +207,21 @@ These items are captured for prioritization after the current responsive QA and 
 - 2026-09-11 — QA found removed practice blocks reappeared after reopening a saved session. Session saves now persist block membership separately from completion, and reload only restores blocks belonging to that session; item 5 awaits remove-save-reopen validation.
 - 2026-09-11 — User QA confirmed saved-session rehydration and persistent block removal. Item 5 is complete; final spacing, labels, and visual hierarchy polish is the next active item.
 - 2026-09-11 — Final polish pass applied responsive navigation spacing, shared keyboard focus treatment, stable mobile page sizing, and selected-day wording; item 6 awaits browser QA.
+- 2026-09-11 — QA fixes implemented: saved sessions now load all historical rows, restore block timer minutes, and open from Recent sessions; new weeks normalize to Monday starts; the Plan mobile week selector is viewport-constrained; populated week cards show Updated; Stats block values display rounded-down whole minutes.
+- 2026-09-11 — Sessions day navigation now normalizes every selected week to a Monday-through-Sunday display window, including existing Sunday-starting records.
+- 2026-09-11 — Added backlog item 23 for opening saved sessions directly from Recent sessions and item 24 for the related week/session QA behavior; browser validation remains queued.
 
 ## Recommended next steps
 
-1. Validate final spacing, labels, keyboard focus, and responsive navigation behavior.
-2. Define the implementation approach for medium-priority daily session re-editing.
+1. Validate the QA fixes on mobile and desktop, including saved-session rehydration and Recent sessions navigation.
+2. Confirm Monday week creation and the Plan mobile selector bounds.
 3. During the next grooming session, decide the `session_blocks` uniqueness/upsert strategy and prioritize active navigation highlighting.
 
 ## Delivery pipeline
 
 - **Done:** responsive Sessions and Plan QA; core interaction QA; timer editing and single-active-timer behavior (items 4 and 10); live total-minute synchronization (item 11); Sessions block add/remove (item 12); Plan week add/remove (item 13); sticky top navigation (item 14); session update, timer reset, and block-save edge cases (item 5).
 - **In progress:** final spacing, labels, and visual hierarchy polish (item 6), awaiting browser QA.
-- **Queued:** daily session re-editing (item 22, medium priority) and remaining secondary decisions.
+- **In progress:** daily session re-editing (item 22) and opening saved sessions from Recent sessions (item 23); QA behavior alignment (item 24) awaits browser validation.
 - **Deprioritized, open:** mobile page zoom behavior (item 15).
 - **Deferred:** account recovery/default-program work and future grooming items 19–21.
 

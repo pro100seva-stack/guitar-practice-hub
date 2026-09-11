@@ -30,6 +30,11 @@ function addDays(date: Date, amount: number) {
   return next
 }
 
+function startOfWeekMonday(date: Date) {
+  const day = date.getDay()
+  return addDays(date, day === 0 ? -6 : 1 - day)
+}
+
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
@@ -239,7 +244,7 @@ export default function Plan() {
     const selectedIndex = week ? weeks.findIndex((item) => item.id === week.id) : weeks.length - 1
     const insertIndex = selectedIndex >= 0 ? selectedIndex + 1 : weeks.length
     const previousWeek = weeks[insertIndex - 1]
-    const startDate = previousWeek ? addDays(parseIsoDate(previousWeek.end_date), 1) : new Date()
+    const startDate = previousWeek ? addDays(parseIsoDate(previousWeek.end_date), 1) : startOfWeekMonday(new Date())
     const endDate = addDays(startDate, 6)
     const nextWeekNumber = insertIndex + 1
 
@@ -548,7 +553,7 @@ export default function Plan() {
               </button>
 
               {calendarOpen && (
-                <div className="absolute right-0 z-20 mt-2 w-[320px] rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60">
+                <div className="absolute left-0 right-0 z-20 mt-2 w-[320px] max-w-full rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60 sm:left-auto sm:right-0 sm:max-w-[calc(100vw-2rem)]">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <button
                     type="button"
@@ -652,7 +657,9 @@ export default function Plan() {
                     <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-300">
                       {weekItem.phase}
                     </span>
-                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{weekItem.updated_at !== weekItem.created_at ? 'Updated' : 'Draft'}</span>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                      {weekItem.updated_at !== weekItem.created_at || weekItem.focus.trim() !== 'New practice week' || Boolean(weekItem.tasks?.trim()) ? 'Updated' : 'Draft'}
+                    </span>
                   </div>
                 </button>
               )

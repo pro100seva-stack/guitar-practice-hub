@@ -32,16 +32,32 @@ function formatHeadingDate(value: string) {
   }).format(date)
 }
 
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function getSessionEditorState(date: string, templates: BlockTemplate[], sessions: SessionWithBlocks[]) {
   const savedSession = sessions.find((session) => session.session_date === date)
   const savedBlocks = new Map(savedSession?.session_blocks.map((block) => [block.block_key, block]) ?? [])
   const sessionTemplates = savedSession
     ? templates.filter((template) => savedBlocks.has(template.key))
     : templates
+  const timers = Object.fromEntries(
+    sessionTemplates.flatMap((template) => {
+      const actualMinutes = savedBlocks.get(template.key)?.actual_minutes
+      return actualMinutes == null
+        ? []
+        : [[template.id, { isRunning: false, elapsedSeconds: actualMinutes * 60 } satisfies BlockTimerState]]
+    })
+  )
 
   return {
     totalMinutes: savedSession ? String(savedSession.total_minutes) : '45',
     comment: savedSession?.comment ?? '',
+    timers,
     selectedBlocks: sessionTemplates.map((template) => {
       const savedBlock = savedBlocks.get(template.key)
       return {
@@ -190,8 +206,7 @@ export default function Sessions() {
       supabase
         .from('sessions')
         .select('*, session_blocks(*)')
-        .order('session_date', { ascending: false })
-        .limit(5),
+        .order('session_date', { ascending: false }),
     ])
 
     if (weeksResult.error) {
@@ -240,7 +255,7 @@ export default function Sessions() {
     setComment(editorState.comment)
     setSelectedBlocks(editorState.selectedBlocks)
     setBlockToAddId('')
-    setTimers({})
+    setTimers(editorState.timers)
     setSessions(loadedSessions)
     setLoading(false)
   }
@@ -248,13 +263,15 @@ export default function Sessions() {
   function getWeekDates(week: PlanWeek | null) {
     if (!week) return []
 
-    const start = new Date(`${week.start_date}T00:00:00`)
-    const end = new Date(`${week.end_date}T00:00:00`)
+    const storedStart = new Date(`${week.start_date}T00:00:00`)
+    const day = storedStart.getDay()
+    const start = new Date(storedStart)
+    start.setDate(start.getDate() + (day === 0 ? -6 : 1 - day))
     const result: string[] = []
     const cursor = new Date(start)
 
-    while (cursor <= end) {
-      result.push(cursor.toISOString().slice(0, 10))
+    for (let index = 0; index < 7; index += 1) {
+      result.push(formatLocalDate(cursor))
       cursor.setDate(cursor.getDate() + 1)
     }
 
@@ -269,12 +286,19 @@ export default function Sessions() {
     if (!week) return new Date().toISOString().slice(0, 10)
 
     const weekDates = getWeekDates(week)
-    return weekDates.find((value) => isTodayDate(value)) ?? week.start_date
+    return weekDates.find((value) => isTodayDate(value)) ?? weekDates[0]
   }
 
   function handleSelectWeek(week: PlanWeek) {
     setPlanWeek(week)
-    setDate(getDefaultDateForWeek(week))
+    const nextDate = getDefaultDateForWeek(week)
+    const editorState = getSessionEditorState(nextDate, templates, sessions)
+    setDate(nextDate)
+    setTotalMinutes(editorState.totalMinutes)
+    setComment(editorState.comment)
+    setSelectedBlocks(editorState.selectedBlocks)
+    setTimers(editorState.timers)
+    setBlockToAddId('')
     setSelectedWeekIndex(weeks.findIndex((item) => item.id === week.id))
   }
 
@@ -285,7 +309,26 @@ export default function Sessions() {
     setComment(editorState.comment)
     setSelectedBlocks(editorState.selectedBlocks)
     setBlockToAddId('')
-    setTimers({})
+    setTimers(editorState.timers)
+  }
+
+  function handleOpenRecentSession(session: SessionWithBlocks) {
+    const sessionWeekIndex = session.week_id
+      ? weeks.findIndex((weekItem) => weekItem.id === session.week_id)
+      : weeks.findIndex((weekItem) => weekItem.start_date <= session.session_date && weekItem.end_date >= session.session_date)
+    const nextWeek = sessionWeekIndex >= 0 ? weeks[sessionWeekIndex] : null
+    const editorState = getSessionEditorState(session.session_date, templates, sessions)
+
+    if (nextWeek) {
+      setPlanWeek(nextWeek)
+      setSelectedWeekIndex(sessionWeekIndex)
+    }
+    setDate(session.session_date)
+    setTotalMinutes(editorState.totalMinutes)
+    setComment(editorState.comment)
+    setSelectedBlocks(editorState.selectedBlocks)
+    setTimers(editorState.timers)
+    setBlockToAddId('')
   }
 
   function toggleBlock(templateId: string) {
@@ -1072,8 +1115,13 @@ export default function Sessions() {
           <div className="mt-3 space-y-3">
             {sessions.length === 0 && <p className="text-sm text-slate-400">No sessions yet.</p>}
 
-            {sessions.map((session) => (
-              <div key={session.id} className="rounded border border-slate-800 bg-slate-900/70 p-3">
+            {sessions.slice(0, 5).map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => handleOpenRecentSession(session)}
+                className="w-full rounded border border-slate-800 bg-slate-900/70 p-3 text-left transition hover:border-slate-600"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="font-medium text-slate-200">{session.session_date}</p>
@@ -1095,7 +1143,7 @@ export default function Sessions() {
                     ))}
                   </div>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}

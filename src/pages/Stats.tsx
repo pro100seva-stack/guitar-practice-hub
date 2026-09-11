@@ -578,7 +578,7 @@ export default function Stats() {
                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: slice.color }} />
                         <span>{slice.label}</span>
                       </div>
-                      <span>{slice.value} min</span>
+                      <span>{Math.floor(slice.value)} min</span>
                     </div>
                   ))}
                 </div>
