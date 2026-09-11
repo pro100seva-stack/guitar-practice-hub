@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
+import { deleteLocalMaterial, listLocalMaterials, saveLocalMaterial, type LocalMaterial } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
 
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
@@ -21,6 +22,55 @@ type SelectedBlock = {
 type BlockTimerState = {
   isRunning: boolean
   elapsedSeconds: number
+}
+
+type TuningKey = 'standard' | 'drop-d' | 'dadgad' | 'half-step-down'
+
+const tuningPresets: Record<TuningKey, { label: string; notes: Array<{ stringName: string; frequency: number }> }> = {
+  standard: {
+    label: 'Standard · E A D G B E',
+    notes: [
+      { stringName: 'Low E', frequency: 82.41 },
+      { stringName: 'A', frequency: 110 },
+      { stringName: 'D', frequency: 146.83 },
+      { stringName: 'G', frequency: 196 },
+      { stringName: 'B', frequency: 246.94 },
+      { stringName: 'High E', frequency: 329.63 },
+    ],
+  },
+  'drop-d': {
+    label: 'Drop D · D A D G B E',
+    notes: [
+      { stringName: 'Low D', frequency: 73.42 },
+      { stringName: 'A', frequency: 110 },
+      { stringName: 'D', frequency: 146.83 },
+      { stringName: 'G', frequency: 196 },
+      { stringName: 'B', frequency: 246.94 },
+      { stringName: 'High E', frequency: 329.63 },
+    ],
+  },
+  dadgad: {
+    label: 'DADGAD · D A D G A D',
+    notes: [
+      { stringName: 'Low D', frequency: 73.42 },
+      { stringName: 'A', frequency: 110 },
+      { stringName: 'D', frequency: 146.83 },
+      { stringName: 'G', frequency: 196 },
+      { stringName: 'A', frequency: 220 },
+      { stringName: 'High D', frequency: 293.66 },
+    ],
+  },
+  'half-step-down': {
+    label: 'Half-step down · Eb Ab Db Gb Bb Eb',
+    notes: [
+      { stringName: 'Low Eb', frequency: 77.78 },
+      { stringName: 'Ab', frequency: 103.83 },
+      { stringName: 'Db', frequency: 138.59 },
+      { stringName: 'Gb', frequency: 185 },
+      { stringName: 'Bb', frequency: 233.08 },
+      { stringName: 'High Eb', frequency: 311.13 },
+    ],
+  },
 }
 
 function formatHeadingDate(value: string) {
@@ -87,6 +137,7 @@ export default function Sessions() {
   const [comment, setComment] = useState('')
   const [selectedBlocks, setSelectedBlocks] = useState<SelectedBlock[]>([])
   const [blockToAddId, setBlockToAddId] = useState('')
+  const [expandedBlockIds, setExpandedBlockIds] = useState<Set<string>>(new Set())
   const [timers, setTimers] = useState<Record<string, BlockTimerState>>({})
   const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
@@ -96,7 +147,18 @@ export default function Sessions() {
   const [timeSignatureMode, setTimeSignatureMode] = useState<'3/4' | '4/4' | '5/4' | 'custom'>('4/4')
   const [customBeatCount, setCustomBeatCount] = useState('4')
   const [customMeasureCount, setCustomMeasureCount] = useState('4')
+  const [tuningKey, setTuningKey] = useState<TuningKey>('standard')
+  const [activeReferenceTone, setActiveReferenceTone] = useState<string | null>(null)
+  const [learningMaterials, setLearningMaterials] = useState<LocalMaterial[]>([])
+  const [materialUrlInput, setMaterialUrlInput] = useState('')
+  const [materialError, setMaterialError] = useState<string | null>(null)
+  const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null)
+  const [activeMaterialUrl, setActiveMaterialUrl] = useState<string | null>(null)
+  const [mediaError, setMediaError] = useState<string | null>(null)
+  const [isTunerOpen, setIsTunerOpen] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
+  const referenceToneRef = useRef<OscillatorNode | null>(null)
+  const referenceToneGainRef = useRef<GainNode | null>(null)
   const schedulerIntervalRef = useRef<number | null>(null)
   const beatCounterRef = useRef(0)
   const lastTapTimeRef = useRef<number | null>(null)
@@ -108,7 +170,130 @@ export default function Sessions() {
   useEffect(() => {
     void loadData()
     void loadAppSettings()
+    void loadLearningMaterials()
   }, [])
+
+  async function loadLearningMaterials() {
+    try {
+      setLearningMaterials(await listLocalMaterials('learning'))
+    } catch (loadError) {
+      setMaterialError(loadError instanceof Error ? loadError.message : 'Could not load local materials.')
+    }
+  }
+
+  useEffect(() => {
+    const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
+    if (!activeMaterial) {
+      setActiveMaterialUrl(null)
+      setMediaError(null)
+      return
+    }
+
+    if (activeMaterial.source === 'url') {
+      setActiveMaterialUrl(activeMaterial.url ?? null)
+      setMediaError(null)
+      return
+    }
+
+    if (!activeMaterial.blob) {
+      setActiveMaterialUrl(null)
+      setMediaError(null)
+      return
+    }
+
+    const objectUrl = URL.createObjectURL(activeMaterial.blob)
+    setActiveMaterialUrl(objectUrl)
+    setMediaError(null)
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [activeMaterialId, learningMaterials])
+
+  async function handleLocalMaterialUpload(file: File | undefined) {
+    if (!file) return
+    setMaterialError(null)
+    const allowedTypes = ['application/pdf', 'image/', 'text/plain', 'video/']
+    const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? file.type.startsWith(type) : file.type === type)
+    if (!isAllowed) {
+      setMaterialError('Use a PDF, image, text, or video file.')
+      return
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      setMaterialError('Files must be 100 MB or smaller.')
+      return
+    }
+
+    try {
+      await saveLocalMaterial({
+        id: crypto.randomUUID(),
+        blockKey: 'learning',
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        source: 'file',
+        blob: file,
+        createdAt: new Date().toISOString(),
+      })
+      await loadLearningMaterials()
+    } catch (uploadError) {
+      setMaterialError(uploadError instanceof Error ? uploadError.message : 'Could not save the local material.')
+    }
+  }
+
+  async function addMaterialUrl() {
+    const value = materialUrlInput.trim()
+    if (!value) return
+    try {
+      const iframeSource = value.match(/src=["']([^"']+)["']/i)?.[1]
+      const url = new URL(iframeSource ?? value)
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP and HTTPS URLs are supported.')
+      await saveLocalMaterial({
+        id: crypto.randomUUID(),
+        blockKey: 'learning',
+        name: url.hostname,
+        type: 'text/uri-list',
+        size: 0,
+        source: 'url',
+        url: url.toString(),
+        createdAt: new Date().toISOString(),
+      })
+      setMaterialUrlInput('')
+      setMaterialError(null)
+      await loadLearningMaterials()
+    } catch (urlError) {
+      setMaterialError(urlError instanceof Error ? urlError.message : 'Enter a valid web URL.')
+    }
+  }
+
+  async function removeLearningMaterial(id: string) {
+    await deleteLocalMaterial(id)
+    setLearningMaterials((current) => current.filter((material) => material.id !== id))
+    if (activeMaterialId === id) setActiveMaterialId(null)
+  }
+
+  function getExternalMediaKind(material: LocalMaterial) {
+    if (material.source !== 'url' || !material.url) return null
+    const pathname = new URL(material.url).pathname.toLowerCase()
+    const hostname = new URL(material.url).hostname.toLowerCase()
+    if ((hostname === 'www.youtube.com' || hostname === 'youtube.com' || hostname === 'www.youtube-nocookie.com') && pathname.startsWith('/embed/')) return 'embed'
+    if (/\.(mp4|webm|ogg|mov)$/.test(pathname)) return 'video'
+    if (/\.(png|jpe?g|gif|webp|avif)$/.test(pathname)) return 'image'
+    if (/\.pdf$/.test(pathname)) return 'pdf'
+    return 'page'
+  }
+
+  function getInlineMaterialUrl(material: LocalMaterial) {
+    if (material.source !== 'url' || !material.url) return activeMaterialUrl
+
+    const parsedUrl = new URL(material.url)
+    const isYouTubeEmbed = (parsedUrl.hostname === 'www.youtube.com' || parsedUrl.hostname === 'youtube.com' || parsedUrl.hostname === 'www.youtube-nocookie.com') && parsedUrl.pathname.startsWith('/embed/')
+    if (!isYouTubeEmbed) return material.url
+
+    parsedUrl.hostname = 'www.youtube-nocookie.com'
+    parsedUrl.searchParams.delete('si')
+    parsedUrl.searchParams.set('playsinline', '1')
+    parsedUrl.searchParams.set('enablejsapi', '1')
+    parsedUrl.searchParams.set('origin', window.location.origin)
+    return parsedUrl.toString()
+  }
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -161,6 +346,7 @@ export default function Sessions() {
 
   useEffect(() => {
     return () => {
+      stopReferenceTone()
       if (schedulerIntervalRef.current !== null) {
         window.clearInterval(schedulerIntervalRef.current)
         schedulerIntervalRef.current = null
@@ -299,6 +485,7 @@ export default function Sessions() {
     setSelectedBlocks(editorState.selectedBlocks)
     setTimers(editorState.timers)
     setBlockToAddId('')
+    setExpandedBlockIds(new Set())
     setSelectedWeekIndex(weeks.findIndex((item) => item.id === week.id))
   }
 
@@ -309,6 +496,7 @@ export default function Sessions() {
     setComment(editorState.comment)
     setSelectedBlocks(editorState.selectedBlocks)
     setBlockToAddId('')
+    setExpandedBlockIds(new Set())
     setTimers(editorState.timers)
   }
 
@@ -329,6 +517,7 @@ export default function Sessions() {
     setSelectedBlocks(editorState.selectedBlocks)
     setTimers(editorState.timers)
     setBlockToAddId('')
+    setExpandedBlockIds(new Set())
   }
 
   function toggleBlock(templateId: string) {
@@ -380,6 +569,40 @@ export default function Sessions() {
     }
 
     return audioContextRef.current
+  }
+
+  async function playReferenceTone(stringName: string, frequency: number) {
+    const context = await ensureAudioContext()
+    stopReferenceTone()
+    const oscillator = context.createOscillator()
+    const gainNode = context.createGain()
+
+    oscillator.type = 'triangle'
+    oscillator.frequency.value = frequency
+    gainNode.gain.setValueAtTime(0.0001, context.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.35)
+    oscillator.connect(gainNode)
+    gainNode.connect(context.destination)
+    oscillator.start()
+    referenceToneRef.current = oscillator
+    referenceToneGainRef.current = gainNode
+    setActiveReferenceTone(stringName)
+  }
+
+  function stopReferenceTone() {
+    const context = audioContextRef.current
+    const oscillator = referenceToneRef.current
+    const gainNode = referenceToneGainRef.current
+    setActiveReferenceTone(null)
+    if (!context || !oscillator || !gainNode) return
+
+    const stopTime = context.currentTime + 0.35
+    gainNode.gain.cancelScheduledValues(context.currentTime)
+    gainNode.gain.setValueAtTime(Math.max(gainNode.gain.value, 0.0001), context.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, stopTime)
+    oscillator.stop(stopTime + 0.02)
+    referenceToneRef.current = null
+    referenceToneGainRef.current = null
   }
 
   function stopMetronome() {
@@ -642,19 +865,26 @@ export default function Sessions() {
           : block.actualMinutes ? Number(block.actualMinutes) : null,
       }))
 
-    const { error: blocksDeleteError } = await supabase
+    const selectedBlockKeys = selectedBlocks.map((block) => block.key)
+    const blocksRemovalQuery = supabase
       .from('session_blocks')
       .delete()
       .eq('session_id', sessionData.id)
 
-    if (blocksDeleteError) {
-      setError(blocksDeleteError.message)
+    const { error: blocksRemovalError } = selectedBlockKeys.length > 0
+      ? await blocksRemovalQuery.not('block_key', 'in', `(${selectedBlockKeys.join(',')})`)
+      : await blocksRemovalQuery
+
+    if (blocksRemovalError) {
+      setError(blocksRemovalError.message)
       setSaving(false)
       return
     }
 
     if (blocksToInsert.length > 0) {
-      const { error: blocksError } = await supabase.from('session_blocks').insert(blocksToInsert)
+      const { error: blocksError } = await supabase
+        .from('session_blocks')
+        .upsert(blocksToInsert, { onConflict: 'session_id,block_key' })
 
       if (blocksError) {
         setError(blocksError.message)
@@ -713,7 +943,7 @@ export default function Sessions() {
           </div>
 
           <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
-            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[260px]">
+            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[280px]">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">Metronome</p>
@@ -728,7 +958,7 @@ export default function Sessions() {
                 </button>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-end gap-2">
+              <div className="mt-2 flex flex-wrap items-end gap-2">
                 <label className="text-xs text-slate-400">
                   BPM
                   <input
@@ -792,6 +1022,56 @@ export default function Sessions() {
                   Tap
                 </button>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2 lg:min-w-[280px]">
+              <button
+                type="button"
+                aria-expanded={isTunerOpen}
+                onClick={() => setIsTunerOpen((current) => !current)}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Tuner</span>
+                <span className="text-xs text-slate-500">{isTunerOpen ? 'Hide' : 'Show'}</span>
+              </button>
+              {isTunerOpen && (
+                <div className="mt-2">
+                  <select
+                    value={tuningKey}
+                    onChange={(event) => {
+                      stopReferenceTone()
+                      setTuningKey(event.target.value as TuningKey)
+                    }}
+                    className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200"
+                    aria-label="Guitar tuning"
+                  >
+                    {Object.entries(tuningPresets).map(([key, tuning]) => (
+                      <option key={key} value={key}>{tuning.label}</option>
+                    ))}
+                  </select>
+                  <div key={tuningKey} className="mt-2 grid grid-cols-3 gap-1">
+                    {tuningPresets[tuningKey].notes.map((note) => (
+                      <button
+                        key={note.stringName}
+                        type="button"
+                        title={`Play ${note.stringName} reference tone`}
+                        onClick={() => { void playReferenceTone(note.stringName, note.frequency) }}
+                        className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:border-sky-500 hover:text-sky-200"
+                      >
+                        {activeReferenceTone === note.stringName ? 'Playing' : note.stringName}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={stopReferenceTone}
+                    disabled={!activeReferenceTone}
+                    className="mt-2 w-full rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Stop tone
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[240px]">
@@ -993,6 +1273,7 @@ export default function Sessions() {
               const elapsedSeconds = timers[template.id]?.elapsedSeconds ?? 0
               const timerMinutes = Math.floor(elapsedSeconds / 60)
               const timerSeconds = elapsedSeconds % 60
+              const isExpanded = expandedBlockIds.has(template.id)
 
               return (
                 <div key={template.id} className="flex flex-col gap-3 rounded border border-slate-800 bg-slate-950/60 p-3 md:flex-row md:items-start md:justify-between">
@@ -1004,18 +1285,174 @@ export default function Sessions() {
                         onChange={() => toggleBlock(template.id)}
                         className="h-4 w-4 rounded border-slate-700 bg-slate-950"
                       />
-                      <div className="min-w-0">
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        onClick={() => setExpandedBlockIds((current) => {
+                          const next = new Set(current)
+                          if (next.has(template.id)) next.delete(template.id)
+                          else next.add(template.id)
+                          return next
+                        })}
+                        className="min-w-0 text-left"
+                      >
                         <p className="text-sm font-semibold text-slate-100">{template.label}</p>
                         <p className="text-xs text-slate-400">Target: {template.target_minutes ?? 0} min</p>
-                      </div>
+                      </button>
                     </div>
 
-                    <p className="mt-2 text-sm text-slate-300">
-                      {template.description?.trim() || 'No description available for this practice block.'}
-                    </p>
+                    {isExpanded && (
+                      <>
+                        <p className="mt-2 text-sm text-slate-300">
+                          {template.description?.trim() || 'No description available for this practice block.'}
+                        </p>
+                        {template.key === 'learning' && (
+                          <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/60 p-3">
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                              Materials stay on this device
+                            </p>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <input
+                                type="file"
+                                accept="application/pdf,image/*,text/plain,video/*"
+                                onChange={(event) => { void handleLocalMaterialUpload(event.target.files?.[0]); event.currentTarget.value = '' }}
+                                className="min-w-0 flex-1 text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-xs file:text-slate-100"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <input
+                                type="url"
+                                value={materialUrlInput}
+                                onChange={(event) => setMaterialUrlInput(event.target.value)}
+                                placeholder="https://example.com/material"
+                                className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => { void addMaterialUrl() }}
+                                className="rounded border border-slate-700 px-2 py-1.5 text-xs text-slate-300"
+                              >
+                                Add URL
+                              </button>
+                            </div>
+                            {learningMaterials.length > 0 && (
+                              <div className="space-y-1">
+                                {learningMaterials.map((material) => (
+                                  <div key={material.id} className="flex items-center justify-between gap-2 text-xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveMaterialId(material.id)}
+                                      className={`min-w-0 truncate text-left hover:text-sky-200 ${activeMaterialId === material.id ? 'text-sky-200' : 'text-sky-300'}`}
+                                    >
+                                      {material.name}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { void removeLearningMaterial(material.id) }}
+                                      className="shrink-0 text-rose-300"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {activeMaterialId && activeMaterialUrl && (() => {
+                              const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
+                              if (!activeMaterial) return null
+                              const isVideo = activeMaterial.type.startsWith('video/')
+                              const isImage = activeMaterial.type.startsWith('image/')
+                              const externalMediaKind = getExternalMediaKind(activeMaterial)
+                              const isExternalPage = externalMediaKind === 'page'
+                              const inlineMaterialUrl = getInlineMaterialUrl(activeMaterial)
+
+                              return (
+                                <div className="mt-3 overflow-hidden rounded border border-slate-700 bg-slate-950">
+                                  <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-2 py-1.5">
+                                    <span className="min-w-0 truncate text-xs text-slate-300">{activeMaterial.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveMaterialId(null)}
+                                      className="shrink-0 text-xs text-slate-400 hover:text-slate-200"
+                                    >
+                                      Close
+                                    </button>
+                                  </div>
+                                  {externalMediaKind === 'embed' && inlineMaterialUrl ? (
+                                    <iframe
+                                      src={inlineMaterialUrl}
+                                      title={activeMaterial.name}
+                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                      allowFullScreen
+                                      referrerPolicy="strict-origin-when-cross-origin"
+                                      className="aspect-video w-full bg-black"
+                                    />
+                                  ) : isExternalPage && activeMaterial.url ? (
+                                    <div className="space-y-3 p-4 text-sm text-slate-300">
+                                      <p>This web page does not provide an embeddable media format, or it blocks inline viewing.</p>
+                                      <a
+                                        href={activeMaterial.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-block rounded border border-slate-700 px-3 py-2 text-sky-300 hover:border-sky-500 hover:text-sky-200"
+                                      >
+                                        Open in browser
+                                      </a>
+                                    </div>
+                                  ) : isVideo || externalMediaKind === 'video' ? (
+                                    <div className="space-y-2 bg-black p-2">
+                                      <video
+                                        src={activeMaterialUrl}
+                                        controls
+                                        playsInline
+                                        preload="metadata"
+                                        onError={() => setMediaError('This video codec or container is not fully supported by this browser.')}
+                                        className="max-h-[420px] w-full"
+                                      />
+                                      {activeMaterial.source === 'file' && (
+                                        <div>
+                                          <p className="mb-1 text-[11px] text-slate-400">Audio track fallback</p>
+                                          <audio
+                                            src={activeMaterialUrl}
+                                            controls
+                                            preload="metadata"
+                                            className="w-full"
+                                            onError={() => setMediaError('The audio codec is not supported by this browser.')}
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : isImage || externalMediaKind === 'image' ? (
+                                    <img src={activeMaterialUrl} alt={activeMaterial.name} className="max-h-[420px] w-full object-contain" />
+                                  ) : (
+                                    <iframe
+                                      src={activeMaterialUrl}
+                                      title={activeMaterial.name}
+                                      className="h-[420px] w-full bg-white"
+                                    />
+                                  )}
+                                  {externalMediaKind === 'embed' && activeMaterial.url && (
+                                    <a
+                                      href={activeMaterial.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block border-t border-slate-800 px-3 py-2 text-xs text-sky-300 hover:text-sky-200"
+                                    >
+                                      Playback trouble? Open on YouTube
+                                    </a>
+                                  )}
+                                  {mediaError && <p className="px-3 py-2 text-xs text-rose-300">{mediaError}</p>}
+                                </div>
+                              )
+                            })()}
+                            {materialError && <p className="text-xs text-rose-300">{materialError}</p>}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
 
-                  <div className="flex flex-col items-start gap-2 md:items-end">
+                  <div className="flex flex-wrap items-center gap-2 md:justify-end">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -1033,7 +1470,7 @@ export default function Sessions() {
                       </button>
                     </div>
 
-                    <fieldset className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">
+                    <fieldset className="flex shrink-0 items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">
                       <legend>Timer</legend>
                       <input
                         type="number"
@@ -1060,7 +1497,7 @@ export default function Sessions() {
                     <button
                       type="button"
                       onClick={() => removeBlock(template.id)}
-                      className="text-[11px] font-medium text-rose-300"
+                      className="text-[11px] font-medium text-rose-300 whitespace-nowrap"
                     >
                       Remove block
                     </button>

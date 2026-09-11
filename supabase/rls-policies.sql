@@ -20,6 +20,7 @@ alter table block_templates enable row level security;
 alter table sessions       enable row level security;
 alter table session_blocks enable row level security;
 alter table app_settings   enable row level security;
+alter table user_profiles enable row level security;
 
 -- ---------- Direct ownership (user_id column present) ----------
 
@@ -57,6 +58,15 @@ create policy "app_settings_owner_insert" on app_settings
 create policy "app_settings_owner_update" on app_settings
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "app_settings_owner_delete" on app_settings
+  for delete using (auth.uid() = user_id);
+
+create policy "user_profiles_owner_select" on user_profiles
+  for select using (auth.uid() = user_id);
+create policy "user_profiles_owner_insert" on user_profiles
+  for insert with check (auth.uid() = user_id);
+create policy "user_profiles_owner_update" on user_profiles
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "user_profiles_owner_delete" on user_profiles
   for delete using (auth.uid() = user_id);
 
 -- ---------- Indirect ownership (via parent FK, no user_id column) ----------
