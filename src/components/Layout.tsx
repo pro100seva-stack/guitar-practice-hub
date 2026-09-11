@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 export default function Layout() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
-      <nav className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+      <nav className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3">
         <div className="flex gap-4">
           <Link to="/">Sessions</Link>
           <Link to="/plan">Plan</Link>

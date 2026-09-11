@@ -179,6 +179,7 @@ export default function Plan() {
     }
 
     setWeek(weekData)
+    setWeeks((current) => current.map((item) => item.id === weekData.id ? weekData : item))
     setSelectedWeekId(weekId)
     setFocus(weekData?.focus ?? '')
     setTasks(weekData?.tasks ?? '')
@@ -228,6 +229,109 @@ export default function Plan() {
     setTopics(loadedTopics)
     setSongText(loadedSongs.join('\n'))
     setLoading(false)
+  }
+
+  async function addWeek() {
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+
+    const selectedIndex = week ? weeks.findIndex((item) => item.id === week.id) : weeks.length - 1
+    const insertIndex = selectedIndex >= 0 ? selectedIndex + 1 : weeks.length
+    const previousWeek = weeks[insertIndex - 1]
+    const startDate = previousWeek ? addDays(parseIsoDate(previousWeek.end_date), 1) : new Date()
+    const endDate = addDays(startDate, 6)
+    const nextWeekNumber = insertIndex + 1
+
+    for (const affectedWeek of weeks.slice(insertIndex).reverse()) {
+      const { error: temporaryError } = await supabase
+        .from('plan_weeks')
+        .update({ week_number: 100000 + affectedWeek.week_number })
+        .eq('id', affectedWeek.id)
+
+      if (temporaryError) {
+        setError(temporaryError.message)
+        setSaving(false)
+        return
+      }
+    }
+
+    const { data: insertedWeek, error: insertError } = await supabase
+      .from('plan_weeks')
+      .insert({
+        week_number: nextWeekNumber,
+        start_date: toIsoDate(startDate),
+        end_date: toIsoDate(endDate),
+        phase: previousWeek?.phase ?? 'course1',
+        focus: 'New practice week',
+        tasks: null,
+      })
+      .select()
+      .single()
+
+    if (insertError || !insertedWeek) {
+      setError(insertError?.message ?? 'Could not add the week.')
+      setSaving(false)
+      return
+    }
+
+    for (const affectedWeek of weeks.slice(insertIndex)) {
+      const { error: updateError } = await supabase
+        .from('plan_weeks')
+        .update({
+          week_number: affectedWeek.week_number + 1,
+          start_date: toIsoDate(addDays(parseIsoDate(affectedWeek.start_date), 7)),
+          end_date: toIsoDate(addDays(parseIsoDate(affectedWeek.end_date), 7)),
+        })
+        .eq('id', affectedWeek.id)
+
+      if (updateError) {
+        setError(updateError.message)
+        setSaving(false)
+        return
+      }
+    }
+
+    await loadWeeks()
+    await loadWeek(insertedWeek.id)
+    setMessage('Week added successfully.')
+    setSaving(false)
+  }
+
+  async function removeWeek() {
+    if (!week || weeks.length <= 1) return
+
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+
+    const { error: deleteError } = await supabase.from('plan_weeks').delete().eq('id', week.id)
+    if (deleteError) {
+      setError(deleteError.message)
+      setSaving(false)
+      return
+    }
+
+    const remainingWeeks = weeks.filter((weekItem) => weekItem.id !== week.id)
+    for (const [index, remainingWeek] of remainingWeeks.entries()) {
+      const { error: updateError } = await supabase
+        .from('plan_weeks')
+        .update({ week_number: index + 1 })
+        .eq('id', remainingWeek.id)
+
+      if (updateError) {
+        setError(updateError.message)
+        setSaving(false)
+        return
+      }
+    }
+
+    const removedWeekIndex = weeks.findIndex((item) => item.id === week.id)
+    const nextWeek = remainingWeeks[Math.min(removedWeekIndex, remainingWeeks.length - 1)]
+    await loadWeeks()
+    await loadWeek(nextWeek.id)
+    setMessage('Week removed successfully.')
+    setSaving(false)
   }
 
   function addTopic() {
@@ -406,6 +510,22 @@ export default function Plan() {
           <div className="flex w-full max-w-[440px] items-center gap-2">
             <button
               type="button"
+              onClick={() => void addWeek()}
+              disabled={saving}
+              className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+            >
+              Insert after selected
+            </button>
+            <button
+              type="button"
+              onClick={() => void removeWeek()}
+              disabled={saving || weeks.length <= 1 || !week}
+              className="shrink-0 rounded border border-rose-900/70 bg-slate-950 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-700 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+            >
+              Remove week
+            </button>
+            <button
+              type="button"
               disabled={!currentWeek || isCurrentWeekSelected}
               onClick={() => {
                 if (currentWeek) {
@@ -532,7 +652,7 @@ export default function Plan() {
                     <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-300">
                       {weekItem.phase}
                     </span>
-                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{weekItem.tasks?.trim() ? 'Updated' : 'Draft'}</span>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{weekItem.updated_at !== weekItem.created_at ? 'Updated' : 'Draft'}</span>
                   </div>
                 </button>
               )

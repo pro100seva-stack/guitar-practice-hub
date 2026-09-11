@@ -32,12 +32,6 @@ function formatHeadingDate(value: string) {
   }).format(date)
 }
 
-function formatTimerDuration(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-}
-
 export default function Sessions() {
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
   const [planWeek, setPlanWeek] = useState<PlanWeek | null>(null)
@@ -52,6 +46,7 @@ export default function Sessions() {
   const [totalMinutes, setTotalMinutes] = useState('45')
   const [comment, setComment] = useState('')
   const [selectedBlocks, setSelectedBlocks] = useState<SelectedBlock[]>([])
+  const [blockToAddId, setBlockToAddId] = useState('')
   const [timers, setTimers] = useState<Record<string, BlockTimerState>>({})
   const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
@@ -225,6 +220,7 @@ export default function Sessions() {
         targetMinutes: template.target_minutes,
       }))
     )
+    setBlockToAddId('')
     setTimers({})
     setSessions((sessionsResult.data as SessionWithBlocks[]) ?? [])
     setLoading(false)
@@ -275,12 +271,31 @@ export default function Sessions() {
     )
   }
 
-  function updateBlockMinutes(templateId: string, value: string) {
-    setSelectedBlocks((current) =>
-      current.map((block) =>
-        block.id === templateId ? { ...block, actualMinutes: value } : block
-      )
-    )
+  function addBlock() {
+    const template = templates.find((item) => item.id === blockToAddId)
+    if (!template || selectedBlocks.some((block) => block.id === template.id)) return
+
+    setSelectedBlocks((current) => [
+      ...current,
+      {
+        id: template.id,
+        key: template.key,
+        label: template.label,
+        done: false,
+        actualMinutes: '',
+        targetMinutes: template.target_minutes,
+      },
+    ])
+    setBlockToAddId('')
+  }
+
+  function removeBlock(templateId: string) {
+    setSelectedBlocks((current) => current.filter((block) => block.id !== templateId))
+    setTimers((current) => {
+      const next = { ...current }
+      delete next[templateId]
+      return next
+    })
   }
 
   function clampBpm(value: number) {
@@ -461,13 +476,27 @@ export default function Sessions() {
   }
 
   function toggleTimer(templateId: string) {
-    setTimers((current) => ({
-      ...current,
-      [templateId]: {
-        ...(current[templateId] ?? { isRunning: false, elapsedSeconds: 0 }),
-        isRunning: !(current[templateId]?.isRunning ?? false),
-      },
-    }))
+    setTimers((current) => {
+      const isTargetRunning = current[templateId]?.isRunning ?? false
+
+      const pausedTimers = Object.fromEntries(
+        Object.entries(current).map(([id, timer]) => [
+          id,
+          {
+            ...timer,
+            isRunning: false,
+          },
+        ])
+      )
+
+      return {
+        ...pausedTimers,
+        [templateId]: {
+          ...(current[templateId] ?? { isRunning: false, elapsedSeconds: 0 }),
+          isRunning: !isTargetRunning,
+        },
+      }
+    })
   }
 
   function resetTimer(templateId: string) {
@@ -480,17 +509,21 @@ export default function Sessions() {
     }))
   }
 
-  function applyTimerAsActualMinutes(templateId: string) {
-    const currentTimer = timers[templateId]
-    if (!currentTimer) return
+  function updateTimerPart(templateId: string, part: 'minutes' | 'seconds', value: string) {
+    const parsedValue = Number(value)
+    if (!Number.isFinite(parsedValue) || parsedValue < 0) return
 
-    const value = Math.max(1, Math.ceil(currentTimer.elapsedSeconds / 60)).toString()
-    updateBlockMinutes(templateId, value)
-    setSelectedBlocks((current) =>
-      current.map((block) =>
-        block.id === templateId ? { ...block, done: true, actualMinutes: value } : block
-      )
-    )
+    const normalizedValue = part === 'seconds' ? Math.min(59, Math.floor(parsedValue)) : Math.floor(parsedValue)
+
+    setTimers((current) => ({
+      ...current,
+      [templateId]: {
+        ...(current[templateId] ?? { isRunning: false, elapsedSeconds: 0 }),
+        elapsedSeconds: part === 'minutes'
+          ? normalizedValue * 60 + ((current[templateId]?.elapsedSeconds ?? 0) % 60)
+          : Math.floor((current[templateId]?.elapsedSeconds ?? 0) / 60) * 60 + normalizedValue,
+      },
+    }))
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -538,7 +571,9 @@ export default function Sessions() {
         label: block.label,
         done: true,
         target_minutes: block.targetMinutes,
-        actual_minutes: block.actualMinutes ? Number(block.actualMinutes) : null,
+        actual_minutes: timers[block.id]?.elapsedSeconds
+          ? Math.max(1, Math.ceil(timers[block.id].elapsedSeconds / 60))
+          : block.actualMinutes ? Number(block.actualMinutes) : null,
       }))
 
     const { error: blocksDeleteError } = await supabase
@@ -581,12 +616,16 @@ export default function Sessions() {
   }
 
   const totalBlockMinutes = selectedBlocks.reduce((sum, block) => {
+    const elapsedSeconds = timers[block.id]?.elapsedSeconds ?? 0
+    if (elapsedSeconds > 0) {
+      const minutes = Math.floor(elapsedSeconds / 60) + (elapsedSeconds % 60 >= 30 ? 1 : 0)
+      return sum + minutes
+    }
+
     if (!block.done) return sum
 
     const value = Number(block.actualMinutes)
-    if (!Number.isFinite(value) || value <= 0) return sum
-
-    return sum + value
+    return Number.isFinite(value) && value > 0 ? sum + value : sum
   }, 0)
 
   const selectedWeekDates = getWeekDates(planWeek ?? weeks[selectedWeekIndex] ?? null)
@@ -847,8 +886,36 @@ export default function Sessions() {
             )}
           </div>
 
+          <div className="mt-4 flex flex-col gap-2 rounded border border-slate-800 bg-slate-950/60 p-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-xs text-slate-400">
+              Add practice block
+              <select
+                value={blockToAddId}
+                onChange={(event) => setBlockToAddId(event.target.value)}
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm text-slate-200"
+              >
+                <option value="">Choose a block</option>
+                {templates
+                  .filter((template) => !selectedBlocks.some((block) => block.id === template.id))
+                  .map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={addBlock}
+              disabled={!blockToAddId}
+              className="rounded bg-slate-100 px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
+            >
+              Add block
+            </button>
+          </div>
+
           <div className="mt-4 space-y-3">
-            {templates.length === 0 && (
+            {selectedBlocks.length === 0 && (
               <p className="text-sm text-slate-400">No practice blocks available for this week.</p>
             )}
 
@@ -857,7 +924,9 @@ export default function Sessions() {
 
               if (!selected) return null
 
-              const timerMinutes = Math.max(0, Math.round((timers[template.id]?.elapsedSeconds ?? 0) / 60))
+              const elapsedSeconds = timers[template.id]?.elapsedSeconds ?? 0
+              const timerMinutes = Math.floor(elapsedSeconds / 60)
+              const timerSeconds = elapsedSeconds % 60
 
               return (
                 <div key={template.id} className="flex flex-col gap-3 rounded border border-slate-800 bg-slate-950/60 p-3 md:flex-row md:items-start md:justify-between">
@@ -898,55 +967,37 @@ export default function Sessions() {
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Timer</span>
+                    <fieldset className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">
+                      <legend>Timer</legend>
                       <input
                         type="number"
                         min="0"
+                        inputMode="numeric"
+                        aria-label={`${template.label} timer minutes`}
                         value={timerMinutes}
-                        onChange={(event) => {
-                          const nextValue = Number(event.target.value)
-                          setTimers((current) => ({
-                            ...current,
-                            [template.id]: {
-                              ...(current[template.id] ?? { isRunning: false, elapsedSeconds: 0 }),
-                              elapsedSeconds: Number.isFinite(nextValue) ? Math.max(0, nextValue * 60) : 0,
-                            },
-                          }))
-                        }}
-                        className="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+                        onChange={(event) => updateTimerPart(template.id, 'minutes', event.target.value)}
+                        className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm font-mono text-slate-200"
                       />
-                      <span className="text-xs text-slate-400">min</span>
-                    </div>
+                      <span className="font-mono text-sm text-slate-300">:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        inputMode="numeric"
+                        aria-label={`${template.label} timer seconds`}
+                        value={timerSeconds.toString().padStart(2, '0')}
+                        onChange={(event) => updateTimerPart(template.id, 'seconds', event.target.value)}
+                        className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm font-mono text-slate-200"
+                      />
+                    </fieldset>
 
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span>Elapsed</span>
-                      <span className="font-mono text-sm text-slate-100">{formatTimerDuration(timers[template.id]?.elapsedSeconds ?? 0)}</span>
-                    </div>
-
-                    {(timers[template.id]?.elapsedSeconds ?? 0) > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => applyTimerAsActualMinutes(template.id)}
-                        className="text-[11px] font-medium text-cyan-400"
-                      >
-                        Use as actual minutes
-                      </button>
-                    )}
-
-                    {selected.done && (
-                      <label className="flex items-center gap-2 text-xs text-slate-400">
-                        <span>Actual</span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={selected.actualMinutes}
-                          onChange={(event) => updateBlockMinutes(template.id, event.target.value)}
-                          className="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm"
-                          placeholder="Optional"
-                        />
-                      </label>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeBlock(template.id)}
+                      className="text-[11px] font-medium text-rose-300"
+                    >
+                      Remove block
+                    </button>
                   </div>
                 </div>
               )

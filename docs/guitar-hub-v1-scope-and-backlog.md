@@ -2,7 +2,7 @@
 
 Status: the app has a working core v1 workflow and is in the UX refinement phase. Session persistence was previously unverified because both production checks returned zero app-sourced rows; a live save on 2026-09-08 created one app-sourced session and one related block, and both checks then returned `1`. The remaining work is visual polish, validation, and the narrowly scoped session-block data-integrity decision.
 
-## Current status (2026-09-08)
+## Current status (2026-09-11)
 
 - The project remains aligned with the original architecture: React frontend, Supabase as the app backend, and a PWA shell for phone and desktop use.
 - Sessions, Plan, and Stats are all connected to real Supabase data and are operational; session persistence is verified by a live save and count queries.
@@ -50,45 +50,113 @@ That means the remaining work is lower-risk and more UX-centric than product-arc
 
 ### Highest priority
 
-1. Validate the Sessions screen on mobile and desktop
+1. **Completed — 2026-09-11:** Validate the Sessions screen on mobile and desktop
    - week tiles at the top
    - fixed visible week window around the selected week
    - selected week summary under the tiles
    - 7-day week row and selected-day stack
    - collapsed recent sessions section by default
 
-2. Validate the Plan week navigator on mobile and desktop
+2. **Completed — 2026-09-11:** Validate the Plan week navigator on mobile and desktop
    - week list with compact summary cards
    - selected week detail with full editing controls
 
-3. Complete interaction QA for the core flows
+3. **Completed — 2026-09-11:** Complete interaction QA for the core flows
    - day layout readability
    - timer field usability
    - week selector and toggle behavior
 
 ### Secondary priority
 
-4. Improve interaction quality for time editing and block actions
+4. **Completed — 2026-09-11:** Improve interaction quality for time editing and block actions
 5. Review edge cases for session updates, timer resets, and block saves
 6. Do a final polish pass on spacing, labels, and visual hierarchy
 7. Decide whether `session_blocks` should enforce `unique (session_id, block_key)` and move from delete-then-insert to a true block upsert
 8. Add active-route highlighting to the top navigation and replace any remaining placeholder navigation treatment
 
+### Notion-derived implementation backlog
+
+These items come from the User Stories database and are not already represented as distinct implementation items in the backlog above. They are written as implementation-ready backlog items for the coding agent. Existing backlog items remain unchanged unless they already cover the same story.
+
+9. Simplify practice block cards
+   - practice block cards show only the block title in their collapsed/default state
+   - clicking a practice block reveals its description
+   - preserve the existing timer and completion controls required for practice logging
+   - keep the card minimal so secondary information does not compete with the practice task
+
+10. **Completed — 2026-09-11:** Consolidate timer fields on practice blocks
+   - each practice block has exactly one timer field displayed as `minutes:seconds`
+   - the timer can run normally
+   - the same displayed timer value can be edited directly by the user
+   - remove/avoid duplicate timer fields while preserving existing timer behavior and persistence
+
+11. **Completed — 2026-09-11:** Update total practiced minutes while timers run
+   - total practiced minutes updates while practice-block timers are running, without requiring a save first
+   - include the current timer value from each running/completed practice block in the total
+   - round the total to minutes using the User Story rule: 1–29 seconds stays in the current minute; 30 seconds or more rounds to the next minute
+   - keep the displayed total synchronized as timers start, pause/stop, reset, and finish
+
+12. **Completed — 2026-09-11:** Add and remove practice blocks from the Sessions screen
+   - provide a Sessions-screen control to add practice blocks for the currently selected day/session
+   - adding can use an existing selectable practice block or create a new user-owned practice block
+   - when a new practice block is created, update the practice-block data and make it immediately available as an option for future additions
+   - bind an added block to the weekly plan/session as required by the existing data model
+   - provide a Sessions-screen control to remove an existing practice block from the currently selected day/session
+   - removing from Sessions must not delete the underlying practice-block definition from the backend
+
+13. **Completed — 2026-09-11:** Add and remove weeks from the Plan
+   - provide Plan-screen controls to add and remove weeks
+   - adding/removing a week changes the plan represented in the app rather than requiring manual backend database edits
+   - after insertion/removal, week numbering remains sequential
+   - week numbering is based on plan sequence, not calendar proximity; weeks may have dates far apart and still remain sequential
+
+14. **Completed — 2026-09-11:** Keep the top navigation visible while scrolling
+   - Sessions, Plan, and Stats navigation remains visible at the top while the user scrolls anywhere on any screen
+   - the navigation does not require scrolling back to the top before switching screens
+   - preserve the existing navigation behavior and responsive layout
+
+15. **In progress:** Prevent unintended mobile page zooming
+   - on mobile devices, the app stays locked to the intended full-page scale
+   - pinch/gesture zooming must not allow the user to move into an unintended zoomed-in page state
+   - verify the change does not break normal scrolling, tapping, inputs, accessibility, or desktop behavior
+
+16. Add new-user account creation
+   - provide a new-user creation action on the landing page
+   - create a user account using a login and password pair
+   - do not require an email address for account creation
+   - require one security question/answer during account setup
+   - after successful creation, allow the user to access the later application screens as a logged-in user
+   - use the existing Supabase-backed architecture; do not add a new backend service
+
+17. Add password recovery
+   - provide a password-recovery action on the landing page
+   - ask the user for the security-question answer configured during account creation
+   - if the answer is correct, show the user's password as specified by the User Story
+   - if the answer is wrong, tell the user to contact support
+   - use the existing authentication/data architecture rather than introducing a new backend service
+
+18. Provide a default practice program for new users
+   - provide a preset program containing common practice blocks such as Warmup, Technique, Rhythm, and Improv./Solo
+   - initialize the program for 5 weeks
+   - allow the user to extend or shorten the program through the app
+   - record Sessions against the user's account whether the user keeps the default program or edits/amends it
+   - keep this feature compatible with the existing Plan and Sessions data model
+
 ### Future backlog for next grooming
 
 These items are captured for prioritization after the current responsive QA and polish work. They are intentionally not part of the current implementation pass.
 
-7. Add a Sessions tuner beside the metronome
+19. Add a Sessions tuner beside the metronome
    - provide selectable guitar tunings
    - offer reference tones for each string so the user can tune by ear
    - offer microphone-based pitch detection with feedback showing distance from the target note
    - define browser microphone permissions, supported browsers, offline behavior, and audio-processing limits before implementation
 
-8. Highlight the active top-navigation screen
+20. Highlight the active top-navigation screen
    - visibly distinguish the current Sessions, Plan, or Stats route
    - preserve keyboard focus and accessible current-page semantics
 
-9. Extend the “Учебные материалы” practice block with a learning-materials viewer
+21. Extend the “Учебные материалы” practice block with a learning-materials viewer
    - display linked online videos and locally hosted videos
    - display readable files such as PDFs, images, and text documents
    - investigate supported guitar tab formats such as GTP and other known formats
@@ -106,17 +174,28 @@ These items are captured for prioritization after the current responsive QA and 
 - 2026-09-08 — Status reconciliation: before live verification, both app-source count queries returned zero, so session persistence was marked unverified rather than stable.
 - 2026-09-08 — Session persistence verification: saving a fresh session created one `sessions` row with `source = 'app'` and one related `session_blocks` row; both exact count queries returned `1`. The client now sets `source: 'app'` explicitly. Completed blocks still use delete-then-insert because `session_blocks` has no `(session_id, block_key)` uniqueness constraint.
 - 2026-09-08 — Dependency check: `tailwindcss` and `vite-plugin-pwa` are already development dependencies, and `react-router-dom` is absent.
+- 2026-09-11 — User QA confirmed Sessions, Plan, and core interaction flows work on mobile and desktop; backlog items 1–3 are complete. Timer interaction is the next implementation slice.
+- 2026-09-11 — User QA confirmed the editable timer and single-active-timer behavior; items 4 and 10 are complete. Total-minute synchronization is the next validation slice.
+- 2026-09-11 — User QA confirmed live total-minute synchronization; item 11 is complete. Sessions-screen practice-block add/remove is the next implementation slice.
+- 2026-09-11 — Sessions block add/remove was validated and marked complete. Plan week add/remove is implemented and awaiting focused browser QA for sequential numbering and deletion behavior.
+- 2026-09-11 — Plan QA found stale week-card summaries after saving and append-only week creation. The Plan view now synchronizes saved week data into the card list, reports saved status from timestamps, and inserts a new week after the selected week while shifting later dates and sequence numbers.
+- 2026-09-11 — User QA confirmed Plan week creation, deletion, renumbering, and middle insertion. Item 13 is complete; sticky top navigation is the next implementation slice.
+- 2026-09-11 — Sticky top navigation is implemented in the shared app shell with an opaque background and elevated stacking order; item 14 is awaiting browser QA.
+- 2026-09-11 — User QA confirmed sticky top navigation; item 14 is complete. Mobile page scale is locked through the viewport metadata and awaits device/browser QA as item 15.
 
 ## Recommended next steps
 
-1. Run quick UX QA on the key flows at mobile and desktop widths:
-   - selecting a week
-   - selecting a day
-   - editing a timer and actual minutes
-   - saving a session
-2. Verify Plan date-picker behavior for covered and uncovered dates.
-3. After visual QA, prepare a small stability pass for responsive behavior and final labels.
+1. Validate mobile page scale and normal scrolling, tapping, and inputs.
+2. Review session update and plan week edge cases after the week-management pass.
+3. Complete the final polish pass on spacing, labels, and visual hierarchy.
 4. During the next grooming session, decide the `session_blocks` uniqueness/upsert strategy and prioritize active navigation highlighting.
+
+## Delivery pipeline
+
+- **Done:** responsive Sessions and Plan QA; core interaction QA; timer editing and single-active-timer behavior (items 4 and 10); live total-minute synchronization (item 11); Sessions block add/remove (item 12); Plan week add/remove (item 13); sticky top navigation (item 14).
+- **In progress:** mobile page zoom behavior (item 15), awaiting device/browser QA.
+- **Queued:** final visual polish and remaining secondary decisions.
+- **Deferred:** account recovery/default-program work and future grooming items 19–21.
 
 ## Completed milestones
 
