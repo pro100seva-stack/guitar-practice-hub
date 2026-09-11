@@ -14,7 +14,7 @@
 
 create table if not exists plan_weeks (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) default auth.uid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   week_number int not null,
   start_date date not null,
   end_date date not null,
@@ -37,7 +37,7 @@ create table if not exists topics (
 
 create table if not exists songs (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) default auth.uid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   name text not null,
   status text not null default 'learning',  -- 'planned' | 'learning' | 'maintained' | 'retired'
   tuning text,                       -- NULL = standard. Free text: 'Drop D', '1/2 step down', etc. -- not an enum, so new tunings don't need a migration
@@ -72,7 +72,7 @@ create table if not exists block_templates (
 
 create table if not exists sessions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) default auth.uid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   session_date date not null,
   week_id uuid references plan_weeks(id),
   total_minutes int not null default 0,
@@ -96,7 +96,7 @@ create table if not exists session_blocks (
 -- ---------- Cross-device settings ----------
 
 create table if not exists app_settings (
-  user_id uuid primary key references auth.users(id) default auth.uid(),
+  user_id uuid primary key references auth.users(id) on delete cascade default auth.uid(),
   metronome_bpm int not null default 90,
   metronome_beats int not null default 4,
   updated_at timestamptz not null default now()

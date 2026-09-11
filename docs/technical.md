@@ -12,7 +12,7 @@
 
 ## Architecture
 
-The app is a client-side PWA that talks directly to Supabase Postgres. There is no separate backend service in the app layer; Supabase manages auth, database access, and row-level security.
+The app is a client-side PWA that talks directly to Supabase Postgres for account and practice data. A Supabase Edge Function provides the server-only account creation/password-reset boundary. Learning-material files remain device-local in browser IndexedDB and are not uploaded to Supabase.
 
 ### Runtime flow
 
@@ -20,7 +20,9 @@ The app is a client-side PWA that talks directly to Supabase Postgres. There is 
 2. Authenticated routes render the main app shell and page content.
 3. Each page reads from the relevant table using the Supabase client.
 4. Save operations are sent through PostgREST and persisted in Postgres.
-5. The UI updates after the data load or write completes.
+5. Account creation and password reset go through the `account-gateway` Edge Function.
+6. Local learning materials are stored as browser Blobs and metadata in IndexedDB.
+7. The UI updates after the data load or write completes.
 
 ## Main application areas
 
@@ -36,9 +38,10 @@ Responsibilities:
 - determine the current week by date
 - load the relevant block templates
 - save or upsert a session row on a given date
-- save per-block completion and actual minutes by replacing the selected session's completed blocks; this is currently delete-then-insert, not a block-level upsert
+- remove deselected blocks and upsert retained block completion/minute rows using unique `(session_id, block_key)`
 - show recent session activity when opened
-- run the in-session metronome and timers
+- run the in-session metronome, timers, tuning presets, and reference tones
+- show device-local learning materials inline in the learning block
 
 ### Plan screen
 
@@ -135,6 +138,14 @@ Key fields:
 
 Stores app-level preferences such as metronome BPM and beat count.
 
+### user_profiles
+
+Stores the user-facing login name and security-question metadata. The answer is stored as a server-generated hash. Row-level security restricts access to the owning user; account gateway service-role access is server-only.
+
+### Local learning materials
+
+Files are stored in browser IndexedDB, keyed by practice-block key. Supabase stores no uploaded file bytes. External URLs are stored locally as metadata; YouTube embed URLs are rendered inline when supported.
+
 ## Environment variables
 
 Required:
@@ -146,9 +157,9 @@ Required:
 
 - The app assumes a live authenticated user and uses user ownership carried via user_id in the database.
 - One session row per date is the working pattern; repeating the same date updates the same row.
-- The current UI work is intentionally presentation-only. Sessions and Plan refinement is implemented; the project is now in responsive QA and final UX polish, with a session-block persistence decision still open.
+- Sessions, Plan, Stats, account flows, session-block upsert, tuner reference tones, and core UX refinement are implemented and validated.
 - Plan navigation uses a fixed-height week list, covered-date calendar picker, current-week shortcut, and selected-week editor without changing persistence behavior.
-- `session_blocks` currently has no unique `(session_id, block_key)` constraint. A future block-level upsert requires a migration and a decision about imported duplicate rows.
-- Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. This is acceptable for the current single-user v1 only if application-level validation remains disciplined.
-- Deferred feature ideas include a Sessions tuner, active-route navigation highlighting, and a learning-materials viewer; these require separate technical decisions before implementation.
+- `session_blocks` has unique `(session_id, block_key)` through migration `03-session-block-uniqueness.sql`; migration and live update/removal checks passed.
+- Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. Application-level validation and seed data currently enforce the expected values by convention.
+- Microphone pitch detection and mobile zoom remain deferred. Learning-materials viewer work is continuing with device-local storage and inline media compatibility handling.
 

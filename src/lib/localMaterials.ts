@@ -13,6 +13,11 @@ export type LocalMaterial = {
 const databaseName = 'guitar-practice-hub-local'
 const storeName = 'learning-materials'
 
+export type LocalStorageEstimate = {
+  usage: number | null
+  quota: number | null
+}
+
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(databaseName, 1)
@@ -49,4 +54,13 @@ export async function deleteLocalMaterial(id: string) {
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error ?? new Error('Could not delete local material.'))
   })
+}
+
+export async function estimateLocalStorage(): Promise<LocalStorageEstimate> {
+  if (!navigator.storage?.estimate) return { usage: null, quota: null }
+  const estimate = await navigator.storage.estimate()
+  return {
+    usage: estimate.usage ?? null,
+    quota: estimate.quota ?? null,
+  }
 }

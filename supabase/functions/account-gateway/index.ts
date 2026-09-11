@@ -40,7 +40,11 @@ async function hashAnswer(loginName: string, answer: string) {
 }
 
 function isStrongEnoughPassword(value: unknown): value is string {
-  return typeof value === 'string' && value.length >= 8
+  return typeof value === 'string'
+    && value.length >= 8
+    && /[A-Z]/.test(value)
+    && /[a-z]/.test(value)
+    && /\d/.test(value)
 }
 
 function isRateLimited(request: Request, loginName: string, action: string) {
@@ -66,7 +70,7 @@ Deno.serve(async (request) => {
   }
 
   const action = payload.action
-  if (action !== 'create-account' && action !== 'reset-password') {
+  if (action !== 'create-account' && action !== 'reset-password' && action !== 'get-recovery-question') {
     return json({ error: 'Unknown account action.' }, 400)
   }
 
@@ -81,8 +85,18 @@ Deno.serve(async (request) => {
     if (isRateLimited(request, loginName, action)) return json({ error: 'Too many attempts. Try again later.' }, 429)
   }
 
+  if (action === 'get-recovery-question') {
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('security_question')
+      .eq('login_name', loginName)
+      .maybeSingle()
+    if (!profile) return json({ error: 'Could not find that login name.' }, 404)
+    return json({ securityQuestion: profile.security_question })
+  }
+
   if (action === 'create-account') {
-    if (!isStrongEnoughPassword(password)) return json({ error: 'Password must be at least 8 characters.' }, 400)
+    if (!isStrongEnoughPassword(password)) return json({ error: 'Password must be at least 8 characters and include uppercase, lowercase, and a number.' }, 400)
     const securityQuestion = typeof payload.securityQuestion === 'string' ? payload.securityQuestion.trim() : ''
     const securityAnswer = normalizeAnswer(payload.securityAnswer)
     if (!securityQuestion || securityAnswer.length < 2) return json({ error: 'Security question and answer are required.' }, 400)
@@ -145,7 +159,7 @@ Deno.serve(async (request) => {
   }
 
   if (action === 'reset-password') {
-    if (!isStrongEnoughPassword(password)) return json({ error: 'New password must be at least 8 characters.' }, 400)
+    if (!isStrongEnoughPassword(password)) return json({ error: 'New password must be at least 8 characters and include uppercase, lowercase, and a number.' }, 400)
     const securityAnswer = normalizeAnswer(payload.securityAnswer)
     if (securityAnswer.length < 2) return json({ error: 'Security answer is required.' }, 400)
 

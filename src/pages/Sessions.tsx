@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
-import { deleteLocalMaterial, listLocalMaterials, saveLocalMaterial, type LocalMaterial } from '../lib/localMaterials'
+import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
 
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
@@ -152,9 +152,16 @@ export default function Sessions() {
   const [learningMaterials, setLearningMaterials] = useState<LocalMaterial[]>([])
   const [materialUrlInput, setMaterialUrlInput] = useState('')
   const [materialError, setMaterialError] = useState<string | null>(null)
+  const [materialNotice, setMaterialNotice] = useState<string | null>(null)
+  const [materialSaveState, setMaterialSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [localStorageEstimate, setLocalStorageEstimate] = useState<LocalStorageEstimate>({ usage: null, quota: null })
   const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null)
   const [activeMaterialUrl, setActiveMaterialUrl] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
+  const [loopStart, setLoopStart] = useState<number | null>(null)
+  const [loopEnd, setLoopEnd] = useState<number | null>(null)
+  const [isLooping, setIsLooping] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
   const referenceToneRef = useRef<OscillatorNode | null>(null)
@@ -176,6 +183,7 @@ export default function Sessions() {
   async function loadLearningMaterials() {
     try {
       setLearningMaterials(await listLocalMaterials('learning'))
+      setLocalStorageEstimate(await estimateLocalStorage())
     } catch (loadError) {
       setMaterialError(loadError instanceof Error ? loadError.message : 'Could not load local materials.')
     }
@@ -186,39 +194,67 @@ export default function Sessions() {
     if (!activeMaterial) {
       setActiveMaterialUrl(null)
       setMediaError(null)
+      setLoopStart(null)
+      setLoopEnd(null)
+      setIsLooping(false)
       return
     }
 
     if (activeMaterial.source === 'url') {
       setActiveMaterialUrl(activeMaterial.url ?? null)
       setMediaError(null)
+      setLoopStart(null)
+      setLoopEnd(null)
+      setIsLooping(false)
       return
     }
 
     if (!activeMaterial.blob) {
       setActiveMaterialUrl(null)
       setMediaError(null)
+      setLoopStart(null)
+      setLoopEnd(null)
+      setIsLooping(false)
       return
     }
 
     const objectUrl = URL.createObjectURL(activeMaterial.blob)
     setActiveMaterialUrl(objectUrl)
     setMediaError(null)
+    setLoopStart(null)
+    setLoopEnd(null)
+    setIsLooping(false)
     return () => URL.revokeObjectURL(objectUrl)
   }, [activeMaterialId, learningMaterials])
 
   async function handleLocalMaterialUpload(file: File | undefined) {
     if (!file) return
     setMaterialError(null)
+    setMaterialNotice(null)
+    setMaterialSaveState('saving')
     const allowedTypes = ['application/pdf', 'image/', 'text/plain', 'video/']
     const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? file.type.startsWith(type) : file.type === type)
     if (!isAllowed) {
       setMaterialError('Use a PDF, image, text, or video file.')
+      setMaterialSaveState('idle')
       return
     }
-    if (file.size > 100 * 1024 * 1024) {
-      setMaterialError('Files must be 100 MB or smaller.')
-      return
+    const storageEstimate = await estimateLocalStorage()
+    if (storageEstimate.quota != null && storageEstimate.usage != null) {
+      const availableBytes = storageEstimate.quota - storageEstimate.usage
+      if (file.size > availableBytes) {
+        setMaterialError('This file is larger than the browser storage currently available on this device.')
+        setMaterialSaveState('idle')
+        return
+      }
+    }
+
+    if (file.type.startsWith('video/')) {
+      const probe = document.createElement('video')
+      const support = probe.canPlayType(file.type)
+      if (!support) {
+        setMaterialNotice('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.')
+      }
     }
 
     try {
@@ -233,8 +269,12 @@ export default function Sessions() {
         createdAt: new Date().toISOString(),
       })
       await loadLearningMaterials()
+      setMaterialSaveState('saved')
+      window.setTimeout(() => setMaterialSaveState('idle'), 2500)
     } catch (uploadError) {
-      setMaterialError(uploadError instanceof Error ? uploadError.message : 'Could not save the local material.')
+      const isQuotaError = uploadError instanceof DOMException && uploadError.name === 'QuotaExceededError'
+      setMaterialError(isQuotaError ? 'The browser storage quota was reached. Remove local materials or use another device.' : uploadError instanceof Error ? uploadError.message : 'Could not save the local material.')
+      setMaterialSaveState('idle')
     }
   }
 
@@ -257,6 +297,7 @@ export default function Sessions() {
       })
       setMaterialUrlInput('')
       setMaterialError(null)
+      setMaterialNotice(null)
       await loadLearningMaterials()
     } catch (urlError) {
       setMaterialError(urlError instanceof Error ? urlError.message : 'Enter a valid web URL.')
@@ -267,6 +308,26 @@ export default function Sessions() {
     await deleteLocalMaterial(id)
     setLearningMaterials((current) => current.filter((material) => material.id !== id))
     if (activeMaterialId === id) setActiveMaterialId(null)
+    setLocalStorageEstimate(await estimateLocalStorage())
+  }
+
+  function formatStorageSize(bytes: number | null) {
+    if (bytes == null) return 'Storage estimate unavailable'
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  function setLoopPoint(point: 'start' | 'end') {
+    const currentTime = videoRef.current?.currentTime
+    if (currentTime == null) return
+    if (point === 'start') setLoopStart(currentTime)
+    else setLoopEnd(currentTime)
+  }
+
+  function clearLoop() {
+    setLoopStart(null)
+    setLoopEnd(null)
+    setIsLooping(false)
   }
 
   function getExternalMediaKind(material: LocalMaterial) {
@@ -1311,6 +1372,10 @@ export default function Sessions() {
                             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
                               Materials stay on this device
                             </p>
+                            <p className="text-[11px] text-slate-500">
+                              Local storage: {formatStorageSize(localStorageEstimate.usage)} used
+                              {localStorageEstimate.quota != null ? ` of ${formatStorageSize(localStorageEstimate.quota)}` : ''}
+                            </p>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                               <input
                                 type="file"
@@ -1318,6 +1383,11 @@ export default function Sessions() {
                                 onChange={(event) => { void handleLocalMaterialUpload(event.target.files?.[0]); event.currentTarget.value = '' }}
                                 className="min-w-0 flex-1 text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-xs file:text-slate-100"
                               />
+                              {materialSaveState !== 'idle' && (
+                                <span className={`text-xs ${materialSaveState === 'saved' ? 'text-emerald-300' : 'text-slate-400'}`}>
+                                  {materialSaveState === 'saving' ? 'Saving locally…' : 'Saved on this device'}
+                                </span>
+                              )}
                             </div>
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <input
@@ -1402,13 +1472,52 @@ export default function Sessions() {
                                   ) : isVideo || externalMediaKind === 'video' ? (
                                     <div className="space-y-2 bg-black p-2">
                                       <video
+                                        ref={videoRef}
                                         src={activeMaterialUrl}
                                         controls
                                         playsInline
                                         preload="metadata"
+                                        onTimeUpdate={(event) => {
+                                          if (!isLooping || loopStart == null || loopEnd == null || loopEnd <= loopStart) return
+                                          if (event.currentTarget.currentTime >= loopEnd) {
+                                            event.currentTarget.currentTime = loopStart
+                                            void event.currentTarget.play()
+                                          }
+                                        }}
                                         onError={() => setMediaError('This video codec or container is not fully supported by this browser.')}
                                         className="max-h-[420px] w-full"
                                       />
+                                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                                        <button
+                                          type="button"
+                                          onClick={() => setLoopPoint('start')}
+                                          className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500"
+                                        >
+                                          Set A {loopStart == null ? '' : `(${loopStart.toFixed(1)}s)`}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setLoopPoint('end')}
+                                          className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500"
+                                        >
+                                          Set B {loopEnd == null ? '' : `(${loopEnd.toFixed(1)}s)`}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={loopStart == null || loopEnd == null || loopEnd <= loopStart}
+                                          onClick={() => setIsLooping((current) => !current)}
+                                          className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                          {isLooping ? 'Looping' : 'Loop A-B'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={clearLoop}
+                                          className="rounded border border-slate-700 px-2 py-1 text-slate-400 hover:text-slate-200"
+                                        >
+                                          Clear
+                                        </button>
+                                      </div>
                                       {activeMaterial.source === 'file' && (
                                         <div>
                                           <p className="mb-1 text-[11px] text-slate-400">Audio track fallback</p>
@@ -1446,6 +1555,7 @@ export default function Sessions() {
                               )
                             })()}
                             {materialError && <p className="text-xs text-rose-300">{materialError}</p>}
+                            {materialNotice && <p className="text-xs text-amber-300">{materialNotice}</p>}
                           </div>
                         )}
                       </>

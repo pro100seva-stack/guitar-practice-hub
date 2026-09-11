@@ -2,11 +2,11 @@
 
 ## Project summary
 
-Guitar Practice Hub is a single-user practice tracking app for guitar, built as a PWA and backed by Supabase. The project already covers the core workflow of logging sessions, tracking block work, planning weeks, and reviewing practice stats.
+Guitar Practice Hub is a multi-user guitar practice tracking app, built as a PWA and backed by Supabase. It covers session logging, block tracking, weekly planning, stats, account creation/password reset, tuner reference tones, and device-local learning materials.
 
 ## Current status
 
-The app has a working core workflow and is in a UX-refinement state. Session persistence was previously unverified: both production checks returned zero app-sourced rows. A live save on 2026-09-08 created one `sessions` row and one related `session_blocks` row, and both checks then returned `1`.
+The core workflow, account foundation, session-block upsert, UX polish, account flows, and default five-week program have been validated. The current implementation work is the device-local inline learning-materials viewer.
 
 ### Already working
 
@@ -17,36 +17,37 @@ The app has a working core workflow and is in a UX-refinement state. Session per
 - metronome helper
 - weekly planning editor
 - stats dashboard
-- session write path currently replaces completed blocks with delete-then-insert
+- session write path removes deselected blocks and upserts retained blocks by unique `(session_id, block_key)`
+- account creation and password reset through the `account-gateway` Edge Function
+- device-local IndexedDB materials with inline PDF/image/text/video and YouTube embed support
 
-The session write path is now explicitly marked with `source: 'app'`; the parent session upsert and completed-block replacement both passed live verification.
+The session write path is explicitly marked with `source: 'app'`; parent session upsert, targeted block removal, and block upsert all passed live verification.
 
 ### Active work
 
-- validate the refined Sessions and Plan screens at mobile and desktop widths
-- verify week selection, day selection, timer editing, date-picker navigation, and save flows
-- maintain the current data model and saved flow while refining the UI
+- validate and refine the device-local inline learning-materials viewer
+- handle browser storage quota and media codec limitations clearly
+- keep microphone pitch detection and mobile zoom deferred
 
 ### Known technical gap
 
-`src/pages/Sessions.tsx` upserts the parent `sessions` row, then deletes and reinserts completed `session_blocks`. The schema does not currently enforce `unique (session_id, block_key)`, so a true block-level upsert requires a migration and a decision about duplicate imported block rows. Do not describe this as an upsert until that constraint and write strategy are resolved.
+`src/pages/Sessions.tsx` upserts the parent `sessions` row, removes deselected blocks, and upserts retained `session_blocks`. Migration `03-session-block-uniqueness.sql` enforces unique `(session_id, block_key)` and has passed live verification.
 
-The package cleanup items previously tracked are already resolved: `tailwindcss` and `vite-plugin-pwa` are in `devDependencies`, and `react-router-dom` is not installed. The top navigation still needs active-route highlighting.
+The package cleanup items previously tracked are resolved: `tailwindcss` and `vite-plugin-pwa` are in `devDependencies`, and `react-router-dom` is not installed. Top navigation uses native route links with active highlighting and remains visible while scrolling.
 
 ### Deferred backlog
 
 The next grooming session should prioritize these requested future features:
 
-- a Sessions tuner beside the metronome, with selectable tunings, reference tones, and microphone-based pitch detection
-- active-route highlighting in the top navigation for Sessions, Plan, and Stats
-- a “Учебные материалы” viewer for online/local video, readable files, tabs, notation, and extended video controls
+- mobile page zoom prevention
+- guitar tab/notation parsing and collaborative learning materials
 
-These features are deferred until the current responsive QA and UX polish pass is complete. The tuner and materials viewer require an explicit technical decision about browser audio permissions, file handling, supported formats, storage, and third-party libraries.
+These items are deferred after the validated tuner reference-tone and core local-materials slices. Browser storage quota, codec compatibility, and unsupported external embeds remain explicit limitations.
 
 ## Product constraints
 
 - No functional changes without explicit approval
-- No database contract changes during the UI pass
+- Database changes require an explicit migration and live verification
 - No new backend architecture unless required by a new product decision
 - Preserve the current save and update logic for sessions and plan entries
 
@@ -67,19 +68,19 @@ These features are deferred until the current responsive QA and UX polish pass i
 
 ## Current product direction
 
-The current Sessions design follows a weekly workflow:
+The current Sessions design follows a weekly workflow and includes compact timers, tuner references, and the expanded local learning-materials block:
 
 1. top week tiles on the page
 2. selected week summary and focus block
 3. 7-day row for the selected week
 4. chosen day detail with vertical practice blocks
-5. collapsed recent sessions panel
+5. compact practice block controls and collapsed recent sessions panel
 
 This is intentional and should remain the visible structure unless the user requests a different layout.
 
 ## Recommended next step
 
-The most logical next iteration is a focused responsive QA pass on Sessions and Plan, followed by grooming the session-block uniqueness/upsert decision and active navigation highlighting. Confirm that the selected week/day, timer controls, covered-date calendar, and save actions remain clear and usable at narrow and wide widths.
+The next iteration is focused QA and refinement for device-local learning materials: local file persistence, inline media playback, YouTube embeds, browser quota errors, and unsupported codec/page fallbacks.
 
 ## Handoff note
 

@@ -143,7 +143,7 @@ No blocking items.
    - technical decision: define offline behavior as available for presets/reference tones, with microphone support dependent on browser permission and API availability
    - complete the tuner technical spike before implementation
 
-13. **Ready:** Implement the first learning-materials viewer slice for the “Учебные материалы” practice block
+13. **Completed — 2026-09-11:** Implement the first learning-materials viewer slice for the “Учебные материалы” practice block
    - define supported online and local video sources
    - define supported readable files such as PDFs, images, and text documents
    - investigate supported guitar tab formats such as GTP and other known formats
@@ -227,16 +227,24 @@ No blocking items.
 - 2026-09-11 — Learning-materials viewer spike revised: uploaded PDF/image/text/video files stay device-local in browser IndexedDB and are never uploaded to Supabase; external URLs remain optional links. Item 13 is ready for implementation.
 - 2026-09-11 — Added the device-local IndexedDB foundation in `src/lib/localMaterials.ts`; materials are stored as local Blobs and metadata only, with no Supabase upload path. Viewer controls and attachment UI remain next.
 - 2026-09-11 — Added the first local materials UI to the `Учебные материалы` block: device-local PDF/image/text/video attachment, external URL attachment, open, and remove controls. Build and lint pass; browser QA is next.
-- 2026-09-11 — Learning materials now render inline inside the practice block: local videos use native controls, images render directly, and PDF/text/external URLs use an embedded frame with Close. The initial local-file limit remains 100 MB per file pending quota estimation.
-- 2026-09-11 — QA confirmed local PDF/video opening up to 100 MB. External ordinary web pages may block iframe embedding, so the viewer now explains the limitation and offers an external-browser fallback; video audio depends on the source track and browser-supported codec.
+- 2026-09-11 — Learning materials now render inline inside the practice block: local videos use native controls, images render directly, and PDF/text/external URLs use an embedded frame with Close. Browser storage estimates are shown in the panel.
+- 2026-09-11 — QA confirmed local PDF/video opening up to 100 MB. The fixed 100 MB application cap is now removed; browser/device quota is the effective limit, while external pages may still block iframe embedding and video audio depends on source codecs/tracks.
 - 2026-09-11 — Added inline video media-error feedback and a separate local audio-track fallback for MOV/MP4 files; client-side transcoding remains deferred for unsupported codecs.
 - 2026-09-11 — Added YouTube `/embed/VIDEO_ID` support in the inline viewer, including pasted iframe snippets; ordinary non-embeddable web pages retain the external-browser fallback.
 - 2026-09-11 — YouTube playback compatibility pass normalizes embeds to `youtube-nocookie.com`, removes the share token, adds app-origin/inline playback parameters, and provides an in-block Open on YouTube fallback for video-specific or embedded-browser playback restrictions.
+- 2026-09-11 — User validated all seven first-slice learning-materials checks: local files, URLs, inline viewing, reload persistence, removal, and ordinary-page fallback. Item 13 is complete.
+- 2026-09-11 — Added browser local-storage usage/quota reporting to the learning-materials panel; quota estimates remain browser-dependent and unavailable in some environments.
+- 2026-09-11 — Added a non-blocking `canPlayType()` warning for local videos that may need conversion to H.264/AAC MP4 or WebM/Opus; unsupported files remain local and the viewer still reports playback errors.
+- 2026-09-11 — Local materials now show Saving locally, Saved on this device, and error states; IndexedDB writes do not expose byte-level progress because they are local atomic writes rather than network uploads.
+- 2026-09-11 — Account handling now shows live password requirements during create/reset, enforces matching server-side rules, and loads the configured security question before password reset.
+- 2026-09-11 — User validated live password requirements, server-side password rejection, and security-question display during reset. Account handling refinement passes.
+- 2026-09-11 — Added migration `06-user-delete-cascade.sql` so Supabase Auth user deletion cascades through owned plan weeks, songs, sessions, settings, and dependent rows. Migration application is required before admin deletion.
+- 2026-09-11 — Added native A/B loop controls for inline local/direct videos: Set A, Set B, Loop A-B, and Clear. YouTube A/B looping remains deferred to a future IFrame API integration.
 
 ## Recommended next steps
 
-1. Validate the inline learning-materials viewer: local files, URLs, video controls, open/remove behavior, quota errors, and persistence after reload.
-2. Keep microphone pitch detection and mobile zoom explicitly deprioritized unless later testing makes either a release blocker.
+1. Continue storage-quota reporting and media-codec compatibility refinement as needed.
+2. Keep microphone pitch detection, mobile zoom, and tab/notation parsing explicitly deprioritized.
 
 ## Delivery pipeline
 
@@ -244,8 +252,9 @@ No blocking items.
 - **Done:** New User, Password Recovery, and validated sign-in/sign-out flow.
 - **Done:** default five-week practice program for new users, validated through account creation.
 - **Done:** Sessions tuner presets and continuous reference tones, validated in browser/device QA.
-- **In progress:** first learning-materials viewer slice using device-local IndexedDB files and trusted URLs.
-- **Deprioritized:** microphone pitch detection and mobile page zoom behavior.
+- **Done:** first learning-materials viewer slice using device-local IndexedDB files and trusted URLs, validated across all seven QA checks.
+- **Refinement:** storage-quota reporting and media-codec compatibility refinement.
+- **Deprioritized:** microphone pitch detection, mobile page zoom behavior, and tab/notation parsing.
 
 
 ## Completed milestones
