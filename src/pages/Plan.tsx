@@ -512,7 +512,7 @@ export default function Plan() {
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Practice weeks</p>
           </div>
 
-          <div className="flex w-full max-w-[440px] items-center gap-2">
+          <div className="flex w-full max-w-[440px] flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void addWeek()}
@@ -542,7 +542,7 @@ export default function Plan() {
               Current week
             </button>
 
-            <div className="relative min-w-0 flex-1">
+            <div className="relative min-w-0 flex-1 basis-full sm:basis-auto">
               <button
                 type="button"
                 onClick={() => setCalendarOpen((current) => !current)}
