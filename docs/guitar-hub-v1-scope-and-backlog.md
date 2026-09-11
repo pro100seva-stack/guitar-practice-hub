@@ -69,10 +69,18 @@ That means the remaining work is lower-risk and more UX-centric than product-arc
 ### Secondary priority
 
 4. **Completed — 2026-09-11:** Improve interaction quality for time editing and block actions
-5. Review edge cases for session updates, timer resets, and block saves
-6. Do a final polish pass on spacing, labels, and visual hierarchy
+5. **Completed — 2026-09-11:** Review edge cases for session updates, timer resets, and block saves
+6. **In progress:** Do a final polish pass on spacing, labels, and visual hierarchy
 7. Decide whether `session_blocks` should enforce `unique (session_id, block_key)` and move from delete-then-insert to a true block upsert
 8. Add active-route highlighting to the top navigation and replace any remaining placeholder navigation treatment
+
+### Medium priority
+
+22. Re-edit and continue daily sessions
+   - after saving the current day's session, the user can return to it later the same day
+   - load the existing session values, completed blocks, timer progress, notes, and total minutes for editing
+   - allow the user to add new practice progress to the already saved session without overwriting unrelated progress
+   - preserve the existing daily-session uniqueness and Supabase-backed save flow
 
 ### Notion-derived implementation backlog
 
@@ -115,7 +123,7 @@ These items come from the User Stories database and are not already represented 
    - the navigation does not require scrolling back to the top before switching screens
    - preserve the existing navigation behavior and responsive layout
 
-15. **In progress:** Prevent unintended mobile page zooming
+15. **Deprioritized, open:** Prevent unintended mobile page zooming
    - on mobile devices, the app stays locked to the intended full-page scale
    - pinch/gesture zooming must not allow the user to move into an unintended zoomed-in page state
    - verify the change does not break normal scrolling, tapping, inputs, accessibility, or desktop behavior
@@ -182,19 +190,25 @@ These items are captured for prioritization after the current responsive QA and 
 - 2026-09-11 — User QA confirmed Plan week creation, deletion, renumbering, and middle insertion. Item 13 is complete; sticky top navigation is the next implementation slice.
 - 2026-09-11 — Sticky top navigation is implemented in the shared app shell with an opaque background and elevated stacking order; item 14 is awaiting browser QA.
 - 2026-09-11 — User QA confirmed sticky top navigation; item 14 is complete. Mobile page scale is locked through the viewport metadata and awaits device/browser QA as item 15.
+- 2026-09-11 — Mobile zoom behavior remains open but is deprioritized after Cloudflare Pages validation did not prevent mobile zoom. Session edge-case review is the next active item.
+- 2026-09-11 — Added medium-priority item 22: daily sessions must be re-editable so users can return the same day and add progress to an existing saved session.
+- 2026-09-11 — Session edge-case pass implemented saved-session rehydration when loading or changing days and persists the live practiced-block total on save; item 5 awaits browser QA, and this provides the foundation for item 22.
+- 2026-09-11 — QA found removed practice blocks reappeared after reopening a saved session. Session saves now persist block membership separately from completion, and reload only restores blocks belonging to that session; item 5 awaits remove-save-reopen validation.
+- 2026-09-11 — User QA confirmed saved-session rehydration and persistent block removal. Item 5 is complete; final spacing, labels, and visual hierarchy polish is the next active item.
+- 2026-09-11 — Final polish pass applied responsive navigation spacing, shared keyboard focus treatment, stable mobile page sizing, and selected-day wording; item 6 awaits browser QA.
 
 ## Recommended next steps
 
-1. Validate mobile page scale and normal scrolling, tapping, and inputs.
-2. Review session update and plan week edge cases after the week-management pass.
-3. Complete the final polish pass on spacing, labels, and visual hierarchy.
-4. During the next grooming session, decide the `session_blocks` uniqueness/upsert strategy and prioritize active navigation highlighting.
+1. Validate final spacing, labels, keyboard focus, and responsive navigation behavior.
+2. Define the implementation approach for medium-priority daily session re-editing.
+3. During the next grooming session, decide the `session_blocks` uniqueness/upsert strategy and prioritize active navigation highlighting.
 
 ## Delivery pipeline
 
-- **Done:** responsive Sessions and Plan QA; core interaction QA; timer editing and single-active-timer behavior (items 4 and 10); live total-minute synchronization (item 11); Sessions block add/remove (item 12); Plan week add/remove (item 13); sticky top navigation (item 14).
-- **In progress:** mobile page zoom behavior (item 15), awaiting device/browser QA.
-- **Queued:** final visual polish and remaining secondary decisions.
+- **Done:** responsive Sessions and Plan QA; core interaction QA; timer editing and single-active-timer behavior (items 4 and 10); live total-minute synchronization (item 11); Sessions block add/remove (item 12); Plan week add/remove (item 13); sticky top navigation (item 14); session update, timer reset, and block-save edge cases (item 5).
+- **In progress:** final spacing, labels, and visual hierarchy polish (item 6), awaiting browser QA.
+- **Queued:** daily session re-editing (item 22, medium priority) and remaining secondary decisions.
+- **Deprioritized, open:** mobile page zoom behavior (item 15).
 - **Deferred:** account recovery/default-program work and future grooming items 19–21.
 
 ## Completed milestones

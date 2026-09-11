@@ -32,6 +32,30 @@ function formatHeadingDate(value: string) {
   }).format(date)
 }
 
+function getSessionEditorState(date: string, templates: BlockTemplate[], sessions: SessionWithBlocks[]) {
+  const savedSession = sessions.find((session) => session.session_date === date)
+  const savedBlocks = new Map(savedSession?.session_blocks.map((block) => [block.block_key, block]) ?? [])
+  const sessionTemplates = savedSession
+    ? templates.filter((template) => savedBlocks.has(template.key))
+    : templates
+
+  return {
+    totalMinutes: savedSession ? String(savedSession.total_minutes) : '45',
+    comment: savedSession?.comment ?? '',
+    selectedBlocks: sessionTemplates.map((template) => {
+      const savedBlock = savedBlocks.get(template.key)
+      return {
+        id: template.id,
+        key: template.key,
+        label: template.label,
+        done: savedBlock?.done ?? false,
+        actualMinutes: savedBlock?.actual_minutes != null ? String(savedBlock.actual_minutes) : '',
+        targetMinutes: template.target_minutes,
+      }
+    }),
+  }
+}
+
 export default function Sessions() {
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
   const [planWeek, setPlanWeek] = useState<PlanWeek | null>(null)
@@ -204,25 +228,20 @@ export default function Sessions() {
     })
 
     const defaultDate = getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
+    const loadedSessions = (sessionsResult.data as SessionWithBlocks[]) ?? []
+    const editorState = getSessionEditorState(defaultDate, dedupedTemplates, loadedSessions)
 
     setWeeks(allWeeks)
     setPlanWeek(currentWeek)
     setSelectedWeekIndex(currentWeekIndex >= 0 ? currentWeekIndex : 0)
     setDate(defaultDate)
     setTemplates(dedupedTemplates)
-    setSelectedBlocks(
-      dedupedTemplates.map((template) => ({
-        id: template.id,
-        key: template.key,
-        label: template.label,
-        done: false,
-        actualMinutes: '',
-        targetMinutes: template.target_minutes,
-      }))
-    )
+    setTotalMinutes(editorState.totalMinutes)
+    setComment(editorState.comment)
+    setSelectedBlocks(editorState.selectedBlocks)
     setBlockToAddId('')
     setTimers({})
-    setSessions((sessionsResult.data as SessionWithBlocks[]) ?? [])
+    setSessions(loadedSessions)
     setLoading(false)
   }
 
@@ -261,6 +280,12 @@ export default function Sessions() {
 
   function handleSelectDay(nextDate: string) {
     setDate(nextDate)
+    const editorState = getSessionEditorState(nextDate, templates, sessions)
+    setTotalMinutes(editorState.totalMinutes)
+    setComment(editorState.comment)
+    setSelectedBlocks(editorState.selectedBlocks)
+    setBlockToAddId('')
+    setTimers({})
   }
 
   function toggleBlock(templateId: string) {
@@ -547,7 +572,7 @@ export default function Sessions() {
         {
           user_id: user.id,
           session_date: date,
-          total_minutes: Number(totalMinutes),
+          total_minutes: totalBlockMinutes || Number(totalMinutes),
           comment: comment.trim() ? comment.trim() : null,
           week_id: planWeek?.id ?? null,
           source: 'app',
@@ -563,13 +588,11 @@ export default function Sessions() {
       return
     }
 
-    const blocksToInsert = selectedBlocks
-      .filter((block) => block.done)
-      .map((block) => ({
+    const blocksToInsert = selectedBlocks.map((block) => ({
         session_id: sessionData.id,
         block_key: block.key,
         label: block.label,
-        done: true,
+        done: block.done,
         target_minutes: block.targetMinutes,
         actual_minutes: timers[block.id]?.elapsedSeconds
           ? Math.max(1, Math.ceil(timers[block.id].elapsedSeconds / 60))
@@ -916,7 +939,7 @@ export default function Sessions() {
 
           <div className="mt-4 space-y-3">
             {selectedBlocks.length === 0 && (
-              <p className="text-sm text-slate-400">No practice blocks available for this week.</p>
+              <p className="text-sm text-slate-400">No practice blocks selected for this day.</p>
             )}
 
             {templates.map((template) => {
