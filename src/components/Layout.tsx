@@ -30,7 +30,7 @@ export default function Layout() {
   }, [])
 
   function handleBack() {
-    if (window.history.length > 1) {
+    if (location.key !== 'default') {
       navigate(-1)
       return
     }
@@ -122,7 +122,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <main className="mx-auto h-[calc(100vh-73px)] max-w-6xl overflow-hidden p-4"><Outlet key={location.pathname} /></main>
+      <main className="mx-auto min-h-[calc(100vh-73px)] max-w-6xl p-4"><Outlet key={location.pathname} /></main>
     </div>
   )
 }
