@@ -204,7 +204,8 @@ export default function Stats() {
   const filteredSessions = sessions.filter((session) => isInRange(session.session_date, rangeStart || null, rangeEnd || null))
 
   useEffect(() => {
-    const sortedSessions = [...filteredSessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
+    const effectFilteredSessions = sessions.filter((session) => isInRange(session.session_date, rangeStart || null, rangeEnd || null))
+    const sortedSessions = [...effectFilteredSessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
     const totalMinutes = sortedSessions.reduce((sum, session) => sum + Number(session.total_minutes ?? 0), 0)
     const totalSessions = sortedSessions.length
 
@@ -292,7 +293,7 @@ export default function Stats() {
     setChartPoints(cumulativeTimeline)
     setPieSlices(nextPieSlices)
     setHoveredPointIndex(null)
-  }, [filteredSessions, chartScale])
+  }, [sessions, rangeStart, rangeEnd, chartScale])
 
   if (loading) return <p className="text-sm text-slate-400">Loading…</p>
   if (error) return <p className="text-red-400">Error: {error}</p>
