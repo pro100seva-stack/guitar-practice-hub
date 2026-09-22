@@ -69,7 +69,7 @@ export default function Landing() {
   ]
 
   return (
-    <div className="relative flex h-full items-center justify-center overflow-hidden px-4 py-8">
+    <div className="relative flex min-h-[calc(100vh-73px)] items-center justify-center overflow-hidden px-4 py-8">
       <div className="relative z-10 flex w-full max-w-5xl items-center justify-center">
         <nav className="flex w-full max-w-md flex-col items-center gap-3 pb-8 pt-4">
           {navItems.map((item) => (
