@@ -68,39 +68,72 @@ export type Database = {
       plan_weeks: {
         Row: {
           created_at: string
-          end_date: string
+          end_date: string | null
           focus: string
           id: string
           phase: string
-          start_date: string
+          program_id: string | null
+          program_sequence: number | null
+          start_date: string | null
           tasks: string | null
           updated_at: string
           user_id: string
-          week_number: number
+          week_number: number | null
         }
         Insert: {
           created_at?: string
-          end_date: string
+          end_date?: string | null
           focus: string
           id?: string
           phase: string
-          start_date: string
+          program_id?: string | null
+          program_sequence?: number | null
+          start_date?: string | null
           tasks?: string | null
           updated_at?: string
           user_id?: string
-          week_number: number
+          week_number?: number | null
         }
         Update: {
           created_at?: string
-          end_date?: string
+          end_date?: string | null
           focus?: string
           id?: string
           phase?: string
-          start_date?: string
+          program_id?: string | null
+          program_sequence?: number | null
+          start_date?: string | null
           tasks?: string | null
           updated_at?: string
           user_id?: string
-          week_number?: number
+          week_number?: number | null
+        }
+        Relationships: []
+      }
+      programs: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -283,7 +316,26 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      pause_active_program: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
+      pause_current_program: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      resume_program: {
+        Args: { target_program_id: string }
+        Returns: string
+      }
+      start_custom_program: {
+        Args: { program_name: string }
+        Returns: string
+      }
+      start_default_program: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

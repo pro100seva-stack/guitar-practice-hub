@@ -13,7 +13,7 @@ Required function secrets:
 - `ACCOUNT_ANSWER_PEPPER`
 - `INTERNAL_AUTH_DOMAIN` (optional; defaults to `accounts.guitar-practice-hub.invalid`)
 
-Account creation also initializes five Monday-based `plan_weeks` rows for the new user. The function therefore requires its service role to have CRUD privileges on both `user_profiles` and `plan_weeks`; migration `05-account-foundation-grants.sql` supplies those grants.
+Account creation initializes a `Default Practice Program` plus five Monday-based `plan_weeks` rows tagged with program sequence values. The client app appends one additional logical Default week when the user returns after the scheduled program has ended. The function therefore requires its service role to have CRUD privileges on `user_profiles`, `programs`, and `plan_weeks`; migrations `05-account-foundation-grants.sql` and `07-flexible-programs-foundation.sql` supply those grants.
 
 The service-role key and answer pepper must remain server-only. The Login UI calls this function for account creation and password reset; ordinary session sign-in continues through Supabase Auth.
 

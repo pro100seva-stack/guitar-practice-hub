@@ -5,9 +5,18 @@ import type { Database } from '../lib/database.types'
 
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
+type ScheduledPlanWeek = PlanWeek & {
+  end_date: string
+  start_date: string
+  week_number: number
+}
 type SessionBlock = Database['public']['Tables']['session_blocks']['Row']
 type SessionWithBlocks = Database['public']['Tables']['sessions']['Row'] & {
   session_blocks: SessionBlock[]
+}
+
+function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
+  return week.week_number !== null && week.start_date !== null && week.end_date !== null
 }
 
 type SelectedBlock = {
@@ -124,8 +133,8 @@ function getSessionEditorState(date: string, templates: BlockTemplate[], session
 
 export default function Sessions() {
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
-  const [planWeek, setPlanWeek] = useState<PlanWeek | null>(null)
-  const [weeks, setWeeks] = useState<PlanWeek[]>([])
+  const [planWeek, setPlanWeek] = useState<ScheduledPlanWeek | null>(null)
+  const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
   const [loading, setLoading] = useState(true)
@@ -480,8 +489,8 @@ export default function Sessions() {
       return
     }
 
-    const allWeeks = (weeksResult.data ?? []) as PlanWeek[]
-    const currentWeek = (planResult.data as PlanWeek | null) ?? allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
+    const allWeeks = ((weeksResult.data ?? []) as PlanWeek[]).filter(isScheduledWeek)
+    const currentWeek = allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
     const currentWeekIndex = currentWeek ? allWeeks.findIndex((item) => item.id === currentWeek.id) : 0
     const allTemplates = (templatesResult.data ?? []) as BlockTemplate[]
 
@@ -536,7 +545,7 @@ export default function Sessions() {
     return weekDates.find((value) => isTodayDate(value)) ?? weekDates[0]
   }
 
-  function handleSelectWeek(week: PlanWeek) {
+  function handleSelectWeek(week: ScheduledPlanWeek) {
     setPlanWeek(week)
     const nextDate = getDefaultDateForWeek(week)
     const editorState = getSessionEditorState(nextDate, templates, sessions)

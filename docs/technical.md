@@ -20,7 +20,7 @@ The app is a client-side PWA that talks directly to Supabase Postgres for accoun
 2. Authenticated routes render the main app shell and page content.
 3. Each page reads from the relevant table using the Supabase client.
 4. Save operations are sent through PostgREST and persisted in Postgres.
-5. Account creation and password reset go through the `account-gateway` Edge Function.
+5. Account creation, password reset, and default program continuation are handled through the `account-gateway` server boundary and program RPCs.
 6. Local learning materials are stored as browser Blobs and metadata in IndexedDB.
 7. The UI updates after the data load or write completes.
 
@@ -55,6 +55,8 @@ Responsibilities:
 - edit week focus, tasks, and metadata
 - edit week topics and songs
 - persist changes to the week and related tables
+- expose program actions for Default, custom, pause, and resume flows
+- hide unscheduled program weeks until they are re-activated
 
 ### Stats screen
 
@@ -71,9 +73,22 @@ Responsibilities:
 
 ## Data model summary
 
+### programs
+
+Stores the user-owned program container and status.
+
+Key fields:
+
+- id
+- user_id
+- name
+- status (`active`, `paused`, `completed`, `abandoned`)
+- created_at
+- updated_at
+
 ### plan_weeks
 
-Stores the weekly practice plan and date range.
+Stores the weekly practice plan and date range, and also carries the active/paused program relationship.
 
 Key fields:
 
@@ -83,7 +98,11 @@ Key fields:
 - focus
 - tasks
 - phase
+- program_id
+- program_sequence
 - user_id
+
+`NULL` date fields represent unscheduled branch weeks that are intentionally hidden from the visible plan/calendar while a program is paused or diverged.
 
 ### topics
 
@@ -142,6 +161,10 @@ Stores app-level preferences such as metronome BPM and beat count.
 
 Stores the user-facing login name and security-question metadata. The answer is stored as a server-generated hash. Row-level security restricts access to the owning user; account gateway service-role access is server-only.
 
+### Default program continuation
+
+The continuation flow is implemented in `src/lib/defaultProgram.ts` and triggered from `src/components/AuthGate.tsx`. When a logged-in user has an active Default program, the app appends one logical next week after the last scheduled Default week when the current date has passed the final saved completion date.
+
 ### Local learning materials
 
 Files are stored in browser IndexedDB, keyed by practice-block key. Supabase stores no uploaded file bytes. External URLs are stored locally as metadata; YouTube embed URLs are rendered inline when supported.
@@ -155,11 +178,12 @@ Required:
 
 ## Operational notes
 
-- The app assumes a live authenticated user and uses user ownership carried via user_id in the database.
+- The app assumes a live authenticated user and uses user ownership carried via `user_id` in the database.
 - One session row per date is the working pattern; repeating the same date updates the same row.
-- Sessions, Plan, Stats, account flows, session-block upsert, tuner reference tones, and core UX refinement are implemented and validated.
+- Sessions, Plan, Stats, account flows, session-block upsert, tuner reference tones, Flexible Programs actions, and default continuation are implemented and validated.
 - Plan navigation uses a fixed-height week list, covered-date calendar picker, current-week shortcut, and selected-week editor without changing persistence behavior.
 - `session_blocks` has unique `(session_id, block_key)` through migration `03-session-block-uniqueness.sql`; migration and live update/removal checks passed.
+- Flexible Programs uses nullable scheduling semantics for inactive branches and filters unscheduled rows from visible reads; this is part of the live application contract.
 - Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. Application-level validation and seed data currently enforce the expected values by convention.
-- Microphone pitch detection and mobile zoom remain deferred. Learning-materials viewer work is continuing with device-local storage and inline media compatibility handling.
+- Microphone pitch detection and mobile zoom remain deferred. The current app is ready for a product pivot rather than more exploratory work.
 

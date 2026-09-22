@@ -128,6 +128,22 @@ Deno.serve(async (request) => {
       return json({ error: 'Could not create account profile.' }, 500)
     }
 
+    const { data: defaultProgram, error: programCreateError } = await supabaseAdmin
+      .from('programs')
+      .insert({
+        user_id: createdUser.user.id,
+        name: 'Default Practice Program',
+        status: 'active',
+      })
+      .select('id')
+      .single()
+    if (programCreateError || !defaultProgram) {
+      console.error('default program create failed', programCreateError)
+      await supabaseAdmin.from('user_profiles').delete().eq('user_id', createdUser.user.id)
+      await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id)
+      return json({ error: 'Could not create the default practice program.' }, 500)
+    }
+
     const programStart = new Date()
     const day = programStart.getUTCDay()
     programStart.setUTCDate(programStart.getUTCDate() + (day === 0 ? 1 : day === 1 ? 0 : 8 - day))
@@ -138,6 +154,8 @@ Deno.serve(async (request) => {
       endDate.setUTCDate(startDate.getUTCDate() + 6)
       return {
         user_id: createdUser.user.id,
+        program_id: defaultProgram.id,
+        program_sequence: index + 1,
         week_number: index + 1,
         start_date: startDate.toISOString().slice(0, 10),
         end_date: endDate.toISOString().slice(0, 10),
@@ -150,6 +168,7 @@ Deno.serve(async (request) => {
     const { error: programError } = await supabaseAdmin.from('plan_weeks').insert(programWeeks)
     if (programError) {
       console.error('default program insert failed', programError)
+      await supabaseAdmin.from('programs').delete().eq('id', defaultProgram.id)
       await supabaseAdmin.from('user_profiles').delete().eq('user_id', createdUser.user.id)
       await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id)
       return json({ error: 'Could not create the default practice program.' }, 500)

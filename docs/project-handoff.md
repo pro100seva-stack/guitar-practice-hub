@@ -2,11 +2,11 @@
 
 ## Project summary
 
-Guitar Practice Hub is a multi-user guitar practice tracking app, built as a PWA and backed by Supabase. It covers session logging, block tracking, weekly planning, stats, account creation/password reset, tuner reference tones, and device-local learning materials.
+Guitar Practice Hub is a multi-user guitar practice tracking app, built as a PWA and backed by Supabase. It covers session logging, block tracking, weekly planning, stats, account creation/password reset, program continuation, and device-local learning materials.
 
 ## Current status
 
-The core workflow, account foundation, session-block upsert, UX polish, account flows, and default five-week program have been validated. The current implementation work is the device-local inline learning-materials viewer.
+The core workflow, account foundation, session-block upsert, program foundation, and Flexible Programs actions have been implemented and validated. The application is currently ready for a user-defined pivot rather than another speculative feature slice.
 
 ### Already working
 
@@ -17,17 +17,21 @@ The core workflow, account foundation, session-block upsert, UX polish, account 
 - metronome helper
 - weekly planning editor
 - stats dashboard
+- program lifecycle controls for Default, custom, pause, and resume
+- default continuation logic for logged-in users
 - session write path removes deselected blocks and upserts retained blocks by unique `(session_id, block_key)`
 - account creation and password reset through the `account-gateway` Edge Function
 - device-local IndexedDB materials with inline PDF/image/text/video and YouTube embed support
+- landing-page featured-guitar callout with a compact informational footnote for the Frankenstrat and a right-edge visual accent that stays within the viewport
 
 The session write path is explicitly marked with `source: 'app'`; parent session upsert, targeted block removal, and block upsert all passed live verification.
 
-### Active work
+### Ready for the next product decision
 
-- validate and refine the device-local inline learning-materials viewer
-- handle browser storage quota and media codec limitations clearly
-- keep microphone pitch detection and mobile zoom deferred
+- Flexible Programs story 15 and 16 are implemented and validated in the current codebase
+- the app now distinguishes scheduled weeks from unscheduled program branch weeks without deleting data
+- the current backlog is aligned with actual code state and should be treated as the source of truth
+- the next stage depends on a clear user pivot instead of continuing feature-by-feature discovery
 
 ### Known technical gap
 
@@ -37,12 +41,7 @@ The package cleanup items previously tracked are resolved: `tailwindcss` and `vi
 
 ### Deferred backlog
 
-The next grooming session should prioritize these requested future features:
-
-- mobile page zoom prevention
-- guitar tab/notation parsing and collaborative learning materials
-
-These items are deferred after the validated tuner reference-tone and core local-materials slices. Browser storage quota, codec compatibility, and unsupported external embeds remain explicit limitations.
+The next grooming session should prioritize the user-selected pivot. No further implementation should start unless the requested product change is explicitly approved.
 
 ## Product constraints
 
@@ -50,11 +49,14 @@ These items are deferred after the validated tuner reference-tone and core local
 - Database changes require an explicit migration and live verification
 - No new backend architecture unless required by a new product decision
 - Preserve the current save and update logic for sessions and plan entries
+- Keep Flexible Programs behavior as the baseline unless the pivot changes product direction
 
 ## Key files
 
 - src/pages/Sessions.tsx — sessions UI, date flow, block actions, timer logic, metronome
-- src/pages/Plan.tsx — weekly planning editor
+- src/pages/Plan.tsx — weekly planning and program controls
+- src/lib/defaultProgram.ts — default program continuation logic
+- src/components/AuthGate.tsx — login/session continuation entry point
 - src/pages/Stats.tsx — practice analytics
 - src/components/Layout.tsx — app shell
 - src/router.tsx — routing
@@ -62,13 +64,15 @@ These items are deferred after the validated tuner reference-tone and core local
 - src/lib/database.types.ts — typed DB contract
 - supabase/schema.sql — schema definitions
 - supabase/rls-policies.sql — access rules
-- supabase/seed/plan-weeks.sql — weekly plan seed data
-- supabase/seed/notion-import-sessions.sql — imported historical sessions
-- supabase/seed/notion-import-blocks.sql — imported historical blocks
+- supabase/migrations/ — schema adjustments and live database corrections
+- supabase/functions/account-gateway/ — server-only account creation and password-reset boundary
+- supabase/seed/ — seed data and imported fixtures
 
 ## Current product direction
 
-The current Sessions design follows a weekly workflow and includes compact timers, tuner references, and the expanded local learning-materials block:
+The landing experience now includes a compact historical-guitar feature block, anchored to the right side of the screen and paired with a brief explanatory footnote for the featured instrument. This is intentionally designed as a reusable content pattern for future rotating guitar highlights while staying lightweight and non-disruptive.
+
+The current Sessions design follows a weekly workflow and includes compact timers, tuner references, program controls, and the expanded local learning-materials block:
 
 1. top week tiles on the page
 2. selected week summary and focus block
@@ -80,8 +84,8 @@ This is intentional and should remain the visible structure unless the user requ
 
 ## Recommended next step
 
-The next iteration is focused QA and refinement for device-local learning materials: local file persistence, inline media playback, YouTube embeds, browser quota errors, and unsupported codec/page fallbacks.
+Pause feature implementation and wait for the user’s pivot instructions. The codebase is already in a validated, stable state and ready for the next product decision.
 
 ## Handoff note
 
-This project is already far enough along that future work should be guided by the actual code state and query-backed checks, not by stale backlog assumptions. The session persistence check is now verified; the remaining work is UX completion and validation.
+This project is far enough along that future work should be guided by the actual code state and query-backed checks, not stale backlog assumptions. The Flexible Programs foundation and program actions are implemented and validated; the next step is a deliberate pivot chosen by the user.

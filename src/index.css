@@ -2,11 +2,20 @@
 
 html {
   color-scheme: dark;
+  overflow: hidden;
+  height: 100%;
 }
 
 body {
   margin: 0;
   min-width: 320px;
+  overflow: hidden;
+  height: 100%;
+}
+
+#root {
+  overflow: hidden;
+  height: 100%;
 }
 
 :where(a, button, input, select, textarea):focus-visible {

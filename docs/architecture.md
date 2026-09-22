@@ -16,6 +16,7 @@ graph TD
     subgraph Backend_as_a_Service [Supabase Platform]
         Auth[Supabase Auth]
         Edge[account-gateway Edge Function]
+        RPC[Database RPCs for program actions]
         API[PostgREST API]
         DB[(PostgreSQL Database)]
     end
@@ -25,6 +26,7 @@ graph TD
     State <--> LocalStore
     SupabaseClient <--> Auth
     SupabaseClient <--> Edge
+    SupabaseClient <--> RPC
     SupabaseClient <--> API
     API <--> DB
 ```
@@ -43,6 +45,7 @@ The project uses **Backend as a Service** instead of a custom Node.js or Python 
 - **Database:** PostgreSQL with Row Level Security (RLS).
 - **API layer:** PostgREST provides access to database tables.
 - **Server-only account boundary:** `account-gateway` creates accounts and resets passwords using service-role access that never reaches the browser.
+- **Program lifecycle actions:** database RPCs manage default starts, custom starts, pause behaviors, and resume flows for programs.
 - **Local materials:** IndexedDB stores uploaded learning files on the current device; files are not sent to Supabase.
 
 ## Security
@@ -63,8 +66,15 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 5. Supabase validates the JWT and RLS policies for each request.
 6. The frontend displays the save result and refreshes local state.
 
+### Continuing the Default program
+1. Auth restoration triggers `ensureDefaultProgramContinuation()` from the auth gate.
+2. The app loads the active Default program and its last scheduled week.
+3. If the final week is in the past, it inserts the next logical week for the same program.
+4. The app keeps the continuation idempotent and avoids creating catch-up weeks for missed time.
+
 ## Current Limitations
 
 - `session_blocks` uses unique `(session_id, block_key)` and the Sessions write path performs targeted delete plus upsert.
+- Flexible Programs intentionally uses nullable week dates for unscheduled branch rows; all read paths must filter them before showing visible plan/calendar state.
 - Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. This is an explicit v1 trade-off; the application and seed data currently enforce the expected values by convention.
-- Microphone pitch detection is deferred. The tuner reference-tone slice is implemented. The learning-materials viewer uses device-local IndexedDB and is being expanded for inline media compatibility.
+- Microphone pitch detection is deferred. The tuner reference-tone slice and the local learning-materials viewer are live, and the app is currently ready for a product pivot.

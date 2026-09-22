@@ -4,7 +4,7 @@ Guitar Practice Hub is a responsive PWA for tracking guitar practice, managing w
 
 ## Current product state
 
-The core v1 workflow is complete and validated on desktop and mobile. Current work is focused on the local learning-materials viewer and future technical grooming; mobile page zoom remains explicitly deprioritized.
+The core v1 workflow is complete and validated, and the app now includes the Flexible Programs foundation and live program actions. The project is currently in a validated, pivot-ready state.
 
 ### Working app features
 
@@ -16,13 +16,18 @@ The core v1 workflow is complete and validated on desktop and mobile. Current wo
 - Tuning presets with continuous local reference tones
 - Device-local learning materials with inline PDF, image, text, video, and YouTube embed viewing
 - Login, account creation, password reset, and five-week default program initialization
+- Default program continuation for logged-in users when a new calendar week should begin
+- Program start, pause, custom start, and resume actions through the Plan screen
 - Live password requirement feedback and security-question lookup during password reset
 - Supabase-backed persistence with auth and RLS policies
 - Installable PWA shell
+- Featured-guitar landing highlight with a right-side historical guitar panel and a compact informational footnote for the current instrument
 
 ### Current UI focus
 
 The current UI keeps practice actions compact and keeps learning materials next to the relevant practice block. Uploaded materials stay in browser IndexedDB and are not uploaded to Supabase.
+
+The landing screen now includes a featured-guitar callout: a right-side historical guitar image with a short footnote that explains why the current featured instrument matters in guitar history and what it offered technically. This is intentionally structured so the app can rotate to a new famous guitar later without redesigning the layout.
 
 The Sessions screen currently emphasizes:
 
@@ -38,8 +43,9 @@ The Plan screen currently emphasizes:
 - fixed-height vertical week navigation for long histories
 - covered-date calendar navigation and a current-week shortcut
 - selected-week details and editing controls below the navigator
+- active/paused program badges and resume controls
 
-The current implementation includes session-block uniqueness/upsert behavior, owner-scoped account data, and a server-only Supabase Edge Function for account creation and password reset.
+The current implementation includes session-block uniqueness/upsert behavior, owner-scoped account data, program lifecycle handling, and a server-only Supabase Edge Function for account creation and password reset.
 
 ## Tech stack
 
@@ -94,6 +100,6 @@ All SQL lives under the supabase folder.
 
 ## Status and next direction
 
-The project has a working, validated core workflow. Session blocks use the applied unique `(session_id, block_key)` constraint with targeted removal and upsert. The next implementation slice is completing the device-local learning-materials viewer; the tuner reference-tone slice is validated, while microphone pitch detection and mobile zoom remain deferred.
+The project has a working, validated core workflow and a reliable Flexible Programs model. The app is ready for the next product pivot chosen by the user; no further implementation work should begin without explicit approval.
 
-See the backlog document for the live status, decisions, and the exact recommended next steps.
+See the backlog document for the live status, decisions, and current product baseline.
