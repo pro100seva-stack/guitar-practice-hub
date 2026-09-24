@@ -1,24 +1,18 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 import Layout from './components/Layout'
-import Landing from './pages/Landing'
-import Progress from './pages/Progress'
-import Settings from './pages/Settings'
-import Sessions from './pages/Sessions'
-import Plan from './pages/Plan'
-import Stats from './pages/Stats'
 
 export const router = createBrowserRouter([
   {
     element: <Layout />,
     children: [
       { path: '/', element: <Navigate to="/landing" replace /> },
-      { path: '/landing', element: <Landing /> },
-      { path: '/progress', element: <Progress /> },
-      { path: '/plan', element: <Plan /> },
-      { path: '/practice', element: <Sessions /> },
+      { path: '/landing', lazy: async () => ({ Component: (await import('./pages/Landing')).default }) },
+      { path: '/progress', lazy: async () => ({ Component: (await import('./pages/Progress')).default }) },
+      { path: '/plan', lazy: async () => ({ Component: (await import('./pages/Plan')).default }) },
+      { path: '/practice', lazy: async () => ({ Component: (await import('./pages/Sessions')).default }) },
       { path: '/sessions', element: <Navigate to="/practice" replace /> },
-      { path: '/stats', element: <Stats /> },
-      { path: '/settings', element: <Settings /> },
+      { path: '/stats', lazy: async () => ({ Component: (await import('./pages/Stats')).default }) },
+      { path: '/settings', lazy: async () => ({ Component: (await import('./pages/Settings')).default }) },
     ],
   },
 ])

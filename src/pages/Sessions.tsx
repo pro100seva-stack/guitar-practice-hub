@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
+import { formatDate, formatDateRange } from '../lib/dateFormat'
 
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
+type Program = Database['public']['Tables']['programs']['Row']
 type ScheduledPlanWeek = PlanWeek & {
   end_date: string
   start_date: string
@@ -83,12 +85,7 @@ const tuningPresets: Record<TuningKey, { label: string; notes: Array<{ stringNam
 }
 
 function formatHeadingDate(value: string) {
-  const date = new Date(`${value}T00:00:00`)
-  return new Intl.DateTimeFormat('en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    year: 'numeric',
-  }).format(date)
+  return formatDate(value)
 }
 
 function formatLocalDate(date: Date) {
@@ -101,9 +98,12 @@ function formatLocalDate(date: Date) {
 function getSessionEditorState(date: string, templates: BlockTemplate[], sessions: SessionWithBlocks[]) {
   const savedSession = sessions.find((session) => session.session_date === date)
   const savedBlocks = new Map(savedSession?.session_blocks.map((block) => [block.block_key, block]) ?? [])
-  const sessionTemplates = savedSession
-    ? templates.filter((template) => savedBlocks.has(template.key))
-    : templates
+  const isPastDate = date < new Date().toISOString().slice(0, 10)
+  const sessionTemplates = isPastDate
+    ? templates.filter((template) => (savedBlocks.get(template.key)?.actual_minutes ?? 0) > 0)
+    : savedSession
+      ? templates.filter((template) => savedBlocks.has(template.key))
+      : templates
   const timers = Object.fromEntries(
     sessionTemplates.flatMap((template) => {
       const actualMinutes = savedBlocks.get(template.key)?.actual_minutes
@@ -134,6 +134,7 @@ function getSessionEditorState(date: string, templates: BlockTemplate[], session
 export default function Sessions() {
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
   const [planWeek, setPlanWeek] = useState<ScheduledPlanWeek | null>(null)
+  const [programName, setProgramName] = useState<string | null>(null)
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
@@ -149,6 +150,7 @@ export default function Sessions() {
   const [expandedBlockIds, setExpandedBlockIds] = useState<Set<string>>(new Set())
   const [timers, setTimers] = useState<Record<string, BlockTimerState>>({})
   const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
+  const [showTargetPracticeTime, setShowTargetPracticeTime] = useState(true)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
   const [bpmInput, setBpmInput] = useState('100')
   const [bpm, setBpm] = useState(100)
@@ -436,6 +438,7 @@ export default function Sessions() {
     if (data.metronome_beats != null) {
       setBeatsPerMeasure(data.metronome_beats)
     }
+    setShowTargetPracticeTime(data.show_target_practice_time ?? true)
   }
 
   async function loadData() {
@@ -444,7 +447,7 @@ export default function Sessions() {
 
     const today = new Date().toISOString().slice(0, 10)
 
-    const [weeksResult, planResult, templatesResult, sessionsResult] = await Promise.all([
+    const [weeksResult, planResult, templatesResult, sessionsResult, programsResult] = await Promise.all([
       supabase
         .from('plan_weeks')
         .select('*')
@@ -463,6 +466,7 @@ export default function Sessions() {
         .from('sessions')
         .select('*, session_blocks(*)')
         .order('session_date', { ascending: false }),
+      supabase.from('programs').select('*'),
     ])
 
     if (weeksResult.error) {
@@ -489,6 +493,12 @@ export default function Sessions() {
       return
     }
 
+    if (programsResult.error) {
+      setError(programsResult.error.message)
+      setLoading(false)
+      return
+    }
+
     const allWeeks = ((weeksResult.data ?? []) as PlanWeek[]).filter(isScheduledWeek)
     const currentWeek = allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
     const currentWeekIndex = currentWeek ? allWeeks.findIndex((item) => item.id === currentWeek.id) : 0
@@ -504,6 +514,7 @@ export default function Sessions() {
 
     setWeeks(allWeeks)
     setPlanWeek(currentWeek)
+    setProgramName((programsResult.data as Program[] | null)?.find((program) => program.id === currentWeek?.program_id)?.name ?? null)
     setSelectedWeekIndex(currentWeekIndex >= 0 ? currentWeekIndex : 0)
     setDate(defaultDate)
     setTemplates(dedupedTemplates)
@@ -1172,7 +1183,7 @@ export default function Sessions() {
               >
                 {weeks.map((weekItem) => (
                   <option key={weekItem.id} value={weekItem.id}>
-                    Week {weekItem.week_number} · {weekItem.start_date}
+                    Week {weekItem.week_number} · {formatDateRange(weekItem.start_date, weekItem.end_date)}
                   </option>
                 ))}
               </select>
@@ -1204,7 +1215,7 @@ export default function Sessions() {
                     )}
                   </div>
                   <p className="mt-2 text-lg font-semibold">{weekItem.focus || 'Plan focus'}</p>
-                  <p className="mt-1 text-xs text-slate-400">{weekItem.start_date} – {weekItem.end_date}</p>
+                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date)}</p>
                 </button>
               )
             })}
@@ -1227,12 +1238,12 @@ export default function Sessions() {
 
           <div className="mt-3 grid gap-2 text-sm text-slate-300 md:grid-cols-2">
             <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Phase</p>
-              <p className="mt-1">{planWeek?.phase ?? '—'}</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Program</p>
+              <p className="mt-1">{programName ?? '—'}</p>
             </div>
             <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
               <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Dates</p>
-              <p className="mt-1">{planWeek ? `${planWeek.start_date} – ${planWeek.end_date}` : '—'}</p>
+              <p className="mt-1">{planWeek ? formatDateRange(planWeek.start_date, planWeek.end_date) : '—'}</p>
             </div>
           </div>
 
@@ -1247,38 +1258,42 @@ export default function Sessions() {
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Days in selected week</p>
-            {selectedWeekDates.some((day) => isTodayDate(day)) && (
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
-                Today
-              </span>
-            )}
           </div>
 
           <div className="mt-3 grid gap-2 sm:grid-cols-7">
             {selectedWeekDates.map((day) => {
               const isSelectedDay = day === date
               const isToday = isTodayDate(day)
+              const isCompleted = day < new Date().toISOString().slice(0, 10)
+                && sessions.some((session) => session.session_date === day)
 
               return (
                 <button
                   key={day}
                   type="button"
                   onClick={() => handleSelectDay(day)}
-                  className={`rounded-lg border px-2 py-3 text-center transition ${
+                  className={`relative rounded-lg border px-2 py-3 text-center transition ${
                     isSelectedDay
                       ? 'border-sky-500 bg-sky-500/10 text-sky-100'
-                      : isToday
-                        ? 'border-emerald-500/50 bg-emerald-500/5 text-emerald-100'
+                      : isCompleted
+                          ? 'border-emerald-500/50 bg-emerald-500/5 text-emerald-100'
                         : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-slate-500'
                   }`}
                 >
+                  {isToday && (
+                    <span
+                      aria-label="Current day"
+                      title="Current day"
+                      className="absolute right-2 top-2 h-3 w-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.75)]"
+                    />
+                  )}
                   <div className="flex items-center justify-center gap-1">
                     <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
                       {new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })}
                     </p>
-                    {isToday && (
+                    {isCompleted && (
                       <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-emerald-200">
-                        Today
+                        ✓ Done
                       </span>
                     )}
                   </div>
@@ -1367,7 +1382,7 @@ export default function Sessions() {
                         className="min-w-0 text-left"
                       >
                         <p className="text-sm font-semibold text-slate-100">{template.label}</p>
-                        <p className="text-xs text-slate-400">Target: {template.target_minutes ?? 0} min</p>
+                        {showTargetPracticeTime && <p className="text-xs text-slate-400">Target: {template.target_minutes ?? 0} min</p>}
                       </button>
                     </div>
 
@@ -1680,7 +1695,7 @@ export default function Sessions() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="font-medium text-slate-200">{session.session_date}</p>
+                    <p className="font-medium text-slate-200">{formatDate(session.session_date)}</p>
                     <p className="text-sm text-slate-400">{session.total_minutes} min</p>
                   </div>
                   <span className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">

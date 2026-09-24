@@ -7,7 +7,7 @@ This document describes the current high-level architecture of Guitar Practice H
 ```mermaid
 graph TD
     subgraph Client_Side [Frontend - React/Vite]
-        UI[Sessions / Plan / Stats / Login UI]
+        UI[Home / Progress / Plan / Practice / Stats / Settings UI]
         State[React local state]
         LocalStore[(IndexedDB local materials)]
         SupabaseClient[Supabase Client Library]
@@ -36,6 +36,7 @@ graph TD
 ### 1. Frontend
 The application is a **single-page application (SPA)**.
 - **View layer:** React components for Sessions, Plan, and Stats, combined through the shared app shell.
+- **Navigation shell:** a floating menu provides Home, Progress, Plan, Practice, Stats, and Settings routes; child routes provide browser-history back navigation with a Home fallback.
 - **Logic layer:** page-local state handles week/day navigation, timers, metronome controls, forms, and stats filters.
 - **Data access layer:** `@supabase/supabase-js` communicates directly with Supabase.
 
@@ -66,6 +67,13 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 5. Supabase validates the JWT and RLS policies for each request.
 6. The frontend displays the save result and refreshes local state.
 
+### Program timeline and week insertion
+
+1. Progress loads scheduled weeks, program names, sessions, and visibility preferences.
+2. Adjacent weeks with the same `program_id` form one contiguous program period; returning to a previous program creates a new period in the timeline.
+3. Program periods collapse into timeline nodes, with the current period opened initially and every week remaining clickable to Plan.
+4. Current and future weeks expose inline insertion forms backed by `insert_plan_week`, which shifts later scheduled weeks without pausing the active program.
+
 ### Continuing the Default program
 1. Auth restoration triggers `ensureDefaultProgramContinuation()` from the auth gate.
 2. The app loads the active Default program and its last scheduled week.
@@ -76,5 +84,7 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 
 - `session_blocks` uses unique `(session_id, block_key)` and the Sessions write path performs targeted delete plus upsert.
 - Flexible Programs intentionally uses nullable week dates for unscheduled branch rows; all read paths must filter them before showing visible plan/calendar state.
+- New scheduled weeks are program-owned and carry a required `program_sequence`; the unused `plan_weeks.phase` field is no longer part of the model.
 - Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. This is an explicit v1 trade-off; the application and seed data currently enforce the expected values by convention.
-- Microphone pitch detection is deferred. The tuner reference-tone slice and the local learning-materials viewer are live, and the app is currently ready for a product pivot.
+- Microphone pitch detection is deferred. The tuner reference-tone slice and the local learning-materials viewer are live.
+- Mobile pinch zoom is intentionally disabled through the viewport configuration.

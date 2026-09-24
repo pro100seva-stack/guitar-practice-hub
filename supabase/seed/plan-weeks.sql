@@ -13,10 +13,11 @@
 -- via the auth.users table, so nothing needs to be edited by hand.
 -- ============================================================
 
-insert into plan_weeks (user_id, week_number, start_date, end_date, phase, focus, tasks)
-select u.id, v.week_number, v.start_date, v.end_date, v.phase, v.focus, v.tasks
+insert into plan_weeks (user_id, program_id, program_sequence, week_number, start_date, end_date, focus, tasks)
+select u.id, p.id, v.week_number, v.week_number, v.start_date, v.end_date, v.focus, v.tasks
 from (select 'pro100seva@gmail.com'::text as email) as e
-join auth.users u on u.email = e.email,
+join auth.users u on u.email = e.email
+join programs p on p.user_id = u.id and p.name = 'Default Practice Program',
 lateral (values
   (1, '2025-08-19'::date, '2025-08-24'::date, 'historical', '1 - Возвращение в форму', E'Хроматика, альтернативный штрих, легато, аккорды - маж/мин\n\nРепертуар (из Notion): Chon - Bubble Dream (начало)'),
   (2, '2025-08-25'::date, '2025-08-29'::date, 'historical', '2 - Координация + септаккорды', E'Альтернативный штрих по гаммам, септаккорды, ритмы 3/4\n\nРепертуар (из Notion): Chon - Bubble Dream (продолжение)'),

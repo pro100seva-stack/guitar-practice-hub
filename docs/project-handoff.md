@@ -4,7 +4,7 @@
 
 Guitar Practice Hub is a multi-user guitar practice tracking app, built as a PWA and backed by Supabase. It covers session logging, block tracking, weekly planning, stats, account creation/password reset, program continuation, and device-local learning materials.
 
-## Current status
+## Current status (2026-09-24)
 
 The core workflow, account foundation, session-block upsert, program foundation, and Flexible Programs actions have been implemented and validated. The application is currently ready for a user-defined pivot rather than another speculative feature slice.
 
@@ -23,6 +23,14 @@ The core workflow, account foundation, session-block upsert, program foundation,
 - account creation and password reset through the `account-gateway` Edge Function
 - device-local IndexedDB materials with inline PDF/image/text/video and YouTube embed support
 - landing-page featured-guitar callout with a compact informational footnote for the Frankenstrat and a right-edge visual accent that stays within the viewport
+- floating navigation menu with Home, Progress, Plan, Practice, Stats, and Settings routes
+- browser-history back button with a landing-screen fallback
+- transactional plan-week add/remove RPCs that prevent partial renumbering updates
+- rate-limited recovery-question lookup and lazy-loaded routed pages
+- program-grouped Progress timeline with collapsible contiguous program periods
+- inline current/future week insertion with program, dates, focus, and tasks
+- editable Plan program assignment and automatic program completion status sync
+- persistent Settings toggles and shared date-range formatting
 
 The session write path is explicitly marked with `source: 'app'`; parent session upsert, targeted block removal, and block upsert all passed live verification.
 
@@ -33,11 +41,11 @@ The session write path is explicitly marked with `source: 'app'`; parent session
 - the current backlog is aligned with actual code state and should be treated as the source of truth
 - the next stage depends on a clear user pivot instead of continuing feature-by-feature discovery
 
-### Known technical gap
+### Validated implementation notes
 
 `src/pages/Sessions.tsx` upserts the parent `sessions` row, removes deselected blocks, and upserts retained `session_blocks`. Migration `03-session-block-uniqueness.sql` enforces unique `(session_id, block_key)` and has passed live verification.
 
-The package cleanup items previously tracked are resolved: `tailwindcss` and `vite-plugin-pwa` are in `devDependencies`, and `react-router-dom` is not installed. Top navigation uses native route links with active highlighting and remains visible while scrolling.
+The package cleanup items previously tracked are resolved: `tailwindcss` and `vite-plugin-pwa` are in `devDependencies`, and `react-router-dom` is not installed. The app shell uses a floating menu with active-route highlighting and a history-aware back button. Plan week mutations use transactional RPCs, and routed pages are lazy-loaded.
 
 ### Deferred backlog
 
@@ -72,6 +80,8 @@ The next grooming session should prioritize the user-selected pivot. No further 
 
 The landing experience now includes a compact historical-guitar feature block, anchored to the right side of the screen and paired with a brief explanatory footnote for the featured instrument. This is intentionally designed as a reusable content pattern for future rotating guitar highlights while staying lightweight and non-disruptive.
 
+The authenticated landing screen is also the Home route. The shell exposes the other app areas through a floating menu, with a back button on child routes and a safe fallback to Home.
+
 The current Sessions design follows a weekly workflow and includes compact timers, tuner references, program controls, and the expanded local learning-materials block:
 
 1. top week tiles on the page
@@ -79,6 +89,8 @@ The current Sessions design follows a weekly workflow and includes compact timer
 3. 7-day row for the selected week
 4. chosen day detail with vertical practice blocks
 5. compact practice block controls and collapsed recent sessions panel
+
+The Progress screen groups contiguous weeks by program on a connected timeline. Current and future groups expose inline week insertion; every week row opens its corresponding Plan week.
 
 This is intentional and should remain the visible structure unless the user requests a different layout.
 

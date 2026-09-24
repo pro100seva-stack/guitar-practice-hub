@@ -13,12 +13,17 @@ export default function AuthGate() {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session)
-      if (data.session) await ensureDefaultProgramContinuation()
+      if (data.session) {
+        await ensureDefaultProgramContinuation()
+        await supabase.rpc('sync_program_status')
+      }
       setLoading(false)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
-      if (newSession) void ensureDefaultProgramContinuation()
+      if (newSession) {
+        void ensureDefaultProgramContinuation().then(() => supabase.rpc('sync_program_status'))
+      }
     })
     return () => listener.subscription.unsubscribe()
   }, [])

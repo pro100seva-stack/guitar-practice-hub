@@ -26,6 +26,21 @@ The app is a client-side PWA that talks directly to Supabase Postgres for accoun
 
 ## Main application areas
 
+### App shell and navigation
+
+Files involved:
+
+- src/components/Layout.tsx
+- src/router.tsx
+
+Responsibilities:
+
+- expose Home, Progress, Plan, Practice, Stats, and Settings routes
+- keep the floating navigation menu available from every screen
+- highlight the active route in the menu
+- navigate back through browser history with a Home fallback for a direct entry
+- lazy-load routed page modules so the initial shell does not include every page
+
 ### Sessions screen
 
 Files involved:
@@ -55,6 +70,7 @@ Responsibilities:
 - edit week focus, tasks, and metadata
 - edit week topics and songs
 - persist changes to the week and related tables
+- add and remove weeks through transactional owner-scoped RPCs
 - expose program actions for Default, custom, pause, and resume flows
 - hide unscheduled program weeks until they are re-activated
 
@@ -83,6 +99,7 @@ Key fields:
 - user_id
 - name
 - status (`active`, `paused`, `completed`, `abandoned`)
+- total_weeks — prescribed duration; users may extend or shorten the plan by adding or removing weeks
 - created_at
 - updated_at
 
@@ -97,12 +114,12 @@ Key fields:
 - end_date
 - focus
 - tasks
-- phase
 - program_id
 - program_sequence
 - user_id
 
 `NULL` date fields represent unscheduled branch weeks that are intentionally hidden from the visible plan/calendar while a program is paused or diverged.
+Every plan week belongs to one program. Program status and `total_weeks` provide the foundation for active, paused, completed, extended, and deviated practice paths.
 
 ### topics
 
@@ -155,7 +172,7 @@ Key fields:
 
 ### app_settings
 
-Stores app-level preferences such as metronome BPM and beat count.
+Stores app-level preferences such as metronome BPM, beat count, reminder preference, Progress visibility, plan-note behavior, practice-card density, and target-practice-time visibility.
 
 ### user_profiles
 
@@ -183,7 +200,15 @@ Required:
 - Sessions, Plan, Stats, account flows, session-block upsert, tuner reference tones, Flexible Programs actions, and default continuation are implemented and validated.
 - Plan navigation uses a fixed-height week list, covered-date calendar picker, current-week shortcut, and selected-week editor without changing persistence behavior.
 - `session_blocks` has unique `(session_id, block_key)` through migration `03-session-block-uniqueness.sql`; migration and live update/removal checks passed.
+- Plan week insertion and removal use migrations `20260924100000_plan_week_actions.sql` and `20260924110000_fix_remove_plan_week_dates.sql`, keeping renumbering and date shifts atomic and reversible inside the database.
+- Selected week dates are editable in Plan; `20260924160000_reschedule_plan_week.sql` pushes conflicting later weeks forward while preserving their durations.
+- Program ownership and prescribed durations use `20260924120000_program_based_plan_weeks.sql` and `20260924130000_require_program_week_sequence.sql`; `20260924140000_sync_program_completion.sql` marks an active program completed after its prescribed sequence ends, while pause/resume actions preserve paused state.
+- Program reassignment uses `20260924180000_assign_plan_week_program.sql`; Progress inline insertion uses `20260924190000_insert_plan_week_without_pausing.sql`.
+- Visible date ranges use `src/lib/dateFormat.ts` with compact same-month, same-year, and cross-year formats.
+- `app_settings` includes persisted preference columns added by `20260924150000_add_user_preferences.sql` and `20260924170000_add_target_practice_time_preference.sql`.
 - Flexible Programs uses nullable scheduling semantics for inactive branches and filters unscheduled rows from visible reads; this is part of the live application contract.
 - Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. Application-level validation and seed data currently enforce the expected values by convention.
-- Microphone pitch detection and mobile zoom remain deferred. The current app is ready for a product pivot rather than more exploratory work.
+- Microphone pitch detection remains deferred. The tuner reference-tone slice is implemented.
+- Mobile pinch zoom is intentionally disabled in `index.html`.
+- The app is ready for a product pivot rather than more exploratory work.
 

@@ -16,20 +16,35 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
+          collapse_plan_notes: boolean
+          compact_practice_cards: boolean
+          habit_reminders: boolean
           metronome_beats: number
           metronome_bpm: number
+          show_completed_weeks: boolean
+          show_target_practice_time: boolean
           updated_at: string
           user_id: string
         }
         Insert: {
+          collapse_plan_notes?: boolean
+          compact_practice_cards?: boolean
+          habit_reminders?: boolean
           metronome_beats?: number
           metronome_bpm?: number
+          show_completed_weeks?: boolean
+          show_target_practice_time?: boolean
           updated_at?: string
           user_id?: string
         }
         Update: {
+          collapse_plan_notes?: boolean
+          compact_practice_cards?: boolean
+          habit_reminders?: boolean
           metronome_beats?: number
           metronome_bpm?: number
+          show_completed_weeks?: boolean
+          show_target_practice_time?: boolean
           updated_at?: string
           user_id?: string
         }
@@ -71,9 +86,8 @@ export type Database = {
           end_date: string | null
           focus: string
           id: string
-          phase: string
-          program_id: string | null
-          program_sequence: number | null
+          program_id: string
+          program_sequence: number
           start_date: string | null
           tasks: string | null
           updated_at: string
@@ -85,9 +99,8 @@ export type Database = {
           end_date?: string | null
           focus: string
           id?: string
-          phase: string
-          program_id?: string | null
-          program_sequence?: number | null
+          program_id: string
+          program_sequence: number
           start_date?: string | null
           tasks?: string | null
           updated_at?: string
@@ -99,9 +112,8 @@ export type Database = {
           end_date?: string | null
           focus?: string
           id?: string
-          phase?: string
-          program_id?: string | null
-          program_sequence?: number | null
+          program_id?: string
+          program_sequence?: number
           start_date?: string | null
           tasks?: string | null
           updated_at?: string
@@ -116,6 +128,7 @@ export type Database = {
           id: string
           name: string
           status: string
+          total_weeks: number
           updated_at: string
           user_id: string
         }
@@ -124,6 +137,7 @@ export type Database = {
           id?: string
           name: string
           status?: string
+          total_weeks?: number
           updated_at?: string
           user_id?: string
         }
@@ -132,6 +146,7 @@ export type Database = {
           id?: string
           name?: string
           status?: string
+          total_weeks?: number
           updated_at?: string
           user_id?: string
         }
@@ -316,12 +331,46 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_plan_week_program: {
+        Args: { p_program_id: string; p_week_id: string }
+        Returns: undefined
+      }
+      insert_plan_week: {
+        Args: {
+          p_end_date: string
+          p_focus: string
+          p_insert_after_week_id: string
+          p_program_id: string
+          p_start_date: string
+          p_tasks: string | null
+        }
+        Returns: string
+      }
+      add_plan_week: {
+        Args: {
+          p_end_date: string
+          p_focus: string
+          p_insert_after_week_id?: string
+          p_program_id: string
+          p_start_date: string
+          p_tasks: string | null
+        }
+        Returns: string
+      }
       pause_active_program: {
         Args: { p_user_id: string }
         Returns: undefined
       }
       pause_current_program: {
         Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      remove_plan_week: {
+        Args: { p_week_id: string }
+        Returns: string
+      }
+      reschedule_plan_week: {
+        Args: { p_end_date: string; p_start_date: string; p_week_id: string }
         Returns: undefined
       }
       resume_program: {
@@ -335,6 +384,10 @@ export type Database = {
       start_default_program: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      sync_program_status: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
     }
     Enums: {

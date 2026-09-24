@@ -4,7 +4,7 @@ This function is the server-only boundary for the future username-based account 
 
 - `create-account`: creates a Supabase Auth user with a project-scoped internal email and stores an owner profile.
 - `reset-password`: verifies the normalized security answer and sets a new password without revealing the old one.
-- `get-recovery-question`: returns the configured security question for a valid login name so the reset UI can prompt the correct answer.
+- `get-recovery-question`: returns the configured security question for a valid login name so the reset UI can prompt the correct answer. Unknown names return the same successful response shape without a question.
 
 Required function secrets:
 
@@ -17,4 +17,4 @@ Account creation initializes a `Default Practice Program` plus five Monday-based
 
 The service-role key and answer pepper must remain server-only. The Login UI calls this function for account creation and password reset; ordinary session sign-in continues through Supabase Auth.
 
-The limiter is intentionally a bounded per-function-instance guard for the initial boundary. A shared durable limiter is required before exposing this endpoint at scale.
+All three account actions use the bounded per-function-instance guard for the initial boundary. A shared durable limiter is required before exposing this endpoint at scale. Recovery-question lookup still necessarily returns a real question for valid names so the username-based recovery flow can work; the uniform response status prevents a direct HTTP status oracle, but this remains a reason to migrate to a stronger recovery mechanism before public scale.

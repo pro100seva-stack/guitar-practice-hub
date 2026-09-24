@@ -81,7 +81,7 @@ Deno.serve(async (request) => {
     return json({ error: 'Login name must be 3-32 characters using lowercase letters, numbers, dot, underscore, or hyphen.' }, 400)
   }
 
-  if (action === 'create-account' || action === 'reset-password') {
+  if (action === 'create-account' || action === 'reset-password' || action === 'get-recovery-question') {
     if (isRateLimited(request, loginName, action)) return json({ error: 'Too many attempts. Try again later.' }, 429)
   }
 
@@ -91,8 +91,7 @@ Deno.serve(async (request) => {
       .select('security_question')
       .eq('login_name', loginName)
       .maybeSingle()
-    if (!profile) return json({ error: 'Could not find that login name.' }, 404)
-    return json({ securityQuestion: profile.security_question })
+    return json({ securityQuestion: profile?.security_question ?? null })
   }
 
   if (action === 'create-account') {
@@ -159,7 +158,6 @@ Deno.serve(async (request) => {
         week_number: index + 1,
         start_date: startDate.toISOString().slice(0, 10),
         end_date: endDate.toISOString().slice(0, 10),
-        phase: 'course1',
         focus: ['Warmup and foundation', 'Technique and rhythm', 'Repertoire building', 'Harmony and improvisation', 'Review and integration'][index],
         tasks: 'Warmup, Technique, Rhythm, and Improv./Solo practice blocks.',
       }

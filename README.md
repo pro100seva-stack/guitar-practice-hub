@@ -10,6 +10,8 @@ The core v1 workflow is complete and validated, and the app now includes the Fle
 
 - Sessions screen for daily logging, notes, time totals, per-block tracking, and timer support
 - Weekly plan editing for focus, tasks, topics, and songs
+- Program-based week ownership with editable program assignment and prescribed program duration
+- Program-grouped Progress timeline with collapsible contiguous program periods and inline future-week insertion
 - Metronome helper with BPM controls and time-signature options
 - Stats dashboard for weekly/monthly/yearly review and per-block trend analysis
 - Same-day session re-editing and Recent Sessions reopening
@@ -17,6 +19,7 @@ The core v1 workflow is complete and validated, and the app now includes the Fle
 - Device-local learning materials with inline PDF, image, text, video, and YouTube embed viewing
 - Login, account creation, password reset, and five-week default program initialization
 - Default program continuation for logged-in users when a new calendar week should begin
+- Automatic program completion status synchronization after prescribed weeks end
 - Program start, pause, custom start, and resume actions through the Plan screen
 - Live password requirement feedback and security-question lookup during password reset
 - Supabase-backed persistence with auth and RLS policies
@@ -25,7 +28,7 @@ The core v1 workflow is complete and validated, and the app now includes the Fle
 
 ### Current UI focus
 
-The current UI keeps practice actions compact and keeps learning materials next to the relevant practice block. Uploaded materials stay in browser IndexedDB and are not uploaded to Supabase.
+The current UI uses a floating navigation menu and browser-history back button. The authenticated landing screen is the Home entry point for Progress, Plan, Practice, Stats, and Settings. Practice actions remain compact and learning materials stay next to the learning practice block. Uploaded materials stay in browser IndexedDB and are not uploaded to Supabase.
 
 The landing screen now includes a featured-guitar callout: a right-side historical guitar image with a short footnote that explains why the current featured instrument matters in guitar history and what it offered technically. This is intentionally structured so the app can rotate to a new famous guitar later without redesigning the layout.
 
@@ -44,6 +47,12 @@ The Plan screen currently emphasizes:
 - covered-date calendar navigation and a current-week shortcut
 - selected-week details and editing controls below the navigator
 - active/paused program badges and resume controls
+
+The app shell currently provides:
+
+- Home, Progress, Plan, Practice, Stats, and Settings routes
+- a floating menu with active-route highlighting
+- a back button with a landing-screen fallback
 
 The current implementation includes session-block uniqueness/upsert behavior, owner-scoped account data, program lifecycle handling, and a server-only Supabase Edge Function for account creation and password reset.
 

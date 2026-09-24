@@ -45,7 +45,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
-      <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm">
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm">
         <div className="relative mx-auto max-w-6xl px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -86,6 +86,16 @@ export default function Layout() {
                 Sign out
               </button>
             )}
+
+            {location.pathname === '/progress' && (
+              <button
+                type="button"
+                onClick={() => navigate('/stats')}
+                className="rounded-lg border border-amber-700/60 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition hover:border-amber-500"
+              >
+                Stats
+              </button>
+            )}
           </div>
 
           {menuOpen && (
@@ -122,7 +132,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <main className="mx-auto min-h-[calc(100vh-73px)] max-w-6xl p-4"><Outlet key={location.pathname} /></main>
+      <main className="mx-auto min-h-screen max-w-6xl px-4 pb-4 pt-[81px]"><Outlet key={location.pathname} /></main>
     </div>
   )
 }

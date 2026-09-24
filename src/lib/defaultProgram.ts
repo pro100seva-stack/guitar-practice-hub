@@ -59,7 +59,6 @@ export async function ensureDefaultProgramContinuation() {
     week_number: nextWeekNumber,
     start_date: toIsoDate(startDate),
     end_date: toIsoDate(endDate),
-    phase: 'course1',
     focus: defaultFocuses[(nextSequence - 1) % defaultFocuses.length],
     tasks: 'Warmup, Technique, Rhythm, and Improv./Solo practice blocks.',
   })

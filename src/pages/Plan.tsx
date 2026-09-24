@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
+import { formatDateRange } from '../lib/dateFormat'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -62,6 +64,7 @@ function getMonthGrid(monthDate: Date) {
 }
 
 export default function Plan() {
+  const [searchParams] = useSearchParams()
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [programs, setPrograms] = useState<Program[]>([])
   const [week, setWeek] = useState<ScheduledPlanWeek | null>(null)
@@ -72,11 +75,16 @@ export default function Plan() {
   const [message, setMessage] = useState<string | null>(null)
   const [focus, setFocus] = useState('')
   const [tasks, setTasks] = useState('')
+  const [weekStartDate, setWeekStartDate] = useState('')
+  const [weekEndDate, setWeekEndDate] = useState('')
   const [topics, setTopics] = useState<EditableTopic[]>([])
   const [songText, setSongText] = useState('')
   const [calendarOpen, setCalendarOpen] = useState(false)
+  const [rangeCalendarOpen, setRangeCalendarOpen] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
-  const [programName, setProgramName] = useState('')
+  const otherProgramOption = '__other__'
+  const [selectedProgramId, setSelectedProgramId] = useState('')
+    const [otherProgramName, setOtherProgramName] = useState('')
   const [newWeekStartDate, setNewWeekStartDate] = useState(() => toIsoDate(startOfWeekMonday(new Date())))
   const [newWeekEndDate, setNewWeekEndDate] = useState(() => toIsoDate(addDays(startOfWeekMonday(new Date()), 6)))
   const weekListRef = useRef<HTMLDivElement | null>(null)
@@ -103,6 +111,8 @@ export default function Plan() {
 
   useEffect(() => {
     void loadWeeks()
+    // The loader is intentionally run once when the Plan route mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -138,6 +148,8 @@ export default function Plan() {
     setError(null)
     setMessage(null)
 
+    await supabase.rpc('sync_program_status')
+
     const { data: weeksData, error: weeksError } = await supabase
       .from('plan_weeks')
       .select('*')
@@ -154,8 +166,8 @@ export default function Plan() {
 
     const { data: programsData, error: programsError } = await supabase
       .from('programs')
-      .select('*')
-      .order('created_at', { ascending: true })
+      .select('id, name, status, total_weeks, created_at, updated_at, user_id')
+      .order('name', { ascending: true })
 
     if (programsError) {
       setError(programsError.message)
@@ -166,7 +178,11 @@ export default function Plan() {
     setPrograms((programsData ?? []) as Program[])
 
     const today = new Date().toISOString().slice(0, 10)
-    const currentWeek = nextWeeks.find((item) => item.start_date <= today && item.end_date >= today) ?? nextWeeks[0] ?? null
+    const requestedWeekId = searchParams.get('week')
+    const currentWeek = nextWeeks.find((item) => item.id === requestedWeekId)
+      ?? nextWeeks.find((item) => item.start_date <= today && item.end_date >= today)
+      ?? nextWeeks[0]
+      ?? null
     const currentWeekId = currentWeek?.id ?? null
     setSelectedWeekId(currentWeekId)
 
@@ -220,8 +236,11 @@ export default function Plan() {
     setWeek(loadedWeek)
     setWeeks((current) => current.map((item) => item.id === loadedWeek.id ? loadedWeek : item))
     setSelectedWeekId(weekId)
+    setSelectedProgramId(loadedWeek.program_id)
     setFocus(weekData?.focus ?? '')
     setTasks(weekData?.tasks ?? '')
+    setWeekStartDate(loadedWeek.start_date)
+    setWeekEndDate(loadedWeek.end_date)
     setTopics([])
     setSongText('')
 
@@ -276,123 +295,32 @@ export default function Plan() {
     setMessage(null)
 
     const selectedIndex = week ? weeks.findIndex((item) => item.id === week.id) : weeks.length - 1
-    const insertIndex = selectedIndex >= 0 ? selectedIndex + 1 : weeks.length
-    const previousWeek = weeks[insertIndex - 1]
+    const previousWeek = weeks[selectedIndex]
     const startDate = parseIsoDate(newWeekStartDate)
     const endDate = parseIsoDate(newWeekEndDate)
-    const durationDays = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1
     if (endDate < startDate) {
       setError('Week end date must be on or after the start date.')
       setSaving(false)
       return
     }
-    const nextWeekNumber = insertIndex + 1
+    const { data: insertedWeekId, error: insertError } = await supabase.rpc('add_plan_week', {
+      p_start_date: toIsoDate(startDate),
+      p_end_date: toIsoDate(endDate),
+      p_program_id: previousWeek?.program_id ?? programs.find((program) => program.status === 'active')?.id ?? '',
+      p_focus: 'New practice week',
+      p_tasks: null,
+      p_insert_after_week_id: previousWeek?.id,
+    })
 
-    for (const affectedWeek of weeks.slice(insertIndex).reverse()) {
-      const { error: temporaryError } = await supabase
-        .from('plan_weeks')
-        .update({ week_number: 100000 + affectedWeek.week_number })
-        .eq('id', affectedWeek.id)
-
-      if (temporaryError) {
-        setError(temporaryError.message)
-        setSaving(false)
-        return
-      }
-    }
-
-    const { data: insertedWeek, error: insertError } = await supabase
-      .from('plan_weeks')
-      .insert({
-        week_number: nextWeekNumber,
-        start_date: toIsoDate(startDate),
-        end_date: toIsoDate(endDate),
-        phase: previousWeek?.phase ?? 'course1',
-        focus: 'New practice week',
-        tasks: null,
-      })
-      .select()
-      .single()
-
-    if (insertError || !insertedWeek) {
+    if (insertError || !insertedWeekId) {
       setError(insertError?.message ?? 'Could not add the week.')
       setSaving(false)
       return
     }
 
-    for (const affectedWeek of weeks.slice(insertIndex)) {
-      const { error: updateError } = await supabase
-        .from('plan_weeks')
-        .update({
-          week_number: affectedWeek.week_number + 1,
-          start_date: toIsoDate(addDays(parseIsoDate(affectedWeek.start_date), durationDays)),
-          end_date: toIsoDate(addDays(parseIsoDate(affectedWeek.end_date), durationDays)),
-        })
-        .eq('id', affectedWeek.id)
-
-      if (updateError) {
-        setError(updateError.message)
-        setSaving(false)
-        return
-      }
-    }
-
-    const { error: pauseError } = await supabase.rpc('pause_current_program')
-    if (pauseError) {
-      setError(pauseError.message)
-      setSaving(false)
-      return
-    }
-
     await loadWeeks()
-    await loadWeek(insertedWeek.id)
+    await loadWeek(insertedWeekId)
     setMessage('Week added successfully.')
-    setSaving(false)
-  }
-
-  async function startDefaultProgram() {
-    setSaving(true)
-    setError(null)
-    const { error: startError } = await supabase.rpc('start_default_program')
-    if (startError) {
-      setError(startError.message)
-      setSaving(false)
-      return
-    }
-    await loadWeeks()
-    setMessage('Default program started.')
-    setSaving(false)
-  }
-
-  async function startCustomProgram() {
-    const trimmedName = programName.trim()
-    if (!trimmedName) return
-
-    setSaving(true)
-    setError(null)
-    const { error: startError } = await supabase.rpc('start_custom_program', { program_name: trimmedName })
-    if (startError) {
-      setError(startError.message)
-      setSaving(false)
-      return
-    }
-    setProgramName('')
-    await loadWeeks()
-    setMessage('Custom program started.')
-    setSaving(false)
-  }
-
-  async function resumeProgram(programId: string) {
-    setSaving(true)
-    setError(null)
-    const { error: resumeError } = await supabase.rpc('resume_program', { target_program_id: programId })
-    if (resumeError) {
-      setError(resumeError.message)
-      setSaving(false)
-      return
-    }
-    await loadWeeks()
-    setMessage('Program resumed.')
     setSaving(false)
   }
 
@@ -403,31 +331,14 @@ export default function Plan() {
     setError(null)
     setMessage(null)
 
-    const { error: deleteError } = await supabase.from('plan_weeks').delete().eq('id', week.id)
-    if (deleteError) {
-      setError(deleteError.message)
+    const { data: nextWeekId, error: deleteError } = await supabase.rpc('remove_plan_week', { p_week_id: week.id })
+    if (deleteError || !nextWeekId) {
+      setError(deleteError?.message ?? 'Could not remove the week.')
       setSaving(false)
       return
     }
-
-    const remainingWeeks = weeks.filter((weekItem) => weekItem.id !== week.id)
-    for (const [index, remainingWeek] of remainingWeeks.entries()) {
-      const { error: updateError } = await supabase
-        .from('plan_weeks')
-        .update({ week_number: index + 1 })
-        .eq('id', remainingWeek.id)
-
-      if (updateError) {
-        setError(updateError.message)
-        setSaving(false)
-        return
-      }
-    }
-
-    const removedWeekIndex = weeks.findIndex((item) => item.id === week.id)
-    const nextWeek = remainingWeeks[Math.min(removedWeekIndex, remainingWeeks.length - 1)]
     await loadWeeks()
-    await loadWeek(nextWeek.id)
+    await loadWeek(nextWeekId)
     setMessage('Week removed successfully.')
     setSaving(false)
   }
@@ -455,6 +366,54 @@ export default function Plan() {
 
     const trimmedFocus = focus.trim()
     const trimmedTasks = tasks.trim() || null
+
+    const { error: dateError } = await supabase.rpc('reschedule_plan_week', {
+      p_week_id: week.id,
+      p_start_date: weekStartDate,
+      p_end_date: weekEndDate,
+    })
+
+    if (dateError) {
+      setError(dateError.message)
+      setSaving(false)
+      return
+    }
+
+    let targetProgramId = selectedProgramId
+    if (selectedProgramId === otherProgramOption) {
+      const trimmedProgramName = otherProgramName.trim()
+      if (!trimmedProgramName) {
+        setError('Enter a name for the other program.')
+        setSaving(false)
+        return
+      }
+
+      const { data: createdProgram, error: createProgramError } = await supabase
+        .from('programs')
+        .insert({ name: trimmedProgramName, status: 'active', total_weeks: 5 })
+        .select('id')
+        .single()
+
+      if (createProgramError || !createdProgram) {
+        setError(createProgramError?.message ?? 'Could not create the program.')
+        setSaving(false)
+        return
+      }
+      targetProgramId = createdProgram.id
+    }
+
+    if (targetProgramId !== week.program_id) {
+      const { error: programError } = await supabase.rpc('assign_plan_week_program', {
+        p_week_id: week.id,
+        p_program_id: targetProgramId,
+      })
+
+      if (programError) {
+        setError(programError.message)
+        setSaving(false)
+        return
+      }
+    }
 
     const { error: weekError } = await supabase
       .from('plan_weeks')
@@ -571,6 +530,7 @@ export default function Plan() {
 
     setMessage('Plan updated successfully.')
     setSaving(false)
+    await loadWeeks()
     await loadWeek(week.id)
   }
 
@@ -593,68 +553,19 @@ export default function Plan() {
             <h1 className="mt-1 text-2xl font-semibold text-slate-100">Week overview</h1>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
-            <span className="text-slate-400">Status:</span> editable in-app
-          </div>
         </div>
       </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Practice weeks</p>
-
-        <div className="mb-4 grid gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Programs</p>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-300">
-              {programs.filter((program) => program.status === 'active').map((program) => (
-                <span key={program.id} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                  Active: {program.name}
-                </span>
-              ))}
-              {programs.filter((program) => program.status === 'paused').map((program) => (
-                <button
-                  key={program.id}
-                  type="button"
-                  onClick={() => void resumeProgram(program.id)}
-                  disabled={saving}
-                  className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-200 transition hover:border-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Resume: {program.name}
-                </button>
-              ))}
-            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void startDefaultProgram()}
-              disabled={saving}
-              className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Start Default
-            </button>
-            <input
-              value={programName}
-              onChange={(event) => setProgramName(event.target.value)}
-              placeholder="Custom program name"
-              className="w-44 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 outline-none focus:border-slate-500"
-            />
-            <button
-              type="button"
-              onClick={() => void startCustomProgram()}
-              disabled={saving || !programName.trim()}
-              className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Start Custom
-            </button>
-          </div>
-        </div>
-          </div>
-
-          <div className="flex w-full max-w-[440px] flex-wrap items-center gap-2">
+          <div className="flex w-full flex-1 flex-col gap-3">
+            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">Add week</p>
+              <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void addWeek()}
@@ -681,6 +592,12 @@ export default function Plan() {
                 className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-200"
               />
             </label>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">Navigate weeks</p>
+              <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void removeWeek()}
@@ -708,7 +625,7 @@ export default function Plan() {
                 onClick={() => setCalendarOpen((current) => !current)}
                 className="flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm text-slate-200 focus:border-slate-500"
               >
-                <span>{week ? `Week ${week.week_number} · ${week.start_date}` : 'Choose a covered week'}</span>
+                <span>{week ? `Week ${week.week_number} · ${formatDateRange(week.start_date, week.end_date)}` : 'Choose a covered week'}</span>
                 <span className="text-slate-400">▾</span>
               </button>
 
@@ -781,6 +698,8 @@ export default function Plan() {
             </div>
           </div>
         </div>
+        </div>
+      </div>
 
         <div ref={weekListRef} className="plan-week-list max-h-[420px] overflow-y-auto pr-2">
           <div className="space-y-3">
@@ -812,10 +731,10 @@ export default function Plan() {
                   </div>
 
                   <p className="mt-2 text-base font-semibold text-slate-100">{weekItem.focus || 'Plan focus'}</p>
-                  <p className="mt-1 text-xs text-slate-400">{weekItem.start_date} – {weekItem.end_date}</p>
+                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date)}</p>
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-300">
-                      {weekItem.phase}
+                      {programs.find((program) => program.id === weekItem.program_id)?.name ?? 'Program'}
                     </span>
                     <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
                       {weekItem.updated_at !== weekItem.created_at || weekItem.focus.trim() !== 'New practice week' || Boolean(weekItem.tasks?.trim()) ? 'Updated' : 'Draft'}
@@ -833,7 +752,7 @@ export default function Plan() {
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Selected week</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-100">Week {week.week_number}: {week.focus}</h2>
-            <p className="mt-1 text-sm text-slate-400">{week.start_date} – {week.end_date} · {week.phase}</p>
+            <p className="mt-1 text-sm text-slate-400">{formatDateRange(week.start_date, week.end_date)} · {programs.find((program) => program.id === week.program_id)?.name ?? 'Program'}</p>
           </div>
 
           {week.start_date <= new Date().toISOString().slice(0, 10) && week.end_date >= new Date().toISOString().slice(0, 10) && (
@@ -855,17 +774,102 @@ export default function Plan() {
             />
           </label>
 
-          <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
+              <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week info</p>
             <div className="mt-3 space-y-2 text-sm text-slate-300">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-400">Phase</span>
-                <span>{week.phase}</span>
+                <span className="text-slate-400">Program</span>
+                  <select
+                    value={selectedProgramId}
+                    onChange={(event) => setSelectedProgramId(event.target.value)}
+                    className="max-w-[65%] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-left text-sm text-slate-200"
+                  >
+                    {programs.map((program) => (
+                      <option key={program.id} value={program.id}>{program.name}</option>
+                    ))}
+                    <option value={otherProgramOption}>Other</option>
+                  </select>
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-400">Dates</span>
-                <span>{week.start_date} – {week.end_date}</span>
-              </div>
+                {selectedProgramId === otherProgramOption && (
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">Program name</span>
+                    <input
+                      value={otherProgramName}
+                      onChange={(event) => setOtherProgramName(event.target.value)}
+                      placeholder="Your program name"
+                      className="max-w-[65%] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-right text-sm text-slate-200"
+                      required
+                    />
+                  </label>
+                )}
+                  <div className="relative">
+                    <span className="text-slate-400">Dates</span>
+                    <button
+                      type="button"
+                      onClick={() => setRangeCalendarOpen((open) => !open)}
+                      className="mt-1 flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-2 py-1 text-left text-sm text-slate-200 focus:border-slate-500"
+                    >
+                      <span>{formatDateRange(weekStartDate, weekEndDate)}</span>
+                      <span className="text-slate-400">▾</span>
+                    </button>
+
+                    {rangeCalendarOpen && (
+                      <div className="absolute right-0 z-20 mt-2 w-[320px] max-w-full rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+                            className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                          >
+                            Prev
+                          </button>
+                          <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+                            className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                          >
+                            Next
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.15em] text-slate-400">
+                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayLabel) => <div key={dayLabel} className="py-1">{dayLabel}</div>)}
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-7 gap-1">
+                          {monthGrid.map((day) => {
+                            const isoDate = toIsoDate(day)
+                            const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
+                            const rangeStart = parseIsoDate(weekStartDate)
+                            const rangeEnd = parseIsoDate(weekEndDate)
+                            const isSelected = day >= rangeStart && day <= rangeEnd
+
+                            return (
+                              <button
+                                key={isoDate}
+                                type="button"
+                                disabled={!isCurrentMonth}
+                                onClick={() => {
+                                  const selectedStart = startOfWeekMonday(day)
+                                  setWeekStartDate(toIsoDate(selectedStart))
+                                  setWeekEndDate(toIsoDate(addDays(selectedStart, 6)))
+                                  setRangeCalendarOpen(false)
+                                }}
+                                className={[
+                                  'aspect-square rounded-md text-sm transition',
+                                  isCurrentMonth ? 'text-slate-200 hover:bg-slate-800' : 'cursor-not-allowed text-slate-600',
+                                  isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
+                                ].join(' ')}
+                              >
+                                {day.getDate()}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
             </div>
           </div>
         </div>

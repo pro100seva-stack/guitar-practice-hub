@@ -12,18 +12,33 @@
 
 -- ---------- Plan structure ----------
 
+create table if not exists programs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  name text not null,
+  status text not null default 'active',
+  total_weeks int not null default 5,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint programs_name_not_blank check (length(btrim(name)) > 0),
+  constraint programs_total_weeks_check check (total_weeks > 0),
+  unique (id, user_id)
+);
+
 create table if not exists plan_weeks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   week_number int not null,
   start_date date not null,
   end_date date not null,
-  phase text not null,               -- 'course1' | 'course2' | 'concert_prep' | 'concert_week' | 'historical' | ... (open text, not enum, so new phases don't need a migration)
+  program_id uuid not null references programs(id),
+  program_sequence int not null,
   focus text not null,               -- short title for the week
   tasks text,                        -- longer freeform plan description
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (user_id, week_number)
+  unique (user_id, week_number),
+  unique (program_id, program_sequence)
 );
 
 create table if not exists topics (

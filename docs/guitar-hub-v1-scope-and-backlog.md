@@ -2,16 +2,17 @@
 
 Status: the app has a working core v1 workflow plus the Flexible Programs foundation and program actions. The implementation is stable and validated; the current state is ready for a user-defined product pivot rather than another feature spike.
 
-## Current status (2026-09-22)
+## Current status (2026-09-24)
 
 - The project remains aligned with the original architecture: React frontend, Supabase as the app backend, and a PWA shell for phone and desktop use.
 - Sessions, Plan, Stats, auth, default-program continuation, and program actions are connected to real Supabase data and are operational.
 - The app can log daily sessions, maintain weekly plans, review progress trends, create/reset user accounts, and continue a default practice path over time.
 - Flexible Programs is implemented at the schema and app-action layer: `programs` rows, nullable scheduled weeks, pausing/resuming, and default continuation are live.
+- Plan weeks now use `program_id` as their ownership source; the unused `plan_weeks.phase` field has been removed, and programs carry a prescribed `total_weeks` duration.
 - `session_blocks` enforces unique `(session_id, block_key)` through migration `03-session-block-uniqueness.sql`.
 - Program state is visible in the Plan UI through active/paused program badges and Start Default / Start Custom / Resume actions.
 - The landing screen now includes a right-side featured guitar panel and a compact informational footnote for the Frankenstrat, establishing the pattern for future rotating-guitar highlights.
-- The codebase is in a validated, pivot-ready state; no new feature work should continue until the user defines the next product change.
+- The codebase is in a validated state with the program timeline and week insertion workflow active; remaining work is limited to the open P2 practice enhancements.
 
 ## Product direction
 
@@ -58,25 +59,28 @@ No blocking items.
 
 ### P1 — High priority
 
-0. **New — 2026-09-22:** Navigation shell pivot: sandwich menu + back button
-   - remove the top-of-screen tab strip and replace it with a left-aligned sandwich menu button plus a persistent back button
-   - menu is a floating context sheet anchored over the current screen and lists: Home, Progress, Plan, Practice, Stats, Settings
-   - current screen is visually highlighted and separated by a top/bottom border within the floating menu
-   - back button is always available and should navigate the browser history with a safe fallback to the landing screen
+0. **Completed — 2026-09-24:** Navigation shell pivot: floating menu + back button
+   - the top-of-screen tab strip is replaced by a left-aligned menu button and a back button on child routes
+   - the menu is a floating context sheet anchored over the current screen and lists: Home, Progress, Plan, Practice, Stats, Settings
+   - the current screen is visually highlighted within the floating menu
+   - the back button navigates browser history with a safe fallback to the landing screen
 
-1. **New — 2026-09-22:** Landing screen as the authenticated home screen
-   - after login, the authenticated user lands on a dedicated Home/Landing screen
-   - this becomes the entry point to Progress, Plan, Practice, Stats, and Settings
-   - placeholder content is enough for now; route plumbing and navigation actions are the immediate requirement
+1. **Completed — 2026-09-24:** Landing screen as the authenticated home screen
+   - the authenticated user lands on the dedicated Home/Landing screen
+   - Home is the entry point to Progress, Plan, Practice, Stats, and Settings
+   - route plumbing and navigation actions are in place
 
-2. **New — 2026-09-22:** Progress screen as the practice journey overview
+2. **Completed — 2026-09-24:** Progress screen as the program-grouped practice timeline
    - show a tree/list-style practice journey with completed weeks and upcoming weeks
-   - allow the user to choose a different program or diverge path from this screen
    - include a clear route to Plan and Stats from the screen body
+   - contiguous weeks are grouped by program with a connected visual timeline
+   - current and future weeks can be inserted inline with program, date, focus, and task details
+   - each week opens its corresponding Plan week
 
-3. **New — 2026-09-22:** Settings screen as a preferences surface
+3. **Completed — 2026-09-24:** Settings screen as a preferences surface
    - provide a dedicated settings screen with user preferences toggles and future options
-   - restrict access to the Settings screen through the sandwich menu, not the normal top tabs
+   - preferences persist in `app_settings`
+   - the completed-weeks preference affects the Progress overview
 
 4. **Completed — 2026-09-22:** Flexible Programs program foundation
    - `programs` is a first-class table with `status` and ownership
@@ -107,30 +111,26 @@ No blocking items.
    - it is designed to be future-rotated so a different famous guitar can appear on a later run without redesigning the shell
    - the current implementation centers the Frankenstrat and explains why it matters technically and historically
 
-9. **Open — awaiting product pivot:** Practice-path timeline visualization
-   - a single linear practice-path timeline remains a valid future enhancement after the current pivot is defined
-   - the working data model already supports program branching and resume semantics
-
-10. **Open — awaiting product pivot:** Landing/home explainer screen
+9. **Open — awaiting product pivot:** Landing/home explainer screen
    - this is a product-facing UX step that can be built on the already implemented foundation
    - it is deliberately deferred until the next product change is scoped, while the featured-guitar callout remains a lower-friction landing enhancement
 
-11. **Completed — 2026-09-22:** Lock mobile pinch zoom as intended
+10. **Completed — 2026-09-22:** Lock mobile pinch zoom as intended
    - mobile viewport behavior is intentionally fixed to prevent unwanted zooming in/out
    - this item is closed; no backlog action remains
 
-8. **Open — 2026-09-22:** Lock active metronome while scrolling
+11. **Open — 2026-09-22:** Lock active metronome while scrolling
    - when the metronome is active on Sessions, it remains fixed at the top of the viewport while scrolling through practice blocks
    - metronome settings and start/stop controls remain accessible while viewing lower blocks
    - the fixed metronome does not obscure or break the practice-block workflow
 
-9. **Open — 2026-09-22:** Attach learning materials to every practice block
+12. **Open — 2026-09-22:** Attach learning materials to every practice block
    - each practice block can have its own attached learning materials
    - materials use the file/reference types supported by the existing learning-materials feature
    - materials remain clearly associated with their owning practice block and do not leak into another block
    - implementation reuses the existing learning-materials approach rather than introducing a separate storage system
 
-10. **Open — 2026-09-22:** Bookmark and resume video reference materials
+13. **Open — 2026-09-22:** Bookmark and resume video reference materials
    - a video reference material can have one or more saved bookmarks
    - each bookmark stores a usable position in the video
    - bookmarks persist when the user leaves and later returns to the application
@@ -156,9 +156,9 @@ Context: the app now has a working program model that separates scheduled calend
    - migration `08-program-actions.sql` and the follow-up `20260914130000_resume_all_program_weeks.sql` are in place
    - default-program continuation logic in `src/lib/defaultProgram.ts` and the auth gate in `src/components/AuthGate.tsx` are active
 
-17. **Open — awaiting product pivot:** Practice path timeline visualization
-   - the underlying model is ready for a timeline view, but product scope for the exact visual treatment is still pending
-   - timeline work should only begin after the user chooses the next pivot direction
+17. **Completed — 2026-09-24:** Practice path timeline visualization
+   - Progress groups contiguous program periods on a connected timeline
+   - current and future program periods support inline week insertion
 
 ## Decision log
 
@@ -170,12 +170,22 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-22 — Adjusted the backlog for the new app-shell pivot: the old tab-bar navigation is replaced by a sandwich menu plus persistent back button, with Home/Progress/Plan/Practice/Stats/Settings as the new screen flow.
 - 2026-09-22 — Added the landing-page featured-guitar callout and its compact footnote, creating a reusable pattern for future historical-guitar highlights without overloading the main screen.
 - 2026-09-22 — Mobile pinch zoom is intentionally locked on mobile screens; the earlier backlog item is closed and scratched.
+- 2026-09-24 — The navigation shell and Home route were verified in the current router and layout; Progress and Settings remain open because their placeholder screens are not yet fully functional.
+- 2026-09-24 — Settings remains open because its preferences do not persist or affect behavior; Progress is now backed by scheduled weeks and session activity.
+- 2026-09-24 — Progress now loads scheduled weeks and session activity from Supabase; program selection/divergence and Settings preferences remain open.
+- 2026-09-24 — Plan week add/remove operations moved into owner-scoped transactional RPCs; recovery-question lookup is rate-limited with a uniform response shape; routed pages are lazy-loaded to reduce the initial bundle.
+- 2026-09-24 — Removing an inserted week now reverses the duration shift for later weeks as well as restoring their numbering.
+- 2026-09-24 — Plan-week ownership moved fully to programs: `plan_weeks.phase` was removed, `programs.total_weeks` was added, and Progress rows now open their corresponding Plan week.
+- 2026-09-24 — Settings preferences were made persistent through `app_settings`; Progress now honors the completed-weeks preference.
+- 2026-09-24 — Progress became a program-grouped timeline with collapsible contiguous program periods and inline current/future week insertion.
+- 2026-09-24 — Plan week program assignment, compact date-range formatting, practiced-day markers, and fixed app-shell/header behavior were completed.
+- 2026-09-24 — Selected Plan week dates are editable; conflicting later weeks are shifted forward transactionally while preserving their durations.
 
 ## Recommended next steps
 
 1. Await the user's pivot instructions.
 2. Keep the current Flexible Programs data model as the baseline unless the pivot explicitly changes the product shape.
-3. Revisit the landing/home explainer or timeline only after the new direction is defined.
+3. Revisit the landing/home explainer only after the next product direction is defined.
 
 ## Delivery pipeline
 
@@ -184,8 +194,8 @@ Context: the app now has a working program model that separates scheduled calend
 - **Done:** default five-week practice program creation and logged-in continuation flow.
 - **Done:** Sessions tuner presets, continuous reference tones, and device-local learning-materials viewer.
 - **Open P2:** active metronome stays accessible while scrolling; learning materials can be attached per practice block; video reference bookmarks can resume saved positions.
-- **Ready for pivot:** additional product direction remains user-defined; the three explicit P2 stories above are now captured in the backlog for grooming/approval.
-- **Planned only after pivot:** landing/home explainer, timeline visualization, and any other new UX re-scoping.
+- **Ready for pivot:** additional product direction remains user-defined; the three explicit Sessions/materials P2 stories above are captured in the backlog for grooming/approval.
+- **Planned only after pivot:** landing/home explainer and any other new UX re-scoping.
 
 ## Completed milestones
 

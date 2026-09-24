@@ -53,7 +53,7 @@ export default function Landing() {
   const currentWeekDescription = loading
     ? 'Loading current week…'
     : currentWeek
-      ? `Week ${currentWeek.week_number ?? '?'} · ${currentWeek.focus?.trim() || currentWeek.phase || 'Current week plan'}`
+      ? `Week ${currentWeek.week_number ?? '?'} · ${currentWeek.focus?.trim() || 'Current week plan'}`
       : 'No current week plan yet'
 
   const navItems = [
