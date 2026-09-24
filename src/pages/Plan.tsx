@@ -85,8 +85,6 @@ export default function Plan() {
   const otherProgramOption = '__other__'
   const [selectedProgramId, setSelectedProgramId] = useState('')
     const [otherProgramName, setOtherProgramName] = useState('')
-  const [newWeekStartDate, setNewWeekStartDate] = useState(() => toIsoDate(startOfWeekMonday(new Date())))
-  const [newWeekEndDate, setNewWeekEndDate] = useState(() => toIsoDate(addDays(startOfWeekMonday(new Date()), 6)))
   const weekListRef = useRef<HTMLDivElement | null>(null)
 
   const coveredDates = useMemo(() => {
@@ -296,13 +294,8 @@ export default function Plan() {
 
     const selectedIndex = week ? weeks.findIndex((item) => item.id === week.id) : weeks.length - 1
     const previousWeek = weeks[selectedIndex]
-    const startDate = parseIsoDate(newWeekStartDate)
-    const endDate = parseIsoDate(newWeekEndDate)
-    if (endDate < startDate) {
-      setError('Week end date must be on or after the start date.')
-      setSaving(false)
-      return
-    }
+    const startDate = previousWeek ? addDays(parseIsoDate(previousWeek.end_date), 1) : startOfWeekMonday(new Date())
+    const endDate = addDays(startDate, 6)
     const { data: insertedWeekId, error: insertError } = await supabase.rpc('add_plan_week', {
       p_start_date: toIsoDate(startDate),
       p_end_date: toIsoDate(endDate),
@@ -534,8 +527,8 @@ export default function Plan() {
     await loadWeek(week.id)
   }
 
-  if (loading) return <p>Loading…</p>
   if (error) return <p className="text-red-400">Error: {error}</p>
+  if (loading && !week) return <p>Loading…</p>
   if (!week) return <p>No plan_weeks row covers today's date.</p>
 
   const monthGrid = getMonthGrid(calendarMonth)
@@ -557,149 +550,120 @@ export default function Plan() {
       </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Practice weeks</p>
-          </div>
 
-          <div className="flex w-full flex-1 flex-col gap-3">
-            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">Add week</p>
-              <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void addWeek()}
-              disabled={saving}
-              className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-            >
-              Insert after selected
-            </button>
-            <label className="flex items-center gap-2 text-xs text-slate-400">
-              <span>Start</span>
-              <input
-                type="date"
-                value={newWeekStartDate}
-                onChange={(event) => setNewWeekStartDate(event.target.value)}
-                className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-200"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-xs text-slate-400">
-              <span>End</span>
-              <input
-                type="date"
-                value={newWeekEndDate}
-                onChange={(event) => setNewWeekEndDate(event.target.value)}
-                className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-200"
-              />
-            </label>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">Navigate weeks</p>
-              <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void removeWeek()}
-              disabled={saving || weeks.length <= 1 || !week}
-              className="shrink-0 rounded border border-rose-900/70 bg-slate-950 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-700 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-            >
-              Remove week
-            </button>
-            <button
-              type="button"
-              disabled={!currentWeek || isCurrentWeekSelected}
-              onClick={() => {
-                if (currentWeek) {
-                  void loadWeek(currentWeek.id)
-                }
-              }}
-              className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-            >
-              Current week
-            </button>
-
-            <div className="relative min-w-0 flex-1 basis-full sm:basis-auto">
+            <div className="mt-3 flex flex-col gap-2 sm:w-56">
               <button
                 type="button"
-                onClick={() => setCalendarOpen((current) => !current)}
-                className="flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm text-slate-200 focus:border-slate-500"
+                disabled={!currentWeek || isCurrentWeekSelected}
+                onClick={() => {
+                  if (currentWeek) {
+                    void loadWeek(currentWeek.id)
+                  }
+                }}
+                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
               >
-                <span>{week ? `Week ${week.week_number} · ${formatDateRange(week.start_date, week.end_date)}` : 'Choose a covered week'}</span>
-                <span className="text-slate-400">▾</span>
+                Current week
               </button>
-
-              {calendarOpen && (
-                <div className="absolute left-0 right-0 z-20 mt-2 w-[320px] max-w-full rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60 sm:left-auto sm:right-0 sm:max-w-[calc(100vw-2rem)]">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
-                    }
-                    className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                  >
-                    Prev
-                  </button>
-                  <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
-                    }
-                    className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                  >
-                    Next
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.15em] text-slate-400">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayLabel) => (
-                    <div key={dayLabel} className="py-1">
-                      {dayLabel}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-2 grid grid-cols-7 gap-1">
-                  {monthGrid.map((day) => {
-                    const isoDate = toIsoDate(day)
-                    const isCovered = coveredDates.availableDates.has(isoDate)
-                    const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
-                    const isSelected = coveredDates.weekByDate.get(isoDate)?.id === selectedWeekId
-
-                    return (
-                      <button
-                        key={isoDate}
-                        type="button"
-                        disabled={!isCovered || !isCurrentMonth}
-                        onClick={() => {
-                          if (!isCovered) return
-                          const targetWeek = coveredDates.weekByDate.get(isoDate)
-                          if (targetWeek) {
-                            setCalendarOpen(false)
-                            void loadWeek(targetWeek.id)
-                          }
-                        }}
-                        className={[
-                          'aspect-square rounded-md text-sm transition',
-                          isCurrentMonth ? 'text-slate-200' : 'text-slate-500',
-                          isCovered ? 'hover:bg-slate-800' : 'cursor-not-allowed bg-slate-900/80 text-slate-600',
-                          isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
-                        ].join(' ')}
-                      >
-                        {day.getDate()}
-                      </button>
-                    )
-                  })}
-                </div>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => void addWeek()}
+                disabled={saving}
+                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+              >
+                Insert after selected
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeWeek()}
+                disabled={saving || weeks.length <= 1 || !week}
+                className="rounded border border-rose-900/70 bg-slate-950 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-700 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+              >
+                Remove week
+              </button>
             </div>
           </div>
+
+          <div className="relative w-full sm:w-72">
+            <button
+              type="button"
+              onClick={() => setCalendarOpen((current) => !current)}
+              className="flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm text-slate-200 focus:border-slate-500"
+            >
+              <span>{week ? `Week ${week.week_number} · ${formatDateRange(week.start_date, week.end_date)}` : 'Choose a covered week'}</span>
+              <span className="text-slate-400">▾</span>
+            </button>
+
+            {calendarOpen && (
+              <div className="absolute left-0 right-0 z-20 mt-2 w-[320px] max-w-full rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60 sm:left-auto sm:right-0 sm:max-w-[calc(100vw-2rem)]">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
+                  }
+                  className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                >
+                  Prev
+                </button>
+                <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
+                  }
+                  className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                >
+                  Next
+                </button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.15em] text-slate-400">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayLabel) => (
+                  <div key={dayLabel} className="py-1">
+                    {dayLabel}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-2 grid grid-cols-7 gap-1">
+                {monthGrid.map((day) => {
+                  const isoDate = toIsoDate(day)
+                  const isCovered = coveredDates.availableDates.has(isoDate)
+                  const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
+                  const isSelected = coveredDates.weekByDate.get(isoDate)?.id === selectedWeekId
+
+                  return (
+                    <button
+                      key={isoDate}
+                      type="button"
+                      disabled={!isCovered || !isCurrentMonth}
+                      onClick={() => {
+                        if (!isCovered) return
+                        const targetWeek = coveredDates.weekByDate.get(isoDate)
+                        if (targetWeek) {
+                          setCalendarOpen(false)
+                          void loadWeek(targetWeek.id)
+                        }
+                      }}
+                      className={[
+                        'aspect-square rounded-md text-sm transition',
+                        isCurrentMonth ? 'text-slate-200' : 'text-slate-500',
+                        isCovered ? 'hover:bg-slate-800' : 'cursor-not-allowed bg-slate-900/80 text-slate-600',
+                        isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
+                      ].join(' ')}
+                    >
+                      {day.getDate()}
+                    </button>
+                  )
+                })}
+              </div>
+              </div>
+            )}
+          </div>
         </div>
-        </div>
-      </div>
 
         <div ref={weekListRef} className="plan-week-list max-h-[420px] overflow-y-auto pr-2">
           <div className="space-y-3">
