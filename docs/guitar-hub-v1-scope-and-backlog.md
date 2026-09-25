@@ -13,6 +13,7 @@ Status: the app has a working core v1 workflow plus the Flexible Programs founda
 - Program state is visible in the Plan UI through active/paused program badges and Start Default / Start Custom / Resume actions.
 - Account creation now captures English, Russian, Italian, or French as the initial language preference; Settings can change the interface preference later without rewriting practice content.
 - Default programs store their content language independently from the interface preference, so continuation weeks remain consistent with the original program language.
+- New accounts now begin default week 1 on the UTC calendar date of account creation; the remaining weeks continue in seven-day intervals.
 - The landing screen now includes a right-side featured guitar panel and a compact informational footnote for the Frankenstrat, establishing the pattern for future rotating-guitar highlights.
 - The codebase is in a validated state with the program timeline and week insertion workflow active; remaining work is limited to the open P2 practice enhancements.
 
@@ -60,6 +61,25 @@ The remaining work is product-definition work, not missing baseline implementati
 No blocking items.
 
 ### P1 — High priority
+
+9. **Completed — 2026-09-25:** Start the default program on account creation
+   - week 1 starts on the account-creation date rather than the next Monday
+   - the five-week sequence and seven-day week durations remain unchanged
+   - the Edge Function uses a UTC calendar date so the stored date is deterministic
+
+10. **Next — P1:** Rename Topics to ToDo without changing behavior
+   - rename the database `topics` table to `todos` through a migration
+   - update RLS policies, generated database types, queries, and UI labels
+   - preserve `id`, `week_id`, `name`, `source`, `done`, and `sort_order` values exactly
+   - keep Plan editing and completion behavior unchanged
+   - do not translate or rewrite existing user-entered item names
+
+11. **Next — P1:** Add a ToDo checklist to the Sessions screen
+   - show the selected week's ToDo items beside the practice-session controls
+   - allow completion to be toggled directly from Sessions
+   - persist changes to the same `todos.done` field used by Plan
+   - avoid creating duplicate checklist records or changing session/block totals
+   - localize the checklist UI while preserving user-entered ToDo names
 
 0. **Completed — 2026-09-24:** Navigation shell pivot: floating menu + back button
    - the top-of-screen tab strip is replaced by a left-aligned menu button and a back button on child routes
@@ -191,12 +211,14 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-24 — Plan week program assignment, compact date-range formatting, practiced-day markers, and fixed app-shell/header behavior were completed.
 - 2026-09-24 — Selected Plan week dates are editable; conflicting later weeks are shifted forward transactionally while preserving their durations.
 - 2026-09-25 — Moved language selection off sign-in and into account creation; Settings now owns later interface-language changes, while default-program content retains its original language.
+- 2026-09-25 — Groomed the immediate-start, Topics-to-ToDo, and Sessions ToDo-checklist requests; ordered the database/UI rename before the Sessions integration.
 
 ## Recommended next steps
 
-1. Await the user's pivot instructions.
-2. Keep the current Flexible Programs data model as the baseline unless the pivot explicitly changes the product shape.
-3. Revisit the landing/home explainer only after the next product direction is defined.
+1. Rename the `topics` model to `todos` while preserving all existing data and behavior.
+2. Add the persisted ToDo checklist to Sessions.
+3. Keep the current Flexible Programs and localization models as the baseline.
+4. Revisit the landing/home explainer only after the next product direction is defined.
 
 ## Delivery pipeline
 

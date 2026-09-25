@@ -167,8 +167,7 @@ Deno.serve(async (request) => {
     }
 
     const programStart = new Date()
-    const day = programStart.getUTCDay()
-    programStart.setUTCDate(programStart.getUTCDate() + (day === 0 ? 1 : day === 1 ? 0 : 8 - day))
+    programStart.setUTCHours(0, 0, 0, 0)
     const programWeeks = Array.from({ length: 5 }, (_, index) => {
       const startDate = new Date(programStart)
       startDate.setUTCDate(programStart.getUTCDate() + index * 7)
