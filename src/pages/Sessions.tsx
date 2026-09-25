@@ -4,6 +4,7 @@ import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, saveLoca
 import type { Database } from '../lib/database.types'
 import { formatDate, formatDateRange, localeForLanguage } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
+import { getDefaultMaterials } from '../lib/defaultMaterials'
 
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
@@ -1523,6 +1524,7 @@ export default function Sessions() {
               const timerMinutes = Math.floor(elapsedSeconds / 60)
               const timerSeconds = elapsedSeconds % 60
               const isExpanded = expandedBlockIds.has(template.id)
+              const defaultMaterials = getDefaultMaterials(language, template.key)
 
               return (
                 <div key={template.id} className="flex flex-col gap-3 rounded border border-slate-800 bg-slate-950/60 p-3 md:flex-row md:items-start md:justify-between">
@@ -1555,6 +1557,17 @@ export default function Sessions() {
                         <p className="mt-2 text-sm text-slate-300">
                           {template.description?.trim() || t('No description available for this practice block.')}
                         </p>
+                        {defaultMaterials.length > 0 && (
+                          <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/50 p-3">
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{t('Default references')}</p>
+                            {defaultMaterials.map((material) => (
+                              <div key={material.title} className="rounded border border-slate-800 bg-slate-950/60 px-3 py-2">
+                                <p className="text-xs font-medium text-slate-200">{material.title}</p>
+                                <p className="mt-1 text-xs leading-relaxed text-slate-400">{material.detail}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {template.key === 'learning' && (
                           <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/60 p-3">
                             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">

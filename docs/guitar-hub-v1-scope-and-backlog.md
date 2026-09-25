@@ -175,12 +175,12 @@ No blocking items.
    - selecting a bookmark jumps directly to its saved position
    - bookmarks remain associated with the relevant video reference material
 
-14. **Next — P2:** Add default reference materials to every practice block
+14. **Completed — 2026-09-25:** Add default reference materials to every practice block
    - provide curated starter references for each built-in practice block
    - keep default references separate from user-added local files and URLs
    - show references in the owning block only, with the existing device-local viewer behavior where applicable
    - make the starter set localizable by interface language without translating user-added material names
-   - define an update strategy so future defaults do not overwrite user edits or removals
+   - built-in references are code-owned and do not overwrite user edits, removals, files, or URLs
 
 ### Epic: Flexible Programs & Practice Path
 
@@ -231,11 +231,12 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Added the selected-week ToDo checklist to Sessions; checkbox changes update `todos.done` independently of session totals and practice blocks.
 - 2026-09-25 — Groomed Sessions-side ToDo creation as the next P1 follow-up and separated system-provided default block references from user-added learning materials as a new P2 item.
 - 2026-09-25 — Added inline ToDo creation in Sessions with ordered insertion and immediate completion support.
+- 2026-09-25 — Added localized built-in reference guidance for every practice block, kept separate from device-local user materials.
 
 ## Recommended next steps
 
 1. Keep the current Flexible Programs and localization models as the baseline.
-2. Groom default practice-block references separately from user-added materials, sticky metronome behavior, and video bookmarks.
+2. Groom the next P2 practice enhancement: sticky metronome behavior, per-block user materials, or video bookmarks.
 3. Revisit the landing/home explainer only after the next product direction is defined.
 
 ## Delivery pipeline

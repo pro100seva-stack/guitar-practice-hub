@@ -74,6 +74,10 @@ Object.assign(pageTranslations.en, { 'Could not save the ToDo.': 'Could not save
 Object.assign(pageTranslations.ru, { 'Could not save the ToDo.': 'Не удалось сохранить задачу.' })
 Object.assign(pageTranslations.it, { 'Could not save the ToDo.': 'Impossibile salvare l’attività.' })
 Object.assign(pageTranslations.fr, { 'Could not save the ToDo.': 'Impossible d’enregistrer la tâche.' })
+Object.assign(pageTranslations.en, { 'Default references': 'Default references' })
+Object.assign(pageTranslations.ru, { 'Default references': 'Материалы по умолчанию' })
+Object.assign(pageTranslations.it, { 'Default references': 'Riferimenti predefiniti' })
+Object.assign(pageTranslations.fr, { 'Default references': 'Références par défaut' })
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
