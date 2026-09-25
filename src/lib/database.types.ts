@@ -270,7 +270,7 @@ export type Database = {
         }
         Relationships: []
       }
-      topics: {
+      todos: {
         Row: {
           done: boolean
           id: string
@@ -297,7 +297,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "topics_week_id_fkey"
+            foreignKeyName: "todos_week_id_fkey"
             columns: ["week_id"]
             isOneToOne: false
             referencedRelation: "plan_weeks"

@@ -12,10 +12,10 @@ type ScheduledPlanWeek = PlanWeek & {
   start_date: string
   week_number: number
 }
-type Topic = Database['public']['Tables']['topics']['Row']
+type Todo = Database['public']['Tables']['todos']['Row']
 type Song = Database['public']['Tables']['songs']['Row']
 
-type EditableTopic = {
+type EditableTodo = {
   id: string | null
   name: string
   done: boolean
@@ -79,7 +79,7 @@ export default function Plan() {
   const [tasks, setTasks] = useState('')
   const [weekStartDate, setWeekStartDate] = useState('')
   const [weekEndDate, setWeekEndDate] = useState('')
-  const [topics, setTopics] = useState<EditableTopic[]>([])
+  const [todos, setTodos] = useState<EditableTodo[]>([])
   const [songText, setSongText] = useState('')
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [rangeCalendarOpen, setRangeCalendarOpen] = useState(false)
@@ -190,7 +190,7 @@ export default function Plan() {
       setWeek(null)
       setFocus('')
       setTasks('')
-      setTopics([])
+      setTodos([])
       setSongText('')
       setLoading(false)
       return
@@ -208,7 +208,7 @@ export default function Plan() {
       setWeek(null)
       setFocus('')
       setTasks('')
-      setTopics([])
+      setTodos([])
       setSongText('')
       setLoading(false)
       return
@@ -241,7 +241,7 @@ export default function Plan() {
     setTasks(weekData?.tasks ?? '')
     setWeekStartDate(loadedWeek.start_date)
     setWeekEndDate(loadedWeek.end_date)
-    setTopics([])
+    setTodos([])
     setSongText('')
 
     if (!weekData) {
@@ -249,9 +249,9 @@ export default function Plan() {
       return
     }
 
-    const [{ data: topicsData, error: topicsError }, { data: weekSongsData, error: weekSongsError }] = await Promise.all([
+    const [{ data: todosData, error: todosError }, { data: weekSongsData, error: weekSongsError }] = await Promise.all([
       supabase
-        .from('topics')
+        .from('todos')
         .select('*')
         .eq('week_id', weekData.id)
         .order('sort_order', { ascending: true }),
@@ -261,8 +261,8 @@ export default function Plan() {
         .eq('week_id', weekData.id),
     ])
 
-    if (topicsError) {
-      setError(topicsError.message)
+    if (todosError) {
+      setError(todosError.message)
       setLoading(false)
       return
     }
@@ -273,10 +273,10 @@ export default function Plan() {
       return
     }
 
-    const loadedTopics = (topicsData ?? []).map((topic: Topic) => ({
-      id: topic.id,
-      name: topic.name,
-      done: topic.done,
+    const loadedTodos = (todosData ?? []).map((todo: Todo) => ({
+      id: todo.id,
+      name: todo.name,
+      done: todo.done,
     }))
 
     const loadedSongs = ((weekSongsData ?? []) as Array<{ songs?: Song | null }>).flatMap((entry) => {
@@ -284,7 +284,7 @@ export default function Plan() {
       return name ? [name] : []
     })
 
-    setTopics(loadedTopics)
+    setTodos(loadedTodos)
     setSongText(loadedSongs.join('\n'))
     setLoading(false)
   }
@@ -338,16 +338,16 @@ export default function Plan() {
     setSaving(false)
   }
 
-  function addTopic() {
-    setTopics((current) => [...current, { id: null, name: '', done: false }])
+  function addTodo() {
+    setTodos((current) => [...current, { id: null, name: '', done: false }])
   }
 
-  function updateTopic(index: number, updates: Partial<EditableTopic>) {
-    setTopics((current) => current.map((topic, topicIndex) => (topicIndex === index ? { ...topic, ...updates } : topic)))
+  function updateTodo(index: number, updates: Partial<EditableTodo>) {
+    setTodos((current) => current.map((todo, todoIndex) => (todoIndex === index ? { ...todo, ...updates } : todo)))
   }
 
-  function removeTopic(index: number) {
-    setTopics((current) => current.filter((_, topicIndex) => topicIndex !== index))
+  function removeTodo(index: number) {
+    setTodos((current) => current.filter((_, todoIndex) => todoIndex !== index))
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -425,28 +425,28 @@ export default function Plan() {
       return
     }
 
-    const filteredTopics = topics.filter((topic) => topic.name.trim().length > 0)
-    const { error: topicDeleteError } = await supabase.from('topics').delete().eq('week_id', week.id)
+    const filteredTodos = todos.filter((todo) => todo.name.trim().length > 0)
+    const { error: todoDeleteError } = await supabase.from('todos').delete().eq('week_id', week.id)
 
-    if (topicDeleteError) {
-      setError(topicDeleteError.message)
+    if (todoDeleteError) {
+      setError(todoDeleteError.message)
       setSaving(false)
       return
     }
 
-    if (filteredTopics.length > 0) {
-      const { error: topicInsertError } = await supabase.from('topics').insert(
-        filteredTopics.map((topic, index) => ({
+    if (filteredTodos.length > 0) {
+      const { error: todoInsertError } = await supabase.from('todos').insert(
+        filteredTodos.map((todo, index) => ({
           week_id: week.id,
-          name: topic.name.trim(),
-          done: topic.done,
+          name: todo.name.trim(),
+          done: todo.done,
           sort_order: index + 1,
           source: 'app',
         }))
       )
 
-      if (topicInsertError) {
-        setError(topicInsertError.message)
+      if (todoInsertError) {
+        setError(todoInsertError.message)
         setSaving(false)
         return
       }
@@ -861,36 +861,36 @@ export default function Plan() {
 
         <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-200">{t('Topics')}</p>
+            <p className="text-sm font-medium text-slate-200">{t('ToDo')}</p>
             <button
               type="button"
-              onClick={addTopic}
+              onClick={addTodo}
               className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
             >
-              {t('+ Add topic')}
+              {t('+ Add ToDo')}
             </button>
           </div>
 
           <div className="space-y-2">
-            {topics.length === 0 && <p className="text-sm text-slate-400">{t('No topics yet for this week.')}</p>}
+            {todos.length === 0 && <p className="text-sm text-slate-400">{t('No ToDo items yet for this week.')}</p>}
 
-            {topics.map((topic, index) => (
-              <div key={`${topic.id ?? 'new'}-${index}`} className="flex items-center gap-2">
+            {todos.map((todo, index) => (
+              <div key={`${todo.id ?? 'new'}-${index}`} className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={topic.done}
-                  onChange={(event) => updateTopic(index, { done: event.target.checked })}
+                  checked={todo.done}
+                  onChange={(event) => updateTodo(index, { done: event.target.checked })}
                   className="h-4 w-4 rounded border-slate-700 bg-slate-950"
                 />
                 <input
-                  value={topic.name}
-                  onChange={(event) => updateTopic(index, { name: event.target.value })}
+                  value={todo.name}
+                  onChange={(event) => updateTodo(index, { name: event.target.value })}
                   className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none transition focus:border-slate-500"
-                  placeholder={t('Topic name')}
+                  placeholder={t('ToDo name')}
                 />
                 <button
                   type="button"
-                  onClick={() => removeTopic(index)}
+                  onClick={() => removeTodo(index)}
                   className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400"
                 >
                   {t('Remove')}

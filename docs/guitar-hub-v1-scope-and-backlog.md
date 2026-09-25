@@ -14,6 +14,7 @@ Status: the app has a working core v1 workflow plus the Flexible Programs founda
 - Account creation now captures English, Russian, Italian, or French as the initial language preference; Settings can change the interface preference later without rewriting practice content.
 - Default programs store their content language independently from the interface preference, so continuation weeks remain consistent with the original program language.
 - New accounts now begin default week 1 on the UTC calendar date of account creation; the remaining weeks continue in seven-day intervals.
+- The former Topics checklist is now named ToDo in the database and Plan UI; existing checklist rows and completion states were preserved.
 - The landing screen now includes a right-side featured guitar panel and a compact informational footnote for the Frankenstrat, establishing the pattern for future rotating-guitar highlights.
 - The codebase is in a validated state with the program timeline and week insertion workflow active; remaining work is limited to the open P2 practice enhancements.
 
@@ -67,8 +68,8 @@ No blocking items.
    - the five-week sequence and seven-day week durations remain unchanged
    - the Edge Function uses a UTC calendar date so the stored date is deterministic
 
-10. **Next — P1:** Rename Topics to ToDo without changing behavior
-   - rename the database `topics` table to `todos` through a migration
+10. **Completed — 2026-09-25:** Rename Topics to ToDo without changing behavior
+   - rename the database `topics` table to `todos` through migration `20260925130000_rename_topics_to_todos.sql`
    - update RLS policies, generated database types, queries, and UI labels
    - preserve `id`, `week_id`, `name`, `source`, `done`, and `sort_order` values exactly
    - keep Plan editing and completion behavior unchanged
@@ -212,6 +213,7 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-24 — Selected Plan week dates are editable; conflicting later weeks are shifted forward transactionally while preserving their durations.
 - 2026-09-25 — Moved language selection off sign-in and into account creation; Settings now owns later interface-language changes, while default-program content retains its original language.
 - 2026-09-25 — Groomed the immediate-start, Topics-to-ToDo, and Sessions ToDo-checklist requests; ordered the database/UI rename before the Sessions integration.
+- 2026-09-25 — Applied the Topics-to-ToDo rename in place; the next item is exposing the same ToDo checklist in Sessions.
 
 ## Recommended next steps
 

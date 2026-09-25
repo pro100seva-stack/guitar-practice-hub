@@ -41,7 +41,7 @@ create table if not exists plan_weeks (
   unique (program_id, program_sequence)
 );
 
-create table if not exists topics (
+create table if not exists todos (
   id uuid primary key default gen_random_uuid(),
   week_id uuid not null references plan_weeks(id) on delete cascade,
   name text not null,
@@ -142,4 +142,4 @@ grant select, insert, update, delete on table public.plan_weeks to service_role;
 create index if not exists idx_sessions_date on sessions (session_date);
 create index if not exists idx_plan_weeks_dates on plan_weeks (start_date, end_date);
 create index if not exists idx_session_blocks_session on session_blocks (session_id);
-create index if not exists idx_topics_week on topics (week_id);
+create index if not exists idx_todos_week on todos (week_id);

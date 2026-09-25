@@ -13,7 +13,7 @@
 -- ============================================================
 
 alter table plan_weeks     enable row level security;
-alter table topics         enable row level security;
+alter table todos          enable row level security;
 alter table songs          enable row level security;
 alter table week_songs     enable row level security;
 alter table block_templates enable row level security;
@@ -71,23 +71,23 @@ create policy "user_profiles_owner_delete" on user_profiles
 
 -- ---------- Indirect ownership (via parent FK, no user_id column) ----------
 
-create policy "topics_owner_select" on topics
+create policy "todos_owner_select" on todos
   for select using (
-    exists (select 1 from plan_weeks w where w.id = topics.week_id and w.user_id = auth.uid())
+    exists (select 1 from plan_weeks w where w.id = todos.week_id and w.user_id = auth.uid())
   );
-create policy "topics_owner_insert" on topics
+create policy "todos_owner_insert" on todos
   for insert with check (
-    exists (select 1 from plan_weeks w where w.id = topics.week_id and w.user_id = auth.uid())
+    exists (select 1 from plan_weeks w where w.id = todos.week_id and w.user_id = auth.uid())
   );
-create policy "topics_owner_update" on topics
+create policy "todos_owner_update" on todos
   for update using (
-    exists (select 1 from plan_weeks w where w.id = topics.week_id and w.user_id = auth.uid())
+    exists (select 1 from plan_weeks w where w.id = todos.week_id and w.user_id = auth.uid())
   ) with check (
-    exists (select 1 from plan_weeks w where w.id = topics.week_id and w.user_id = auth.uid())
+    exists (select 1 from plan_weeks w where w.id = todos.week_id and w.user_id = auth.uid())
   );
-create policy "topics_owner_delete" on topics
+create policy "todos_owner_delete" on todos
   for delete using (
-    exists (select 1 from plan_weeks w where w.id = topics.week_id and w.user_id = auth.uid())
+    exists (select 1 from plan_weeks w where w.id = todos.week_id and w.user_id = auth.uid())
   );
 
 create policy "session_blocks_owner_select" on session_blocks

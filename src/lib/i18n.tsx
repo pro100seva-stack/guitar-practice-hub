@@ -58,6 +58,11 @@ Object.assign(pageTranslations.ru, { 'Low Eb': 'Низкая Eb', 'High Eb': 'В
 Object.assign(pageTranslations.it, { 'Low Eb': 'Eb basso', 'High Eb': 'Eb alto', 'Could not save the song list.': 'Impossibile salvare l’elenco dei brani.' })
 Object.assign(pageTranslations.fr, { 'Low Eb': 'Eb grave', 'High Eb': 'Eb aigu', 'Could not save the song list.': 'Impossible d’enregistrer la liste des morceaux.' })
 
+Object.assign(pageTranslations.en, { 'ToDo': 'ToDo', '+ Add ToDo': '+ Add ToDo', 'No ToDo items yet for this week.': 'No ToDo items yet for this week.', 'ToDo name': 'ToDo name' })
+Object.assign(pageTranslations.ru, { 'ToDo': 'Задачи', '+ Add ToDo': '+ Добавить задачу', 'No ToDo items yet for this week.': 'На этой неделе пока нет задач.', 'ToDo name': 'Название задачи' })
+Object.assign(pageTranslations.it, { 'ToDo': 'Attività', '+ Add ToDo': '+ Aggiungi attività', 'No ToDo items yet for this week.': 'Nessuna attività per questa settimana.', 'ToDo name': 'Nome dell’attività' })
+Object.assign(pageTranslations.fr, { 'ToDo': 'À faire', '+ Add ToDo': '+ Ajouter une tâche', 'No ToDo items yet for this week.': 'Aucune tâche pour cette semaine.', 'ToDo name': 'Nom de la tâche' })
+
 const translations: Record<Language, Record<string, string>> = {
   en: {
     ...pageTranslations.en,
