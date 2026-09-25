@@ -142,6 +142,7 @@ export default function Sessions() {
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
   const [todos, setTodos] = useState<Todo[]>([])
+  const [newTodoName, setNewTodoName] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -651,6 +652,33 @@ export default function Sessions() {
       setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done: todo.done } : item))
       setError(todoError.message)
     }
+  }
+
+  async function addTodo() {
+    const name = newTodoName.trim()
+    if (!name || !planWeek) return
+
+    setError(null)
+    const nextSortOrder = Math.max(-1, ...todos.map((todo) => todo.sort_order)) + 1
+    const { data, error: todoError } = await supabase
+      .from('todos')
+      .insert({
+        week_id: planWeek.id,
+        name,
+        done: false,
+        sort_order: nextSortOrder,
+        source: 'app',
+      })
+      .select('*')
+      .single()
+
+    if (todoError || !data) {
+      setError(todoError?.message ?? t('Could not add the ToDo.'))
+      return
+    }
+
+    setTodos((current) => [...current, data as Todo])
+    setNewTodoName('')
   }
 
   function addBlock() {
@@ -1310,6 +1338,23 @@ export default function Sessions() {
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('ToDo checklist')}</p>
             <span className="text-xs text-slate-500">{todos.filter((todo) => todo.done).length}/{todos.length}</span>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              value={newTodoName}
+              onChange={(event) => setNewTodoName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addTodo() } }}
+              placeholder={t('Add a ToDo')}
+              className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+            />
+            <button
+              type="button"
+              onClick={() => { void addTodo() }}
+              disabled={!newTodoName.trim() || !planWeek}
+              className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-50"
+            >
+              {t('Add')}
+            </button>
           </div>
           {todos.length === 0 ? (
             <p className="mt-3 text-sm text-slate-400">{t('No ToDo items for this week.')}</p>

@@ -82,6 +82,13 @@ No blocking items.
    - avoid creating duplicate checklist records or changing session/block totals
    - localize the checklist UI while preserving user-entered ToDo names
 
+12. **Completed — 2026-09-25:** Add ToDo items from the Sessions screen
+   - provide an add control beside the selected week's ToDo checklist
+   - create the item in `todos` with the selected `week_id`, `done = false`, and the next `sort_order`
+   - allow the new item to be completed immediately without leaving Sessions
+   - preserve Plan editing, ownership/RLS, and existing ToDo names
+   - keep session totals and practice-block records independent from ToDo creation
+
 0. **Completed — 2026-09-24:** Navigation shell pivot: floating menu + back button
    - the top-of-screen tab strip is replaced by a left-aligned menu button and a back button on child routes
    - the menu is a floating context sheet anchored over the current screen and lists: Home, Progress, Plan, Practice, Stats, Settings
@@ -168,6 +175,13 @@ No blocking items.
    - selecting a bookmark jumps directly to its saved position
    - bookmarks remain associated with the relevant video reference material
 
+14. **Next — P2:** Add default reference materials to every practice block
+   - provide curated starter references for each built-in practice block
+   - keep default references separate from user-added local files and URLs
+   - show references in the owning block only, with the existing device-local viewer behavior where applicable
+   - make the starter set localizable by interface language without translating user-added material names
+   - define an update strategy so future defaults do not overwrite user edits or removals
+
 ### Epic: Flexible Programs & Practice Path
 
 Context: the app now has a working program model that separates scheduled calendar weeks from unscheduled program branch state. The data model supports pausing and resuming a program without deleting or reparenting weeks, which preserves a single linear chronology while allowing branch divergence.
@@ -215,11 +229,13 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Groomed the immediate-start, Topics-to-ToDo, and Sessions ToDo-checklist requests; ordered the database/UI rename before the Sessions integration.
 - 2026-09-25 — Applied the Topics-to-ToDo rename in place; the next item is exposing the same ToDo checklist in Sessions.
 - 2026-09-25 — Added the selected-week ToDo checklist to Sessions; checkbox changes update `todos.done` independently of session totals and practice blocks.
+- 2026-09-25 — Groomed Sessions-side ToDo creation as the next P1 follow-up and separated system-provided default block references from user-added learning materials as a new P2 item.
+- 2026-09-25 — Added inline ToDo creation in Sessions with ordered insertion and immediate completion support.
 
 ## Recommended next steps
 
 1. Keep the current Flexible Programs and localization models as the baseline.
-2. Groom the next P2 practice enhancement: sticky metronome, per-block materials, or video bookmarks.
+2. Groom default practice-block references separately from user-added materials, sticky metronome behavior, and video bookmarks.
 3. Revisit the landing/home explainer only after the next product direction is defined.
 
 ## Delivery pipeline

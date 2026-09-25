@@ -66,6 +66,10 @@ Object.assign(pageTranslations.en, { 'ToDo checklist': 'ToDo checklist', 'No ToD
 Object.assign(pageTranslations.ru, { 'ToDo checklist': 'Список задач', 'No ToDo items for this week.': 'На этой неделе нет задач.' })
 Object.assign(pageTranslations.it, { 'ToDo checklist': 'Elenco attività', 'No ToDo items for this week.': 'Nessuna attività per questa settimana.' })
 Object.assign(pageTranslations.fr, { 'ToDo checklist': 'Liste des tâches', 'No ToDo items for this week.': 'Aucune tâche pour cette semaine.' })
+Object.assign(pageTranslations.en, { 'Add a ToDo': 'Add a ToDo', 'Add': 'Add', 'Could not add the ToDo.': 'Could not add the ToDo.' })
+Object.assign(pageTranslations.ru, { 'Add a ToDo': 'Добавить задачу', 'Add': 'Добавить', 'Could not add the ToDo.': 'Не удалось добавить задачу.' })
+Object.assign(pageTranslations.it, { 'Add a ToDo': 'Aggiungi un’attività', 'Add': 'Aggiungi', 'Could not add the ToDo.': 'Impossibile aggiungere l’attività.' })
+Object.assign(pageTranslations.fr, { 'Add a ToDo': 'Ajouter une tâche', 'Add': 'Ajouter', 'Could not add the ToDo.': 'Impossible d’ajouter la tâche.' })
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
