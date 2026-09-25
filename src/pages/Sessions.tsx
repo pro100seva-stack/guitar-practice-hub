@@ -1808,9 +1808,11 @@ export default function Sessions() {
                     <button
                       type="button"
                       onClick={() => removeBlock(template.id)}
-                      className="text-[11px] font-medium text-rose-300 whitespace-nowrap"
+                      aria-label={t('Remove block')}
+                      title={t('Remove block')}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-500/70 bg-transparent text-lg leading-none text-rose-300 transition hover:border-rose-300 hover:text-rose-100"
                     >
-                      {t('Remove block')}
+                      <span aria-hidden="true">×</span>
                     </button>
                   </div>
                 </div>
