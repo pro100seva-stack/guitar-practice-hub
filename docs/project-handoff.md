@@ -42,6 +42,7 @@ The core workflow, account foundation, session-block upsert, program foundation,
 - Changing the Settings language is intentionally UI-only and does not translate programs, weeks, sessions, songs, comments, or notes.
 - The language-aware `account-gateway` Edge Function has been deployed to Supabase.
 - Full UI translation coverage is implemented across the current app surfaces. User-owned Supabase content remains unchanged when the interface language changes.
+- Default exercise folders are prepared under `public/default-exercises/`; Warmup and Learning PDFs are supplied and open inline from Sessions when default exercises are enabled.
 
 The session write path is explicitly marked with `source: 'app'`; parent session upsert, targeted block removal, and block upsert all passed live verification.
 

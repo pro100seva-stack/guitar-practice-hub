@@ -5,10 +5,8 @@ import { useI18n } from '../lib/i18n'
 
 type Preferences = {
   language: Language
-  habit_reminders: boolean
+  include_default_exercises: boolean
   show_completed_weeks: boolean
-  collapse_plan_notes: boolean
-  compact_practice_cards: boolean
   show_target_practice_time: boolean
 }
 
@@ -16,10 +14,8 @@ type BooleanPreferenceKey = Exclude<keyof Preferences, 'language'>
 
 const defaultPreferences: Preferences = {
   language: defaultLanguage,
-  habit_reminders: true,
+  include_default_exercises: true,
   show_completed_weeks: true,
-  collapse_plan_notes: false,
-  compact_practice_cards: false,
   show_target_practice_time: true,
 }
 
@@ -27,18 +23,13 @@ const preferenceGroups: Array<{ label: string; items: Array<{ key: BooleanPrefer
   {
     label: 'Practice',
     items: [
-      { key: 'habit_reminders', label: 'Enable habit reminders' },
-      { key: 'compact_practice_cards', label: 'Use compact practice cards' },
+      { key: 'include_default_exercises', label: 'Include default exercises' },
       { key: 'show_target_practice_time', label: 'Show target practice time' },
     ],
   },
   {
     label: 'Progress',
     items: [{ key: 'show_completed_weeks', label: 'Show completed weeks in progress overview' }],
-  },
-  {
-    label: 'Plan',
-    items: [{ key: 'collapse_plan_notes', label: 'Keep plan notes collapsed by default' }],
   },
 ]
 
@@ -56,10 +47,8 @@ export default function Settings() {
       if (data) {
         setPreferences({
           language: isLanguage(data.language) ? data.language : defaultLanguage,
-          habit_reminders: data.habit_reminders,
+          include_default_exercises: data.include_default_exercises ?? true,
           show_completed_weeks: data.show_completed_weeks,
-          collapse_plan_notes: data.collapse_plan_notes,
-          compact_practice_cards: data.compact_practice_cards,
           show_target_practice_time: data.show_target_practice_time,
         })
       }

@@ -49,6 +49,7 @@ export default function Layout() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                data-tour="menu"
                 aria-label={t('Open navigation menu')}
                 onClick={() => setMenuOpen((current) => !current)}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"

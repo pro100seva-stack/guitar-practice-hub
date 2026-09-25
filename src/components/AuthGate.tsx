@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { ensureDefaultProgramContinuation } from '../lib/defaultProgram'
 import { router } from '../router'
 import Login from '../pages/Login'
+import FirstEntryTour from './FirstEntryTour'
 
 export default function AuthGate() {
   const [session, setSession] = useState<Session | null>(null)
@@ -29,5 +30,9 @@ export default function AuthGate() {
   }, [])
 
   if (loading) return <div className="min-h-screen bg-slate-900" />
-  return !session ? <Login /> : <RouterProvider router={router} />
+  return !session ? <Login /> : (
+    <FirstEntryTour userId={session.user.id}>
+      <RouterProvider router={router} />
+    </FirstEntryTour>
+  )
 }

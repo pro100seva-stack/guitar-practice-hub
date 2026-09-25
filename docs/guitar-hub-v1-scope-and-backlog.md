@@ -15,6 +15,7 @@ Status: the app has a working core v1 workflow plus the Flexible Programs founda
 - Default programs store their content language independently from the interface preference, so continuation weeks remain consistent with the original program language.
 - New accounts now begin default week 1 on the UTC calendar date of account creation; the remaining weeks continue in seven-day intervals.
 - The former Topics checklist is now named ToDo in the database and Plan UI; existing checklist rows and completion states were preserved.
+- Settings now exposes only preferences with active behavior: language, completed-week visibility, target-practice-time visibility, and default-exercise visibility.
 - The landing screen now includes a right-side featured guitar panel and a compact informational footnote for the Frankenstrat, establishing the pattern for future rotating-guitar highlights.
 - The codebase is in a validated state with the program timeline and week insertion workflow active; remaining work is limited to the open P2 practice enhancements.
 
@@ -149,9 +150,14 @@ No blocking items.
    - it is designed to be future-rotated so a different famous guitar can appear on a later run without redesigning the shell
    - the current implementation centers the Frankenstrat and explains why it matters technically and historically
 
-9. **Open — awaiting product pivot:** Landing/home explainer screen
-   - this is a product-facing UX step that can be built on the already implemented foundation
-   - it is deliberately deferred until the next product change is scoped, while the featured-guitar callout remains a lower-friction landing enhancement
+9. **Completed — 2026-09-25:** First-entry guided tour
+   - show a first-run guide for newly created users explaining the app purpose and core workflow
+   - highlight relevant controls or navigation targets one at a time with an anchored hint surface
+   - provide localized `Next`, `Back`, `Skip`, and `Done` actions for English, Russian, Italian, and French
+   - persist completion per account/device so the guide does not reappear after finishing
+   - keep the guide dismissible and usable with keyboard, mouse, touch, and mobile layouts
+   - the current implementation highlights the navigation menu, Progress, current-week Plan, and Practice actions
+   - completion is stored per authenticated user and browser device
 
 10. **Completed — 2026-09-22:** Lock mobile pinch zoom as intended
    - mobile viewport behavior is intentionally fixed to prevent unwanted zooming in/out
@@ -184,6 +190,13 @@ No blocking items.
    - show references in the owning block only, with the existing device-local viewer behavior where applicable
    - make the starter set localizable by interface language without translating user-added material names
    - built-in references are code-owned and do not overwrite user edits, removals, files, or URLs
+
+18. **Completed — 2026-09-25:** Populate the default-exercise PDF assets
+   - add supplied exercise PDFs under `public/default-exercises/{block-key}/`
+   - keep filenames and block folders stable so the app can ship the starter set predictably
+   - verify each PDF is visible only when the default-exercise Settings toggle is enabled
+   - do not overwrite user-uploaded device-local materials
+   - Warmup and Learning PDFs are supplied and open inline in Sessions
 
 ### Epic: Flexible Programs & Practice Path
 
@@ -239,11 +252,15 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Groomed the metronome into compact icon controls with tap, hold, and right-click interactions; selected per-block learning materials as the next P2 implementation.
 - 2026-09-25 — Scoped user-added learning materials to every expanded practice block while preserving the existing device-local storage model.
 - 2026-09-25 — Added device-local video bookmarks with timestamp jump, save, and removal controls.
+- 2026-09-25 — Replaced the removed Home explainer concept with a first-entry guided-tour backlog item.
+- 2026-09-25 — Removed three no-op Settings controls and applied the preference cleanup migration; active settings now have documented runtime behavior.
+- 2026-09-25 — Implemented the localized first-entry guided tour with highlighted navigation and Home actions.
+- 2026-09-25 — Added supplied Warmup and Learning PDFs to the default-exercise catalog with inline Sessions viewing.
 
 ## Recommended next steps
 
 1. Keep the current Flexible Programs and localization models as the baseline.
-2. Revisit the landing/home explainer only after the next product direction is defined.
+2. Test the first-entry guided tour across new accounts, languages, keyboard, touch, and narrow screens.
 
 ## Delivery pipeline
 

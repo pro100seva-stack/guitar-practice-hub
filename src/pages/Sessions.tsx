@@ -156,6 +156,7 @@ export default function Sessions() {
   const [timers, setTimers] = useState<Record<string, BlockTimerState>>({})
   const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
   const [showTargetPracticeTime, setShowTargetPracticeTime] = useState(true)
+  const [includeDefaultExercises, setIncludeDefaultExercises] = useState(true)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
   const [isMetronomeSettingsOpen, setIsMetronomeSettingsOpen] = useState(false)
   const [currentBeat, setCurrentBeat] = useState(0)
@@ -175,6 +176,8 @@ export default function Sessions() {
   const [materialSaveState, setMaterialSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [localStorageEstimate, setLocalStorageEstimate] = useState<LocalStorageEstimate>({ usage: null, quota: null })
   const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null)
+  const [activeDefaultMaterialUrl, setActiveDefaultMaterialUrl] = useState<string | null>(null)
+  const [activeDefaultMaterialTitle, setActiveDefaultMaterialTitle] = useState<string | null>(null)
   const [activeMaterialUrl, setActiveMaterialUrl] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [loopStart, setLoopStart] = useState<number | null>(null)
@@ -194,6 +197,7 @@ export default function Sessions() {
   const metronomeHoldTriggeredRef = useRef(false)
   const tunerHoldTimerRef = useRef<number | null>(null)
   const tunerHoldTriggeredRef = useRef(false)
+  const materialsLoadRequestRef = useRef(0)
   const bpmRef = useRef(bpm)
   const beatsPerMeasureRef = useRef(beatsPerMeasure)
   const lookaheadRef = useRef(0.12)
@@ -206,10 +210,15 @@ export default function Sessions() {
   }, [])
 
   async function loadLearningMaterials(blockKey = materialBlockKey) {
+    const requestId = materialsLoadRequestRef.current + 1
+    materialsLoadRequestRef.current = requestId
     try {
+      const materials = await listLocalMaterials(blockKey)
+      if (requestId !== materialsLoadRequestRef.current) return
       setMaterialBlockKey(blockKey)
-      setLearningMaterials(await listLocalMaterials(blockKey))
-      setActiveMaterialId(null)
+      setLearningMaterials(materials)
+      setActiveDefaultMaterialUrl(null)
+      setActiveDefaultMaterialTitle(null)
       setLocalStorageEstimate(await estimateLocalStorage())
     } catch (loadError) {
       setMaterialError(loadError instanceof Error ? loadError.message : t('Could not load local materials.'))
@@ -259,6 +268,10 @@ export default function Sessions() {
       setLoopStart(null)
       setLoopEnd(null)
       setIsLooping(false)
+    }).catch((loadError) => {
+      if (cancelled) return
+      setActiveMaterialUrl(null)
+      setMediaError(loadError instanceof Error ? loadError.message : t('Could not load the local material.'))
     })
     return () => {
       cancelled = true
@@ -272,7 +285,8 @@ export default function Sessions() {
     setMaterialNotice(null)
     setMaterialSaveState('saving')
     const extension = file.name.split('.').pop()?.toLowerCase()
-    const detectedType = file.type || (extension === 'mp4' ? 'video/mp4' : extension === 'webm' ? 'video/webm' : extension === 'mov' ? 'video/quicktime' : '')
+    const extensionType = extension === 'mp4' ? 'video/mp4' : extension === 'webm' ? 'video/webm' : extension === 'mov' ? 'video/quicktime' : ''
+    const detectedType = extensionType || file.type
     const allowedTypes = ['application/pdf', 'image/', 'text/plain', 'video/']
     const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? detectedType.startsWith(type) : detectedType === type)
     if (!isAllowed) {
@@ -299,8 +313,9 @@ export default function Sessions() {
     }
 
     try {
+      const materialId = crypto.randomUUID()
       await saveLocalMaterial({
-        id: crypto.randomUUID(),
+        id: materialId,
         blockKey: materialBlockKey,
         name: file.name,
         type: detectedType,
@@ -310,6 +325,7 @@ export default function Sessions() {
         createdAt: new Date().toISOString(),
       })
       await loadLearningMaterials(materialBlockKey)
+      setActiveMaterialId(materialId)
       setMaterialSaveState('saved')
       window.setTimeout(() => setMaterialSaveState('idle'), 2500)
     } catch (uploadError) {
@@ -326,8 +342,9 @@ export default function Sessions() {
       const iframeSource = value.match(/src=["']([^"']+)["']/i)?.[1]
       const url = new URL(iframeSource ?? value)
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error(t('Only HTTP and HTTPS URLs are supported.'))
+      const materialId = crypto.randomUUID()
       await saveLocalMaterial({
-        id: crypto.randomUUID(),
+        id: materialId,
         blockKey: materialBlockKey,
         name: url.hostname,
         type: 'text/uri-list',
@@ -340,6 +357,7 @@ export default function Sessions() {
       setMaterialError(null)
       setMaterialNotice(null)
       await loadLearningMaterials(materialBlockKey)
+      setActiveMaterialId(materialId)
     } catch (urlError) {
       setMaterialError(urlError instanceof Error ? urlError.message : t('Enter a valid web URL.'))
     }
@@ -496,6 +514,7 @@ export default function Sessions() {
       setBeatsPerMeasure(data.metronome_beats)
     }
     setShowTargetPracticeTime(data.show_target_practice_time ?? true)
+    setIncludeDefaultExercises(data.include_default_exercises ?? true)
   }
 
   async function loadData() {
@@ -705,6 +724,7 @@ export default function Sessions() {
       return next
     })
     if (isOpening) void loadLearningMaterials(blockKey)
+    if (isOpening) setActiveMaterialId(null)
   }
 
   function addTodo() {
@@ -1723,12 +1743,19 @@ export default function Sessions() {
                         <p className="mt-2 text-sm text-slate-300">
                           {template.description?.trim() || t('No description available for this practice block.')}
                         </p>
-                        {defaultMaterials.length > 0 && (
+                        {includeDefaultExercises && defaultMaterials.length > 0 && (
                           <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/50 p-3">
                             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{t('Default references')}</p>
                             {defaultMaterials.map((material) => (
                               <div key={material.title} className="rounded border border-slate-800 bg-slate-950/60 px-3 py-2">
-                                <p className="text-xs font-medium text-slate-200">{material.title}</p>
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-xs font-medium text-slate-200">{material.title}</p>
+                                  {material.filePath && (
+                                    <button type="button" onClick={() => { setActiveMaterialId(null); setActiveDefaultMaterialUrl(material.filePath ?? null); setActiveDefaultMaterialTitle(material.title) }} className="shrink-0 text-xs text-sky-300 hover:text-sky-100">
+                                      {t('Open PDF')}
+                                    </button>
+                                  )}
+                                </div>
                                 <p className="mt-1 text-xs leading-relaxed text-slate-400">{material.detail}</p>
                               </div>
                             ))}
@@ -1787,7 +1814,7 @@ export default function Sessions() {
                                   <div key={material.id} className="flex items-center justify-between gap-2 text-xs">
                                     <button
                                       type="button"
-                                      onClick={() => setActiveMaterialId(material.id)}
+                                      onClick={() => { setActiveDefaultMaterialUrl(null); setActiveDefaultMaterialTitle(null); setActiveMaterialId(material.id) }}
                                       className={`min-w-0 truncate text-left hover:text-sky-200 ${activeMaterialId === material.id ? 'text-sky-200' : 'text-sky-300'}`}
                                     >
                                       {material.name}
@@ -1801,6 +1828,17 @@ export default function Sessions() {
                                     </button>
                                   </div>
                                 ))}
+                              </div>
+                            )}
+                            {activeDefaultMaterialUrl && (
+                              <div className="mt-3 overflow-hidden rounded border border-slate-700 bg-slate-950">
+                                <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-2 py-1.5">
+                                  <span className="min-w-0 truncate text-xs text-slate-300">{activeDefaultMaterialTitle}</span>
+                                  <button type="button" onClick={() => { setActiveDefaultMaterialUrl(null); setActiveDefaultMaterialTitle(null) }} className="shrink-0 text-xs text-slate-400 hover:text-slate-200">
+                                    {t('Close')}
+                                  </button>
+                                </div>
+                                <iframe src={activeDefaultMaterialUrl} title={activeDefaultMaterialTitle ?? t('Default exercise')} className="h-[420px] w-full bg-white" />
                               </div>
                             )}
                             {activeMaterialId && activeMaterialUrl && (() => {

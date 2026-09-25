@@ -16,9 +16,7 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
-          collapse_plan_notes: boolean
-          compact_practice_cards: boolean
-          habit_reminders: boolean
+          include_default_exercises: boolean
           language: string
           metronome_beats: number
           metronome_bpm: number
@@ -28,9 +26,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          collapse_plan_notes?: boolean
-          compact_practice_cards?: boolean
-          habit_reminders?: boolean
+          include_default_exercises?: boolean
           language?: string
           metronome_beats?: number
           metronome_bpm?: number
@@ -40,9 +36,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
-          collapse_plan_notes?: boolean
-          compact_practice_cards?: boolean
-          habit_reminders?: boolean
+          include_default_exercises?: boolean
           language?: string
           metronome_beats?: number
           metronome_bpm?: number

@@ -213,7 +213,11 @@ Required:
 - Visible date ranges use `src/lib/dateFormat.ts` with compact same-month, same-year, and cross-year formats.
 - `app_settings` includes persisted preference columns added by `20260924150000_add_user_preferences.sql` and `20260924170000_add_target_practice_time_preference.sql`.
 - `app_settings.language` and `programs.is_default` are added by `20260925100000_add_language_and_default_program.sql`.
+- Active persisted Settings include interface language, completed-week visibility, target-practice-time visibility, and default-exercise visibility. No-op reminder, card-density, and collapsed-note preferences were removed by `20260925150000_remove_unused_preferences.sql`.
 - `programs.language` is added by `20260925110000_add_program_language.sql`; existing default programs are backfilled as English.
+- `app_settings.include_default_exercises` is added by `20260925140000_add_default_exercises_preference.sql` and controls visibility of code-owned default exercise guidance.
+- Built-in exercise PDFs belong under `public/default-exercises/{block-key}/`; user-uploaded materials remain device-local and separate.
+- Default PDF references open in the existing inline material viewer rather than a new browser page. Large user video files use the browser Cache API with IndexedDB metadata; smaller and legacy local materials remain supported.
 - `20260925120000_grant_account_gateway_tables.sql` grants the deployed account gateway the table privileges needed to create account settings and default programs.
 - The language-aware `account-gateway` source has been deployed to the live Supabase project with the Supabase CLI.
 - Flexible Programs uses nullable scheduling semantics for inactive branches and filters unscheduled rows from visible reads; this is part of the live application contract.

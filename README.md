@@ -103,10 +103,14 @@ All SQL lives under the supabase folder.
 - migrations/20260925100000_add_language_and_default_program.sql — persisted language preference and default-program marker
 - migrations/20260925110000_add_program_language.sql — immutable content language for each program
 - migrations/20260925120000_grant_account_gateway_tables.sql — service-role grants required by account creation
+- migrations/20260925140000_add_default_exercises_preference.sql — persisted default-exercise visibility preference
+- migrations/20260925150000_remove_unused_preferences.sql — removes no-op Settings preferences
 - functions/account-gateway/ — server-only account creation and password-reset boundary
 - seed/plan-weeks.sql — seeded weekly plan data
 - seed/notion-import-sessions.sql — imported historical practice sessions
 - seed/notion-import-blocks.sql — imported historical block data
+- public/default-exercises/ — PDF folders for built-in exercises, organized by practice-block key
+- Supplied default PDFs currently include Warmup and Learning materials; they open inline in Sessions and respect the default-exercises Settings toggle.
 
 ## Project docs
 

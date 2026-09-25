@@ -3,6 +3,7 @@ import type { Language } from './language'
 export type DefaultMaterial = {
   title: string
   detail: string
+  filePath?: string
 }
 
 const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
@@ -65,6 +66,14 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
   },
 }
 
+const suppliedFiles: Record<string, string> = {
+  warmup: '/default-exercises/warmup/Warmup.pdf',
+  learning: '/default-exercises/learning/Solo-On-Guitar-The-Improvisers-Toolkit-PDF.pdf',
+}
+
 export function getDefaultMaterials(language: Language, blockKey: string) {
-  return materials[language][blockKey] ?? materials.en[blockKey] ?? []
+  return (materials[language][blockKey] ?? materials.en[blockKey] ?? []).map((material, index) => ({
+    ...material,
+    filePath: index === 0 ? suppliedFiles[blockKey] : undefined,
+  }))
 }

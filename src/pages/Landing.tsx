@@ -78,6 +78,7 @@ export default function Landing() {
             <button
               key={item.path}
               type="button"
+              data-tour={item.path === '/progress' ? 'progress' : item.path === '/plan' ? 'current-week' : 'practice'}
               onClick={() => navigate(item.path)}
               className={[
                 'border p-4 text-center transition hover:-translate-y-0.5 hover:border-slate-500',

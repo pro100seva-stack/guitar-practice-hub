@@ -77,16 +77,17 @@ export async function saveLocalMaterial(material: LocalMaterial) {
 
 export async function loadLocalMaterialBlob(material: LocalMaterial) {
   if (material.blob) return material.blob
-  if (material.storage !== 'cache' || !('caches' in window)) return null
+  if (material.storage !== 'cache' || !('caches' in window)) throw new Error('Local material data is unavailable.')
 
   const cache = await caches.open(mediaCacheName)
   const response = await cache.match(mediaCacheRequest(material.id))
-  return response?.blob() ?? null
+  if (!response) throw new Error('Local material data is unavailable.')
+  return response.blob()
 }
 
 export async function deleteLocalMaterial(id: string) {
   const database = await openDatabase()
-  return new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const request = database.transaction(storeName, 'readwrite').objectStore(storeName).delete(id)
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error ?? new Error('Could not delete local material.'))
