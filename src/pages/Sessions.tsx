@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { supabase } from '../lib/supabase'
-import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
+import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, loadLocalMaterialBlob, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
 import { formatDate, formatDateRange, localeForLanguage } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
@@ -157,6 +157,8 @@ export default function Sessions() {
   const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
   const [showTargetPracticeTime, setShowTargetPracticeTime] = useState(true)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
+  const [isMetronomeSettingsOpen, setIsMetronomeSettingsOpen] = useState(false)
+  const [currentBeat, setCurrentBeat] = useState(0)
   const [bpmInput, setBpmInput] = useState('100')
   const [bpm, setBpm] = useState(100)
   const [beatsPerMeasure, setBeatsPerMeasure] = useState(4)
@@ -166,6 +168,7 @@ export default function Sessions() {
   const [tuningKey, setTuningKey] = useState<TuningKey>('standard')
   const [activeReferenceTone, setActiveReferenceTone] = useState<string | null>(null)
   const [learningMaterials, setLearningMaterials] = useState<LocalMaterial[]>([])
+  const [materialBlockKey, setMaterialBlockKey] = useState('learning')
   const [materialUrlInput, setMaterialUrlInput] = useState('')
   const [materialError, setMaterialError] = useState<string | null>(null)
   const [materialNotice, setMaterialNotice] = useState<string | null>(null)
@@ -177,6 +180,8 @@ export default function Sessions() {
   const [loopStart, setLoopStart] = useState<number | null>(null)
   const [loopEnd, setLoopEnd] = useState<number | null>(null)
   const [isLooping, setIsLooping] = useState(false)
+  const [bookmarks, setBookmarks] = useState<number[]>([])
+  const materialFileInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -185,6 +190,10 @@ export default function Sessions() {
   const schedulerIntervalRef = useRef<number | null>(null)
   const beatCounterRef = useRef(0)
   const lastTapTimeRef = useRef<number | null>(null)
+  const metronomeHoldTimerRef = useRef<number | null>(null)
+  const metronomeHoldTriggeredRef = useRef(false)
+  const tunerHoldTimerRef = useRef<number | null>(null)
+  const tunerHoldTriggeredRef = useRef(false)
   const bpmRef = useRef(bpm)
   const beatsPerMeasureRef = useRef(beatsPerMeasure)
   const lookaheadRef = useRef(0.12)
@@ -193,12 +202,14 @@ export default function Sessions() {
   useEffect(() => {
     void loadData()
     void loadAppSettings()
-    void loadLearningMaterials()
+    void loadLearningMaterials('learning')
   }, [])
 
-  async function loadLearningMaterials() {
+  async function loadLearningMaterials(blockKey = materialBlockKey) {
     try {
-      setLearningMaterials(await listLocalMaterials('learning'))
+      setMaterialBlockKey(blockKey)
+      setLearningMaterials(await listLocalMaterials(blockKey))
+      setActiveMaterialId(null)
       setLocalStorageEstimate(await estimateLocalStorage())
     } catch (loadError) {
       setMaterialError(loadError instanceof Error ? loadError.message : t('Could not load local materials.'))
@@ -213,8 +224,11 @@ export default function Sessions() {
       setLoopStart(null)
       setLoopEnd(null)
       setIsLooping(false)
+      setBookmarks([])
       return
     }
+
+    setBookmarks(activeMaterial.bookmarks ?? [])
 
     if (activeMaterial.source === 'url') {
       setActiveMaterialUrl(activeMaterial.url ?? null)
@@ -225,7 +239,7 @@ export default function Sessions() {
       return
     }
 
-    if (!activeMaterial.blob) {
+    if (!activeMaterial.blob && activeMaterial.storage !== 'cache') {
       setActiveMaterialUrl(null)
       setMediaError(null)
       setLoopStart(null)
@@ -234,13 +248,22 @@ export default function Sessions() {
       return
     }
 
-    const objectUrl = URL.createObjectURL(activeMaterial.blob)
-    setActiveMaterialUrl(objectUrl)
-    setMediaError(null)
-    setLoopStart(null)
-    setLoopEnd(null)
-    setIsLooping(false)
-    return () => URL.revokeObjectURL(objectUrl)
+    let cancelled = false
+    let objectUrl: string | null = null
+    void loadLocalMaterialBlob(activeMaterial).then((blob) => {
+      if (cancelled || !blob) return
+      const nextObjectUrl = URL.createObjectURL(blob)
+      objectUrl = nextObjectUrl
+      setActiveMaterialUrl(nextObjectUrl)
+      setMediaError(null)
+      setLoopStart(null)
+      setLoopEnd(null)
+      setIsLooping(false)
+    })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
   }, [activeMaterialId, learningMaterials])
 
   async function handleLocalMaterialUpload(file: File | undefined) {
@@ -248,8 +271,10 @@ export default function Sessions() {
     setMaterialError(null)
     setMaterialNotice(null)
     setMaterialSaveState('saving')
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    const detectedType = file.type || (extension === 'mp4' ? 'video/mp4' : extension === 'webm' ? 'video/webm' : extension === 'mov' ? 'video/quicktime' : '')
     const allowedTypes = ['application/pdf', 'image/', 'text/plain', 'video/']
-    const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? file.type.startsWith(type) : file.type === type)
+    const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? detectedType.startsWith(type) : detectedType === type)
     if (!isAllowed) {
       setMaterialError(t('Use a PDF, image, text, or video file.'))
       setMaterialSaveState('idle')
@@ -265,9 +290,9 @@ export default function Sessions() {
       }
     }
 
-    if (file.type.startsWith('video/')) {
+    if (detectedType.startsWith('video/')) {
       const probe = document.createElement('video')
-      const support = probe.canPlayType(file.type)
+      const support = probe.canPlayType(detectedType)
       if (!support) {
         setMaterialNotice(t('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.'))
       }
@@ -276,15 +301,15 @@ export default function Sessions() {
     try {
       await saveLocalMaterial({
         id: crypto.randomUUID(),
-        blockKey: 'learning',
+        blockKey: materialBlockKey,
         name: file.name,
-        type: file.type,
+        type: detectedType,
         size: file.size,
         source: 'file',
         blob: file,
         createdAt: new Date().toISOString(),
       })
-      await loadLearningMaterials()
+      await loadLearningMaterials(materialBlockKey)
       setMaterialSaveState('saved')
       window.setTimeout(() => setMaterialSaveState('idle'), 2500)
     } catch (uploadError) {
@@ -303,7 +328,7 @@ export default function Sessions() {
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error(t('Only HTTP and HTTPS URLs are supported.'))
       await saveLocalMaterial({
         id: crypto.randomUUID(),
-        blockKey: 'learning',
+        blockKey: materialBlockKey,
         name: url.hostname,
         type: 'text/uri-list',
         size: 0,
@@ -314,7 +339,7 @@ export default function Sessions() {
       setMaterialUrlInput('')
       setMaterialError(null)
       setMaterialNotice(null)
-      await loadLearningMaterials()
+      await loadLearningMaterials(materialBlockKey)
     } catch (urlError) {
       setMaterialError(urlError instanceof Error ? urlError.message : t('Enter a valid web URL.'))
     }
@@ -344,6 +369,33 @@ export default function Sessions() {
     setLoopStart(null)
     setLoopEnd(null)
     setIsLooping(false)
+  }
+
+  async function saveBookmark() {
+    const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
+    const currentTime = videoRef.current?.currentTime
+    if (!activeMaterial || currentTime == null) return
+
+    const nextBookmarks = [...new Set([...bookmarks, Number(currentTime.toFixed(1))])].sort((left, right) => left - right)
+    await saveLocalMaterial({ ...activeMaterial, bookmarks: nextBookmarks })
+    setBookmarks(nextBookmarks)
+    setLearningMaterials((current) => current.map((material) => material.id === activeMaterial.id ? { ...material, bookmarks: nextBookmarks } : material))
+  }
+
+  async function removeBookmark(bookmark: number) {
+    const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
+    if (!activeMaterial) return
+
+    const nextBookmarks = bookmarks.filter((value) => value !== bookmark)
+    await saveLocalMaterial({ ...activeMaterial, bookmarks: nextBookmarks })
+    setBookmarks(nextBookmarks)
+    setLearningMaterials((current) => current.map((material) => material.id === activeMaterial.id ? { ...material, bookmarks: nextBookmarks } : material))
+  }
+
+  function formatBookmarkTime(value: number) {
+    const minutes = Math.floor(value / 60)
+    const seconds = Math.floor(value % 60).toString().padStart(2, '0')
+    return `${minutes}:${seconds}`
   }
 
   function getExternalMediaKind(material: LocalMaterial) {
@@ -644,6 +696,17 @@ export default function Sessions() {
     )
   }
 
+  function toggleBlockDetails(templateId: string, blockKey: string) {
+    const isOpening = !expandedBlockIds.has(templateId)
+    setExpandedBlockIds((current) => {
+      const next = new Set(current)
+      if (next.has(templateId)) next.delete(templateId)
+      else next.add(templateId)
+      return next
+    })
+    if (isOpening) void loadLearningMaterials(blockKey)
+  }
+
   function addTodo() {
     if (!planWeek) return
 
@@ -779,6 +842,7 @@ export default function Sessions() {
       window.clearInterval(schedulerIntervalRef.current)
       schedulerIntervalRef.current = null
     }
+    setCurrentBeat(0)
   }
 
   async function toggleMetronome() {
@@ -790,6 +854,69 @@ export default function Sessions() {
 
     beatCounterRef.current = 0
     setIsMetronomePlaying(true)
+    setIsMetronomeSettingsOpen(false)
+  }
+
+  function handleMetronomePointerDown() {
+    metronomeHoldTriggeredRef.current = false
+    metronomeHoldTimerRef.current = window.setTimeout(() => {
+      metronomeHoldTriggeredRef.current = true
+      setIsMetronomeSettingsOpen((current) => !current)
+    }, 550)
+  }
+
+  function handleMetronomePointerUp() {
+    if (metronomeHoldTimerRef.current !== null) {
+      window.clearTimeout(metronomeHoldTimerRef.current)
+      metronomeHoldTimerRef.current = null
+    }
+  }
+
+  function handleMetronomeButtonClick() {
+    if (metronomeHoldTriggeredRef.current) {
+      metronomeHoldTriggeredRef.current = false
+      return
+    }
+
+    if (isMetronomePlaying) {
+      void toggleMetronome()
+      return
+    }
+
+    void toggleMetronome()
+  }
+
+  function handleMetronomeContextMenu(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    setIsMetronomeSettingsOpen((current) => !current)
+  }
+
+  function handleTunerPointerDown() {
+    tunerHoldTriggeredRef.current = false
+    tunerHoldTimerRef.current = window.setTimeout(() => {
+      tunerHoldTriggeredRef.current = true
+      setIsTunerOpen(true)
+    }, 550)
+  }
+
+  function handleTunerPointerUp() {
+    if (tunerHoldTimerRef.current !== null) {
+      window.clearTimeout(tunerHoldTimerRef.current)
+      tunerHoldTimerRef.current = null
+    }
+  }
+
+  function handleTunerButtonClick() {
+    if (tunerHoldTriggeredRef.current) {
+      tunerHoldTriggeredRef.current = false
+      return
+    }
+    setIsTunerOpen((current) => !current)
+  }
+
+  function handleTunerContextMenu(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    setIsTunerOpen(true)
   }
 
   function scheduleMetronomeClick(time: number) {
@@ -814,6 +941,7 @@ export default function Sessions() {
     oscillator.stop(time + 0.18)
 
     beatCounterRef.current += 1
+    setCurrentBeat(beatCounterRef.current % beatsPerMeasureRef.current)
   }
 
   useEffect(() => {
@@ -1132,7 +1260,7 @@ export default function Sessions() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <>
           <div>
             <h1 className="text-2xl font-semibold">{t('Session {date}', { date: formatHeadingDate(date, language) })}</h1>
             <p className="mt-1 text-sm text-slate-400">
@@ -1140,23 +1268,45 @@ export default function Sessions() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
-            <div className="sticky top-[90px] z-20 rounded-lg border border-slate-800 bg-slate-900/95 p-3 shadow-lg shadow-slate-950/30 backdrop-blur-sm lg:min-w-[280px]">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-400">{t('Metronome')}</p>
-                  <p className="text-sm text-slate-300">{t(isMetronomePlaying ? 'Playing' : 'Standby')}</p>
+          <>
+            <div className={[
+              'fixed top-1 z-40',
+              isMetronomeSettingsOpen
+                ? 'right-4 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-800 bg-slate-900/95 p-3 shadow-lg shadow-slate-950/30 backdrop-blur-sm'
+                : 'right-20',
+            ].join(' ')}>
+              <div className="flex justify-center">
+                <div className="relative h-14 w-14">
+                  <div
+                    className="absolute inset-0 rounded-full p-[3px]"
+                    style={{
+                      background: `conic-gradient(from -90deg, ${Array.from({ length: beatsPerMeasure }, (_, index) => {
+                        const segment = 360 / beatsPerMeasure
+                        const start = index * segment + 3
+                        const end = (index + 1) * segment - 3
+                        const color = isMetronomePlaying && index === currentBeat ? '#38bdf8' : 'rgba(71, 85, 105, 0.85)'
+                        return `${color} ${start}deg ${end}deg, transparent ${end}deg ${(index + 1) * segment}deg`
+                      }).join(', ')})`,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onPointerDown={handleMetronomePointerDown}
+                      onPointerUp={handleMetronomePointerUp}
+                      onPointerCancel={handleMetronomePointerUp}
+                      onContextMenu={handleMetronomeContextMenu}
+                      onClick={handleMetronomeButtonClick}
+                      aria-label={t(isMetronomePlaying ? 'Playing' : 'Metronome')}
+                      title={t('Metronome')}
+                      className="flex h-full w-full items-center justify-center rounded-full bg-slate-950 text-slate-200"
+                    >
+                      <MetronomeIcon />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { void toggleMetronome() }}
-                  className="rounded bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-900"
-                >
-                  {isMetronomePlaying ? t('Stop') : t('Start')}
-                </button>
               </div>
 
-              <div className="mt-2 flex flex-wrap items-end gap-2">
+              {isMetronomeSettingsOpen && <div className="mt-3 flex flex-wrap items-end justify-center gap-2">
                 <label className="text-xs text-slate-400">
                   BPM
                   <input
@@ -1219,18 +1369,38 @@ export default function Sessions() {
                 >
                   {t('Tap')}
                 </button>
-              </div>
+                <button
+                  type="button"
+                  onClick={() => { void toggleMetronome() }}
+                  className="rounded bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-900"
+                >
+                  {isMetronomePlaying ? t('Stop') : t('Start')}
+                </button>
+              </div>}
             </div>
 
-            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2 lg:min-w-[280px]">
+            <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
+            <div className={isTunerOpen
+              ? 'fixed right-4 top-1 z-40 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-slate-800 bg-slate-900/95 p-2 shadow-lg shadow-slate-950/30 backdrop-blur-sm'
+              : 'fixed right-4 top-1 z-40 p-0'}>
               <button
                 type="button"
                 aria-expanded={isTunerOpen}
-                onClick={() => setIsTunerOpen((current) => !current)}
-                className="flex w-full items-center justify-between gap-3 text-left"
+                aria-label={t('Tuner')}
+                onPointerDown={handleTunerPointerDown}
+                onPointerUp={handleTunerPointerUp}
+                onPointerCancel={handleTunerPointerUp}
+                onContextMenu={handleTunerContextMenu}
+                onClick={handleTunerButtonClick}
+                title={t('Tuner')}
+                className={isTunerOpen
+                  ? 'flex w-full items-center justify-between gap-3 text-left'
+                  : 'flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-slate-200'}
               >
-                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{t('Tuner')}</span>
-                <span className="text-xs text-slate-500">{t(isTunerOpen ? 'Hide' : 'Show')}</span>
+                {isTunerOpen ? <>
+                  <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{t('Tuner')}</span>
+                  <span className="text-xs text-slate-500">{t('Hide')}</span>
+                </> : <TunerIcon />}
               </button>
               {isTunerOpen && (
                 <div className="mt-2">
@@ -1284,8 +1454,9 @@ export default function Sessions() {
               <p className="mt-1 text-2xl font-semibold text-slate-100">{totalBlockMinutes} min</p>
               <p className="text-sm text-slate-400">{t('Total across selected blocks')}</p>
             </div>
-          </div>
-        </div>
+            </div>
+        </>
+        </>
 
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1539,12 +1710,7 @@ export default function Sessions() {
                       <button
                         type="button"
                         aria-expanded={isExpanded}
-                        onClick={() => setExpandedBlockIds((current) => {
-                          const next = new Set(current)
-                          if (next.has(template.id)) next.delete(template.id)
-                          else next.add(template.id)
-                          return next
-                        })}
+                        onClick={() => toggleBlockDetails(template.id, template.key)}
                         className="min-w-0 text-left"
                       >
                         <p className="text-sm font-semibold text-slate-100">{template.label}</p>
@@ -1568,7 +1734,7 @@ export default function Sessions() {
                             ))}
                           </div>
                         )}
-                        {template.key === 'learning' && (
+                        {(
                           <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/60 p-3">
                             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
                               {t('Materials stay on this device')}
@@ -1578,11 +1744,20 @@ export default function Sessions() {
                               {localStorageEstimate.quota != null ? ` ${t('of {quota}', { quota: formatStorageSize(localStorageEstimate.quota) })}` : ''}
                             </p>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <button
+                                type="button"
+                                onClick={() => materialFileInputRef.current?.click()}
+                                className="inline-flex cursor-pointer items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100 hover:border-slate-500"
+                              >
+                                {t('Choose file')}
+                              </button>
                               <input
+                                ref={materialFileInputRef}
+                                id="learning-material-file"
                                 type="file"
                                 accept="application/pdf,image/*,text/plain,video/*"
                                 onChange={(event) => { void handleLocalMaterialUpload(event.target.files?.[0]); event.currentTarget.value = '' }}
-                                className="min-w-0 flex-1 text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-xs file:text-slate-100"
+                                className="sr-only"
                               />
                               {materialSaveState !== 'idle' && (
                                 <span className={`text-xs ${materialSaveState === 'saved' ? 'text-emerald-300' : 'text-slate-400'}`}>
@@ -1675,6 +1850,7 @@ export default function Sessions() {
                                       <video
                                         ref={videoRef}
                                         src={activeMaterialUrl}
+                                        key={`${activeMaterial.id}-${activeMaterial.type}`}
                                         controls
                                         playsInline
                                         preload="metadata"
@@ -1688,6 +1864,34 @@ export default function Sessions() {
                                         onError={() => setMediaError(t('This video codec or container is not fully supported by this browser.'))}
                                         className="max-h-[420px] w-full"
                                       />
+                                      <div className="space-y-2 rounded border border-slate-800 bg-slate-900/70 p-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{t('Bookmarks')}</p>
+                                          <button
+                                            type="button"
+                                            onClick={() => { void saveBookmark() }}
+                                            className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                                          >
+                                            {t('Save position')}
+                                          </button>
+                                        </div>
+                                        {bookmarks.length > 0 ? (
+                                          <div className="flex flex-wrap gap-1">
+                                            {bookmarks.map((bookmark) => (
+                                              <span key={bookmark} className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300">
+                                                <button type="button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = bookmark }} className="text-sky-300 hover:text-sky-100">
+                                                  {formatBookmarkTime(bookmark)}
+                                                </button>
+                                                <button type="button" onClick={() => { void removeBookmark(bookmark) }} aria-label={t('Remove bookmark')} className="text-slate-500 hover:text-rose-300">
+                                                  ×
+                                                </button>
+                                              </span>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="text-xs text-slate-500">{t('No bookmarks yet')}</p>
+                                        )}
+                                      </div>
                                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
                                         <button
                                           type="button"
@@ -1902,5 +2106,29 @@ export default function Sessions() {
         )}
       </section>
     </div>
+  )
+}
+
+function MetronomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7.5 20h9l-1.7-11h-5.6L7.5 20Z" />
+      <path d="M9.2 9 7.6 5.8 9.8 4l2.2 5" />
+      <path d="M14.2 9 16 5.4" />
+      <path d="M16 5.4h2.4" />
+      <path d="M12 10.5v7" />
+      <path d="M5.8 20h12.4" />
+    </svg>
+  )
+}
+
+function TunerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 4v7.5a4 4 0 0 0 8 0V4" />
+      <path d="M6 4h4M14 4h4" />
+      <path d="M12 15.5V20M8 20h8" />
+      <path d="M12 7v2" />
+    </svg>
   )
 }

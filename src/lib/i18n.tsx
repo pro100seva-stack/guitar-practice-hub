@@ -78,6 +78,14 @@ Object.assign(pageTranslations.en, { 'Default references': 'Default references' 
 Object.assign(pageTranslations.ru, { 'Default references': 'Материалы по умолчанию' })
 Object.assign(pageTranslations.it, { 'Default references': 'Riferimenti predefiniti' })
 Object.assign(pageTranslations.fr, { 'Default references': 'Références par défaut' })
+Object.assign(pageTranslations.en, { 'Bookmarks': 'Bookmarks', 'Save position': 'Save position', 'Remove bookmark': 'Remove bookmark', 'No bookmarks yet': 'No bookmarks yet' })
+Object.assign(pageTranslations.ru, { 'Bookmarks': 'Закладки', 'Save position': 'Сохранить позицию', 'Remove bookmark': 'Удалить закладку', 'No bookmarks yet': 'Закладок пока нет' })
+Object.assign(pageTranslations.it, { 'Bookmarks': 'Segnalibri', 'Save position': 'Salva posizione', 'Remove bookmark': 'Rimuovi segnalibro', 'No bookmarks yet': 'Nessun segnalibro' })
+Object.assign(pageTranslations.fr, { 'Bookmarks': 'Signets', 'Save position': 'Enregistrer la position', 'Remove bookmark': 'Supprimer le signet', 'No bookmarks yet': 'Aucun signet' })
+Object.assign(pageTranslations.en, { 'Choose file': 'Choose file' })
+Object.assign(pageTranslations.ru, { 'Choose file': 'Выбрать файл' })
+Object.assign(pageTranslations.it, { 'Choose file': 'Scegli file' })
+Object.assign(pageTranslations.fr, { 'Choose file': 'Choisir un fichier' })
 
 const translations: Record<Language, Record<string, string>> = {
   en: {

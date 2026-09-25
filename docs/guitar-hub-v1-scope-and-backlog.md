@@ -161,19 +161,22 @@ No blocking items.
    - when the metronome is active on Sessions, it remains fixed at the top of the viewport while scrolling through practice blocks
    - metronome settings and start/stop controls remain accessible while viewing lower blocks
    - the fixed metronome does not obscure or break the practice-block workflow
+   - the compact control supports tap start/stop, long-hold/right-click settings access, beat-ring feedback, and time-signature display during playback
 
-12. **Open — 2026-09-22:** Attach learning materials to every practice block
+12. **Completed — 2026-09-25:** Attach learning materials to every practice block
    - each practice block can have its own attached learning materials
    - materials use the file/reference types supported by the existing learning-materials feature
    - materials remain clearly associated with their owning practice block and do not leak into another block
    - implementation reuses the existing learning-materials approach rather than introducing a separate storage system
+   - IndexedDB materials are scoped by the owning practice-block key
 
-13. **Open — 2026-09-22:** Bookmark and resume video reference materials
+13. **Completed — 2026-09-25:** Bookmark and resume video reference materials
    - a video reference material can have one or more saved bookmarks
    - each bookmark stores a usable position in the video
    - bookmarks persist when the user leaves and later returns to the application
    - selecting a bookmark jumps directly to its saved position
    - bookmarks remain associated with the relevant video reference material
+   - bookmark timestamps are stored with the device-local material record
 
 14. **Completed — 2026-09-25:** Add default reference materials to every practice block
    - provide curated starter references for each built-in practice block
@@ -233,12 +236,14 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Added inline ToDo creation in Sessions with ordered insertion and immediate completion support.
 - 2026-09-25 — Added localized built-in reference guidance for every practice block, kept separate from device-local user materials.
 - 2026-09-25 — Made the Sessions metronome sticky below the app header so its controls remain available while scrolling.
+- 2026-09-25 — Groomed the metronome into compact icon controls with tap, hold, and right-click interactions; selected per-block learning materials as the next P2 implementation.
+- 2026-09-25 — Scoped user-added learning materials to every expanded practice block while preserving the existing device-local storage model.
+- 2026-09-25 — Added device-local video bookmarks with timestamp jump, save, and removal controls.
 
 ## Recommended next steps
 
 1. Keep the current Flexible Programs and localization models as the baseline.
-2. Groom the next P2 practice enhancement: sticky metronome behavior, per-block user materials, or video bookmarks.
-3. Revisit the landing/home explainer only after the next product direction is defined.
+2. Revisit the landing/home explainer only after the next product direction is defined.
 
 ## Delivery pipeline
 
