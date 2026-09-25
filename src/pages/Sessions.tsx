@@ -644,40 +644,24 @@ export default function Sessions() {
     )
   }
 
-  async function toggleTodo(todo: Todo) {
+  function toggleTodo(todo: Todo) {
     const done = !todo.done
     setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done } : item))
-    const { error: todoError } = await supabase.from('todos').update({ done }).eq('id', todo.id)
-    if (todoError) {
-      setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done: todo.done } : item))
-      setError(todoError.message)
-    }
   }
 
-  async function addTodo() {
+  function addTodo() {
     const name = newTodoName.trim()
     if (!name || !planWeek) return
 
-    setError(null)
     const nextSortOrder = Math.max(-1, ...todos.map((todo) => todo.sort_order)) + 1
-    const { data, error: todoError } = await supabase
-      .from('todos')
-      .insert({
-        week_id: planWeek.id,
-        name,
-        done: false,
-        sort_order: nextSortOrder,
-        source: 'app',
-      })
-      .select('*')
-      .single()
-
-    if (todoError || !data) {
-      setError(todoError?.message ?? t('Could not add the ToDo.'))
-      return
-    }
-
-    setTodos((current) => [...current, data as Todo])
+    setTodos((current) => [...current, {
+      id: `draft-${Date.now()}`,
+      week_id: planWeek.id,
+      name,
+      done: false,
+      sort_order: nextSortOrder,
+      source: 'app',
+    }])
     setNewTodoName('')
   }
 
@@ -1043,6 +1027,35 @@ export default function Sessions() {
         setError(blocksError.message)
         setSaving(false)
         return
+      }
+    }
+
+    if (planWeek) {
+      const { error: todoDeleteError } = await supabase.from('todos').delete().eq('week_id', planWeek.id)
+      if (todoDeleteError) {
+        setError(todoDeleteError.message)
+        setSaving(false)
+        return
+      }
+
+      if (todos.length > 0) {
+        const { error: todoInsertError } = await supabase.from('todos').insert(
+          todos
+            .filter((todo) => todo.name.trim())
+            .map((todo, index) => ({
+              week_id: planWeek.id,
+              name: todo.name.trim(),
+              done: todo.done,
+              sort_order: index + 1,
+              source: todo.source ?? 'app',
+            }))
+        )
+
+        if (todoInsertError) {
+          setError(todoInsertError.message)
+          setSaving(false)
+          return
+        }
       }
     }
 
