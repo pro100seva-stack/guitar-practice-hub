@@ -661,6 +661,37 @@ export default function Sessions() {
     setTodos((current) => current.map((todo, todoIndex) => todoIndex === index ? { ...todo, ...updates } : todo))
   }
 
+  async function saveTodo(todo: Todo) {
+    const name = todo.name.trim()
+    if (!name || !planWeek) return
+
+    setError(null)
+    const payload = {
+      week_id: planWeek.id,
+      name,
+      done: todo.done,
+      sort_order: todo.sort_order,
+      source: todo.source ?? 'app',
+    }
+
+    if (todo.id.startsWith('draft-')) {
+      const { data, error: todoError } = await supabase.from('todos').insert(payload).select('*').single()
+      if (todoError || !data) {
+        setError(todoError?.message ?? t('Could not save the ToDo.'))
+        return
+      }
+      setTodos((current) => current.map((item) => item.id === todo.id ? data as Todo : item))
+      return
+    }
+
+    const { data, error: todoError } = await supabase.from('todos').update(payload).eq('id', todo.id).select('*').single()
+    if (todoError || !data) {
+      setError(todoError?.message ?? t('Could not save the ToDo.'))
+      return
+    }
+    setTodos((current) => current.map((item) => item.id === todo.id ? data as Todo : item))
+  }
+
   function removeTodo(index: number) {
     setTodos((current) => current.filter((_, todoIndex) => todoIndex !== index))
   }
@@ -1372,6 +1403,7 @@ export default function Sessions() {
                 <input
                   value={todo.name}
                   onChange={(event) => updateTodo(index, { name: event.target.value })}
+                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveTodo({ ...todo, name: event.currentTarget.value }) } }}
                   className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none transition focus:border-slate-500"
                   placeholder={t('ToDo name')}
                 />
