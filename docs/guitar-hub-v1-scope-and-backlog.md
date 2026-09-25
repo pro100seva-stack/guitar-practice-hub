@@ -157,7 +157,7 @@ No blocking items.
    - mobile viewport behavior is intentionally fixed to prevent unwanted zooming in/out
    - this item is closed; no backlog action remains
 
-11. **Open — 2026-09-22:** Lock active metronome while scrolling
+11. **Completed — 2026-09-25:** Lock active metronome while scrolling
    - when the metronome is active on Sessions, it remains fixed at the top of the viewport while scrolling through practice blocks
    - metronome settings and start/stop controls remain accessible while viewing lower blocks
    - the fixed metronome does not obscure or break the practice-block workflow
@@ -232,6 +232,7 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Groomed Sessions-side ToDo creation as the next P1 follow-up and separated system-provided default block references from user-added learning materials as a new P2 item.
 - 2026-09-25 — Added inline ToDo creation in Sessions with ordered insertion and immediate completion support.
 - 2026-09-25 — Added localized built-in reference guidance for every practice block, kept separate from device-local user materials.
+- 2026-09-25 — Made the Sessions metronome sticky below the app header so its controls remain available while scrolling.
 
 ## Recommended next steps
 

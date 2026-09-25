@@ -1141,7 +1141,7 @@ export default function Sessions() {
           </div>
 
           <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
-            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[280px]">
+            <div className="sticky top-[90px] z-20 rounded-lg border border-slate-800 bg-slate-900/95 p-3 shadow-lg shadow-slate-950/30 backdrop-blur-sm lg:min-w-[280px]">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">{t('Metronome')}</p>
