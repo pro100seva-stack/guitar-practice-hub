@@ -21,6 +21,7 @@ The app is a client-side PWA that talks directly to Supabase Postgres for accoun
 3. Each page reads from the relevant table using the Supabase client.
 4. Save operations are sent through PostgREST and persisted in Postgres.
 5. Account creation, password reset, and default program continuation are handled through the `account-gateway` server boundary and program RPCs.
+6. Account creation stores a validated language preference; Settings can later change the interface preference without changing practice content.
 6. Local learning materials are stored as browser Blobs and metadata in IndexedDB.
 7. The UI updates after the data load or write completes.
 
@@ -97,6 +98,7 @@ Key fields:
 
 - id
 - user_id
+- language — content language selected when the default program is created (`en`, `ru`, `it`, or `fr`)
 - name
 - status (`active`, `paused`, `completed`, `abandoned`)
 - total_weeks — prescribed duration; users may extend or shorten the plan by adding or removing weeks
@@ -174,6 +176,8 @@ Key fields:
 
 Stores app-level preferences such as metronome BPM, beat count, reminder preference, Progress visibility, plan-note behavior, practice-card density, and target-practice-time visibility.
 
+It also stores `language`, the user's interface-language preference. This value is independent from the content language stored on a program.
+
 ### user_profiles
 
 Stores the user-facing login name and security-question metadata. The answer is stored as a server-generated hash. Row-level security restricts access to the owning user; account gateway service-role access is server-only.
@@ -181,6 +185,8 @@ Stores the user-facing login name and security-question metadata. The answer is 
 ### Default program continuation
 
 The continuation flow is implemented in `src/lib/defaultProgram.ts` and triggered from `src/components/AuthGate.tsx`. When a logged-in user has an active Default program, the app appends one logical next week after the last scheduled Default week when the current date has passed the final saved completion date.
+
+Continuation uses `programs.language`, not `app_settings.language`, so changing the interface preference cannot alter program wording.
 
 ### Local learning materials
 
@@ -206,6 +212,10 @@ Required:
 - Program reassignment uses `20260924180000_assign_plan_week_program.sql`; Progress inline insertion uses `20260924190000_insert_plan_week_without_pausing.sql`.
 - Visible date ranges use `src/lib/dateFormat.ts` with compact same-month, same-year, and cross-year formats.
 - `app_settings` includes persisted preference columns added by `20260924150000_add_user_preferences.sql` and `20260924170000_add_target_practice_time_preference.sql`.
+- `app_settings.language` and `programs.is_default` are added by `20260925100000_add_language_and_default_program.sql`.
+- `programs.language` is added by `20260925110000_add_program_language.sql`; existing default programs are backfilled as English.
+- `20260925120000_grant_account_gateway_tables.sql` grants the deployed account gateway the table privileges needed to create account settings and default programs.
+- The language-aware `account-gateway` source has been deployed to the live Supabase project with the Supabase CLI.
 - Flexible Programs uses nullable scheduling semantics for inactive branches and filters unscheduled rows from visible reads; this is part of the live application contract.
 - Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. Application-level validation and seed data currently enforce the expected values by convention.
 - Microphone pitch detection remains deferred. The tuner reference-tone slice is implemented.

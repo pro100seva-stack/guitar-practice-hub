@@ -29,6 +29,5 @@ export default function AuthGate() {
   }, [])
 
   if (loading) return <div className="min-h-screen bg-slate-900" />
-  if (!session) return <Login />
-  return <RouterProvider router={router} />
+  return !session ? <Login /> : <RouterProvider router={router} />
 }

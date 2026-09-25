@@ -19,6 +19,7 @@ export type Database = {
           collapse_plan_notes: boolean
           compact_practice_cards: boolean
           habit_reminders: boolean
+          language: string
           metronome_beats: number
           metronome_bpm: number
           show_completed_weeks: boolean
@@ -30,6 +31,7 @@ export type Database = {
           collapse_plan_notes?: boolean
           compact_practice_cards?: boolean
           habit_reminders?: boolean
+          language?: string
           metronome_beats?: number
           metronome_bpm?: number
           show_completed_weeks?: boolean
@@ -41,6 +43,7 @@ export type Database = {
           collapse_plan_notes?: boolean
           compact_practice_cards?: boolean
           habit_reminders?: boolean
+          language?: string
           metronome_beats?: number
           metronome_bpm?: number
           show_completed_weeks?: boolean
@@ -126,27 +129,33 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          language: string
           name: string
           status: string
           total_weeks: number
+          is_default: boolean
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          language?: string
           name: string
           status?: string
           total_weeks?: number
+          is_default?: boolean
           updated_at?: string
           user_id?: string
         }
         Update: {
           created_at?: string
           id?: string
+          language?: string
           name?: string
           status?: string
           total_weeks?: number
+          is_default?: boolean
           updated_at?: string
           user_id?: string
         }

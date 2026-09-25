@@ -2,7 +2,7 @@
 
 Status: the app has a working core v1 workflow plus the Flexible Programs foundation and program actions. The implementation is stable and validated; the current state is ready for a user-defined product pivot rather than another feature spike.
 
-## Current status (2026-09-24)
+## Current status (2026-09-25)
 
 - The project remains aligned with the original architecture: React frontend, Supabase as the app backend, and a PWA shell for phone and desktop use.
 - Sessions, Plan, Stats, auth, default-program continuation, and program actions are connected to real Supabase data and are operational.
@@ -11,6 +11,8 @@ Status: the app has a working core v1 workflow plus the Flexible Programs founda
 - Plan weeks now use `program_id` as their ownership source; the unused `plan_weeks.phase` field has been removed, and programs carry a prescribed `total_weeks` duration.
 - `session_blocks` enforces unique `(session_id, block_key)` through migration `03-session-block-uniqueness.sql`.
 - Program state is visible in the Plan UI through active/paused program badges and Start Default / Start Custom / Resume actions.
+- Account creation now captures English, Russian, Italian, or French as the initial language preference; Settings can change the interface preference later without rewriting practice content.
+- Default programs store their content language independently from the interface preference, so continuation weeks remain consistent with the original program language.
 - The landing screen now includes a right-side featured guitar panel and a compact informational footnote for the Frankenstrat, establishing the pattern for future rotating-guitar highlights.
 - The codebase is in a validated state with the program timeline and week insertion workflow active; remaining work is limited to the open P2 practice enhancements.
 
@@ -104,6 +106,14 @@ No blocking items.
    - later scheduled weeks shift according to the inserted duration
    - program branching can pause the existing active program before the new custom week is inserted
 
+8. **Completed — 2026-09-25:** Language preference and default-program language ownership
+   - language is selected only during account creation
+   - Settings stores the interface preference for English, Russian, Italian, and French
+   - existing practice content is not translated or rewritten when the preference changes
+   - default programs store their original content language and continuation uses it
+   - migrations `20260925100000_add_language_and_default_program.sql` and `20260925110000_add_program_language.sql` are applied
+   - language-aware `account-gateway` deployment is complete
+
 ### P2 — Medium priority
 
 8. **Completed — 2026-09-22:** Featured guitar landing-callout
@@ -180,6 +190,7 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-24 — Progress became a program-grouped timeline with collapsible contiguous program periods and inline current/future week insertion.
 - 2026-09-24 — Plan week program assignment, compact date-range formatting, practiced-day markers, and fixed app-shell/header behavior were completed.
 - 2026-09-24 — Selected Plan week dates are editable; conflicting later weeks are shifted forward transactionally while preserving their durations.
+- 2026-09-25 — Moved language selection off sign-in and into account creation; Settings now owns later interface-language changes, while default-program content retains its original language.
 
 ## Recommended next steps
 
@@ -192,6 +203,7 @@ Context: the app now has a working program model that separates scheduled calend
 - **Done:** core Sessions, Plan, Stats, navigation, persistence, UX polish, session-block upsert, account foundation, default-program continuation, and Flexible Programs actions.
 - **Done:** New User, Password Recovery, and validated sign-in/sign-out flow.
 - **Done:** default five-week practice program creation and logged-in continuation flow.
+- **Done:** language preference schema, default-program content-language ownership, Edge Function deployment, and complete UI translation coverage.
 - **Done:** Sessions tuner presets, continuous reference tones, and device-local learning-materials viewer.
 - **Open P2:** active metronome stays accessible while scrolling; learning materials can be attached per practice block; video reference bookmarks can resume saved positions.
 - **Ready for pivot:** additional product direction remains user-defined; the three explicit Sessions/materials P2 stories above are captured in the backlog for grooming/approval.

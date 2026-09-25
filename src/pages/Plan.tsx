@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
-import { formatDateRange } from '../lib/dateFormat'
+import { formatDateRange, localeForLanguage } from '../lib/dateFormat'
+import { useI18n } from '../lib/i18n'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -64,6 +65,7 @@ function getMonthGrid(monthDate: Date) {
 }
 
 export default function Plan() {
+  const { language, t } = useI18n()
   const [searchParams] = useSearchParams()
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [programs, setPrograms] = useState<Program[]>([])
@@ -85,8 +87,6 @@ export default function Plan() {
   const otherProgramOption = '__other__'
   const [selectedProgramId, setSelectedProgramId] = useState('')
     const [otherProgramName, setOtherProgramName] = useState('')
-  const [newWeekStartDate, setNewWeekStartDate] = useState(() => toIsoDate(startOfWeekMonday(new Date())))
-  const [newWeekEndDate, setNewWeekEndDate] = useState(() => toIsoDate(addDays(startOfWeekMonday(new Date()), 6)))
   const weekListRef = useRef<HTMLDivElement | null>(null)
 
   const coveredDates = useMemo(() => {
@@ -228,7 +228,7 @@ export default function Plan() {
 
     const loadedWeek = weekData as PlanWeek
     if (!isScheduledWeek(loadedWeek)) {
-      setError('This week is currently unscheduled.')
+      setError(t('This week is currently unscheduled.'))
       setLoading(false)
       return
     }
@@ -296,13 +296,8 @@ export default function Plan() {
 
     const selectedIndex = week ? weeks.findIndex((item) => item.id === week.id) : weeks.length - 1
     const previousWeek = weeks[selectedIndex]
-    const startDate = parseIsoDate(newWeekStartDate)
-    const endDate = parseIsoDate(newWeekEndDate)
-    if (endDate < startDate) {
-      setError('Week end date must be on or after the start date.')
-      setSaving(false)
-      return
-    }
+    const startDate = previousWeek ? addDays(parseIsoDate(previousWeek.end_date), 1) : startOfWeekMonday(new Date())
+    const endDate = addDays(startDate, 6)
     const { data: insertedWeekId, error: insertError } = await supabase.rpc('add_plan_week', {
       p_start_date: toIsoDate(startDate),
       p_end_date: toIsoDate(endDate),
@@ -313,14 +308,14 @@ export default function Plan() {
     })
 
     if (insertError || !insertedWeekId) {
-      setError(insertError?.message ?? 'Could not add the week.')
+      setError(insertError?.message ?? t('Could not add the week.'))
       setSaving(false)
       return
     }
 
     await loadWeeks()
     await loadWeek(insertedWeekId)
-    setMessage('Week added successfully.')
+    setMessage(t('Week added successfully.'))
     setSaving(false)
   }
 
@@ -333,13 +328,13 @@ export default function Plan() {
 
     const { data: nextWeekId, error: deleteError } = await supabase.rpc('remove_plan_week', { p_week_id: week.id })
     if (deleteError || !nextWeekId) {
-      setError(deleteError?.message ?? 'Could not remove the week.')
+      setError(deleteError?.message ?? t('Could not remove the week.'))
       setSaving(false)
       return
     }
     await loadWeeks()
     await loadWeek(nextWeekId)
-    setMessage('Week removed successfully.')
+    setMessage(t('Week removed successfully.'))
     setSaving(false)
   }
 
@@ -383,7 +378,7 @@ export default function Plan() {
     if (selectedProgramId === otherProgramOption) {
       const trimmedProgramName = otherProgramName.trim()
       if (!trimmedProgramName) {
-        setError('Enter a name for the other program.')
+        setError(t('Enter a name for the other program.'))
         setSaving(false)
         return
       }
@@ -395,7 +390,7 @@ export default function Plan() {
         .single()
 
       if (createProgramError || !createdProgram) {
-        setError(createProgramError?.message ?? 'Could not create the program.')
+        setError(createProgramError?.message ?? t('Could not create the program.'))
         setSaving(false)
         return
       }
@@ -497,7 +492,7 @@ export default function Plan() {
         .single()
 
       if (songInsertError || !insertedSong) {
-        setError(songInsertError?.message ?? 'Could not save the song list.')
+        setError(songInsertError?.message ?? t('Could not save the song list.'))
         setSaving(false)
         return
       }
@@ -528,18 +523,20 @@ export default function Plan() {
       }
     }
 
-    setMessage('Plan updated successfully.')
+    setMessage(t('Plan updated successfully.'))
     setSaving(false)
     await loadWeeks()
     await loadWeek(week.id)
   }
 
-  if (loading) return <p>Loading…</p>
-  if (error) return <p className="text-red-400">Error: {error}</p>
-  if (!week) return <p>No plan_weeks row covers today's date.</p>
+  if (error) return <p className="text-red-400">{t('Error: {error}', { error })}</p>
+  if (loading && !week) return <p>{t('Loading…')}</p>
+  if (!week) return <p>{t("No plan_weeks row covers today's date.")}</p>
 
   const monthGrid = getMonthGrid(calendarMonth)
-  const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const locale = localeForLanguage(language)
+  const monthLabel = calendarMonth.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
+  const weekdayLabels = Array.from({ length: 7 }, (_, index) => new Date(2024, 0, index + 1).toLocaleDateString(locale, { weekday: 'short' }))
   const today = toIsoDate(new Date())
   const currentWeek = weeks.find((weekItem) => weekItem.start_date <= today && weekItem.end_date >= today) ?? null
   const isCurrentWeekSelected = currentWeek?.id === selectedWeekId
@@ -549,8 +546,8 @@ export default function Plan() {
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Practice plan</p>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-100">Week overview</h1>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t('Practice plan')}</p>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-100">{t('Week overview')}</h1>
           </div>
 
         </div>
@@ -559,44 +556,21 @@ export default function Plan() {
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
         <div className="mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Practice weeks</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Practice weeks')}</p>
           </div>
 
           <div className="flex w-full flex-1 flex-col gap-3">
-            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">Add week</p>
-              <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void addWeek()}
               disabled={saving}
               className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
             >
-              Insert after selected
+              {t('Insert after selected')}
             </button>
-            <label className="flex items-center gap-2 text-xs text-slate-400">
-              <span>Start</span>
-              <input
-                type="date"
-                value={newWeekStartDate}
-                onChange={(event) => setNewWeekStartDate(event.target.value)}
-                className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-200"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-xs text-slate-400">
-              <span>End</span>
-              <input
-                type="date"
-                value={newWeekEndDate}
-                onChange={(event) => setNewWeekEndDate(event.target.value)}
-                className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-200"
-              />
-            </label>
-              </div>
-            </div>
 
             <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">Navigate weeks</p>
+              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Navigate weeks')}</p>
               <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -604,7 +578,7 @@ export default function Plan() {
               disabled={saving || weeks.length <= 1 || !week}
               className="shrink-0 rounded border border-rose-900/70 bg-slate-950 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-700 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
             >
-              Remove week
+              {t('Remove week')}
             </button>
             <button
               type="button"
@@ -616,7 +590,7 @@ export default function Plan() {
               }}
               className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
             >
-              Current week
+              {t('Current week')}
             </button>
 
             <div className="relative min-w-0 flex-1 basis-full sm:basis-auto">
@@ -625,7 +599,7 @@ export default function Plan() {
                 onClick={() => setCalendarOpen((current) => !current)}
                 className="flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm text-slate-200 focus:border-slate-500"
               >
-                <span>{week ? `Week ${week.week_number} · ${formatDateRange(week.start_date, week.end_date)}` : 'Choose a covered week'}</span>
+                <span>{week ? t('Week {week}', { week: week.week_number }) + ` · ${formatDateRange(week.start_date, week.end_date, language)}` : t('Choose a covered week')}</span>
                 <span className="text-slate-400">▾</span>
               </button>
 
@@ -639,7 +613,7 @@ export default function Plan() {
                     }
                     className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
                   >
-                    Prev
+                    {t('Prev')}
                   </button>
                   <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
                   <button
@@ -649,12 +623,12 @@ export default function Plan() {
                     }
                     className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
                   >
-                    Next
+                    {t('Next')}
                   </button>
                 </div>
 
                 <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.15em] text-slate-400">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayLabel) => (
+                  {weekdayLabels.map((dayLabel) => (
                     <div key={dayLabel} className="py-1">
                       {dayLabel}
                     </div>
@@ -722,22 +696,22 @@ export default function Plan() {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week {weekItem.week_number}</p>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week {week}', { week: weekItem.week_number })}</p>
                     {isCurrentWeek && (
                       <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.16em] text-emerald-300">
-                        Today
+                        {t('Today')}
                       </span>
                     )}
                   </div>
 
-                  <p className="mt-2 text-base font-semibold text-slate-100">{weekItem.focus || 'Plan focus'}</p>
-                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date)}</p>
+                  <p className="mt-2 text-base font-semibold text-slate-100">{weekItem.focus || t('Focus')}</p>
+                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date, language)}</p>
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-300">
-                      {programs.find((program) => program.id === weekItem.program_id)?.name ?? 'Program'}
+                      {programs.find((program) => program.id === weekItem.program_id)?.name ?? t('Program')}
                     </span>
                     <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                      {weekItem.updated_at !== weekItem.created_at || weekItem.focus.trim() !== 'New practice week' || Boolean(weekItem.tasks?.trim()) ? 'Updated' : 'Draft'}
+                      {weekItem.updated_at !== weekItem.created_at || weekItem.focus.trim() !== 'New practice week' || Boolean(weekItem.tasks?.trim()) ? t('Updated') : t('Draft')}
                     </span>
                   </div>
                 </button>
@@ -750,35 +724,35 @@ export default function Plan() {
       <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Selected week</p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-100">Week {week.week_number}: {week.focus}</h2>
-            <p className="mt-1 text-sm text-slate-400">{formatDateRange(week.start_date, week.end_date)} · {programs.find((program) => program.id === week.program_id)?.name ?? 'Program'}</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Selected week')}</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-100">{t('Week {week}', { week: week.week_number })}: {week.focus}</h2>
+            <p className="mt-1 text-sm text-slate-400">{formatDateRange(week.start_date, week.end_date, language)} · {programs.find((program) => program.id === week.program_id)?.name ?? t('Program')}</p>
           </div>
 
           {week.start_date <= new Date().toISOString().slice(0, 10) && week.end_date >= new Date().toISOString().slice(0, 10) && (
             <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-sky-300">
-              Current week
+              {t('Current week')}
             </span>
           )}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
           <label className="block space-y-2 text-sm">
-            <span className="block text-slate-300">Focus</span>
+            <span className="block text-slate-300">{t('Focus')}</span>
             <input
               value={focus}
               onChange={(event) => setFocus(event.target.value)}
               className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none ring-0 transition focus:border-slate-500"
               required
-              placeholder="Short title for the week"
+              placeholder={t('Short title for the week')}
             />
           </label>
 
               <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week info</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week info')}</p>
             <div className="mt-3 space-y-2 text-sm text-slate-300">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-400">Program</span>
+                <span className="text-slate-400">{t('Program')}</span>
                   <select
                     value={selectedProgramId}
                     onChange={(event) => setSelectedProgramId(event.target.value)}
@@ -787,29 +761,29 @@ export default function Plan() {
                     {programs.map((program) => (
                       <option key={program.id} value={program.id}>{program.name}</option>
                     ))}
-                    <option value={otherProgramOption}>Other</option>
+                    <option value={otherProgramOption}>{t('Other')}</option>
                   </select>
               </div>
                 {selectedProgramId === otherProgramOption && (
                   <label className="flex items-center justify-between gap-3">
-                    <span className="text-slate-400">Program name</span>
+                    <span className="text-slate-400">{t('Program name')}</span>
                     <input
                       value={otherProgramName}
                       onChange={(event) => setOtherProgramName(event.target.value)}
-                      placeholder="Your program name"
+                      placeholder={t('Your program name')}
                       className="max-w-[65%] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-right text-sm text-slate-200"
                       required
                     />
                   </label>
                 )}
                   <div className="relative">
-                    <span className="text-slate-400">Dates</span>
+                    <span className="text-slate-400">{t('Dates')}</span>
                     <button
                       type="button"
                       onClick={() => setRangeCalendarOpen((open) => !open)}
                       className="mt-1 flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-2 py-1 text-left text-sm text-slate-200 focus:border-slate-500"
                     >
-                      <span>{formatDateRange(weekStartDate, weekEndDate)}</span>
+                      <span>{formatDateRange(weekStartDate, weekEndDate, language)}</span>
                       <span className="text-slate-400">▾</span>
                     </button>
 
@@ -821,7 +795,7 @@ export default function Plan() {
                             onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
                             className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
                           >
-                            Prev
+                            {t('Prev')}
                           </button>
                           <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
                           <button
@@ -829,7 +803,7 @@ export default function Plan() {
                             onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
                             className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
                           >
-                            Next
+                            {t('Next')}
                           </button>
                         </div>
 
@@ -875,30 +849,30 @@ export default function Plan() {
         </div>
 
         <label className="block space-y-2 text-sm">
-          <span className="block text-slate-300">Tasks</span>
+          <span className="block text-slate-300">{t('Tasks')}</span>
           <textarea
             rows={8}
             value={tasks}
             onChange={(event) => setTasks(event.target.value)}
             className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none transition focus:border-slate-500"
-            placeholder="Describe the week plan"
+            placeholder={t('Describe the week plan')}
           />
         </label>
 
         <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-200">Topics</p>
+            <p className="text-sm font-medium text-slate-200">{t('Topics')}</p>
             <button
               type="button"
               onClick={addTopic}
               className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
             >
-              + Add topic
+              {t('+ Add topic')}
             </button>
           </div>
 
           <div className="space-y-2">
-            {topics.length === 0 && <p className="text-sm text-slate-400">No topics yet for this week.</p>}
+            {topics.length === 0 && <p className="text-sm text-slate-400">{t('No topics yet for this week.')}</p>}
 
             {topics.map((topic, index) => (
               <div key={`${topic.id ?? 'new'}-${index}`} className="flex items-center gap-2">
@@ -912,14 +886,14 @@ export default function Plan() {
                   value={topic.name}
                   onChange={(event) => updateTopic(index, { name: event.target.value })}
                   className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none transition focus:border-slate-500"
-                  placeholder="Topic name"
+                  placeholder={t('Topic name')}
                 />
                 <button
                   type="button"
                   onClick={() => removeTopic(index)}
                   className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400"
                 >
-                  Remove
+                  {t('Remove')}
                 </button>
               </div>
             ))}
@@ -927,15 +901,15 @@ export default function Plan() {
         </div>
 
         <label className="block space-y-2 text-sm">
-          <span className="block text-slate-300">Songs</span>
+          <span className="block text-slate-300">{t('Songs')}</span>
           <textarea
             rows={6}
             value={songText}
             onChange={(event) => setSongText(event.target.value)}
             className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none transition focus:border-slate-500"
-            placeholder="Add one song per line"
+            placeholder={t('Add one song per line')}
           />
-          <span className="text-xs text-slate-400">Separate songs with line breaks or commas.</span>
+          <span className="text-xs text-slate-400">{t('Separate songs with line breaks or commas.')}</span>
         </label>
 
         {message && <p className="text-sm text-emerald-400">{message}</p>}
@@ -946,7 +920,7 @@ export default function Plan() {
           disabled={saving}
           className="rounded bg-slate-100 px-3 py-2 font-medium text-slate-900 disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save plan'}
+          {saving ? t('Saving…') : t('Save plan')}
         </button>
       </form>
     </div>

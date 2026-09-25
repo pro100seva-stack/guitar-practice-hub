@@ -47,6 +47,17 @@ function isStrongEnoughPassword(value: unknown): value is string {
     && /\d/.test(value)
 }
 
+function isLanguage(value: unknown): value is 'en' | 'ru' | 'it' | 'fr' {
+  return value === 'en' || value === 'ru' || value === 'it' || value === 'fr'
+}
+
+const defaultProgramCopy = {
+  en: { name: 'Default Practice Program', focuses: ['Warmup and foundation', 'Technique and rhythm', 'Repertoire building', 'Harmony and improvisation', 'Review and integration'], tasks: 'Warmup, Technique, Rhythm, and Improv./Solo practice blocks.' },
+  ru: { name: 'Основная программа практики', focuses: ['Разминка и основа', 'Техника и ритм', 'Развитие репертуара', 'Гармония и импровизация', 'Повторение и интеграция'], tasks: 'Блоки разминки, техники, ритма и импровизации/сольной практики.' },
+  it: { name: 'Programma di pratica predefinito', focuses: ['Riscaldamento e fondamenta', 'Tecnica e ritmo', 'Costruzione del repertorio', 'Armonia e improvvisazione', 'Ripasso e integrazione'], tasks: 'Blocchi di riscaldamento, tecnica, ritmo e improvvisazione/pratica solistica.' },
+  fr: { name: 'Programme de pratique par défaut', focuses: ['Échauffement et bases', 'Technique et rythme', 'Développement du répertoire', 'Harmonie et improvisation', 'Révision et intégration'], tasks: "Blocs d'échauffement, de technique, de rythme et d'improvisation/pratique solo." },
+} as const
+
 function isRateLimited(request: Request, loginName: string, action: string) {
   const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
   const key = `${action}:${loginName}:${forwardedFor}`
@@ -98,6 +109,7 @@ Deno.serve(async (request) => {
     if (!isStrongEnoughPassword(password)) return json({ error: 'Password must be at least 8 characters and include uppercase, lowercase, and a number.' }, 400)
     const securityQuestion = typeof payload.securityQuestion === 'string' ? payload.securityQuestion.trim() : ''
     const securityAnswer = normalizeAnswer(payload.securityAnswer)
+    const language = isLanguage(payload.language) ? payload.language : 'en'
     if (!securityQuestion || securityAnswer.length < 2) return json({ error: 'Security question and answer are required.' }, 400)
 
     const { data: existingProfile } = await supabaseAdmin
@@ -127,11 +139,22 @@ Deno.serve(async (request) => {
       return json({ error: 'Could not create account profile.' }, 500)
     }
 
+    const copy = defaultProgramCopy[language]
+    const { error: settingsError } = await supabaseAdmin.from('app_settings').insert({ user_id: createdUser.user.id, language })
+    if (settingsError) {
+      console.error('app_settings insert failed', settingsError)
+      await supabaseAdmin.from('user_profiles').delete().eq('user_id', createdUser.user.id)
+      await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id)
+      return json({ error: 'Could not create account preferences.' }, 500)
+    }
+
     const { data: defaultProgram, error: programCreateError } = await supabaseAdmin
       .from('programs')
       .insert({
         user_id: createdUser.user.id,
-        name: 'Default Practice Program',
+        name: copy.name,
+        language,
+        is_default: true,
         status: 'active',
       })
       .select('id')
@@ -158,8 +181,8 @@ Deno.serve(async (request) => {
         week_number: index + 1,
         start_date: startDate.toISOString().slice(0, 10),
         end_date: endDate.toISOString().slice(0, 10),
-        focus: ['Warmup and foundation', 'Technique and rhythm', 'Repertoire building', 'Harmony and improvisation', 'Review and integration'][index],
-        tasks: 'Warmup, Technique, Rhythm, and Improv./Solo practice blocks.',
+        focus: copy.focuses[index],
+        tasks: copy.tasks,
       }
     })
 

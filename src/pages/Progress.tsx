@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { formatDateRange } from '../lib/dateFormat'
+import { useI18n } from '../lib/i18n'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -49,6 +50,7 @@ function getStatus(week: ScheduledPlanWeek, today: string, sessionCount: number)
 }
 
 function JourneyWeekRow({ item, onOpen }: { item: JourneyWeek; onOpen: () => void }) {
+  const { language, t } = useI18n()
   return (
     <button type="button" onClick={onOpen} className="flex w-full items-center gap-3 text-left">
       <div className={[
@@ -64,14 +66,14 @@ function JourneyWeekRow({ item, onOpen }: { item: JourneyWeek; onOpen: () => voi
       <div className="flex-1 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 transition hover:border-slate-500">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="font-medium text-slate-200">Week {item.week_number}</span>
+            <span className="font-medium text-slate-200">{t('Week {week}', { week: item.week_number })}</span>
             <p className="mt-1 text-xs font-medium text-sky-200">{item.programName}</p>
-            <p className="mt-1 text-xs text-slate-400">{item.focus} · {formatDateRange(item.start_date, item.end_date)}</p>
+            <p className="mt-1 text-xs text-slate-400">{item.focus} · {formatDateRange(item.start_date, item.end_date, language)}</p>
           </div>
-          <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{item.status}</span>
+          <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t(item.status)}</span>
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          {item.sessionCount} {item.sessionCount === 1 ? 'session' : 'sessions'} · {item.totalMinutes} minutes
+          {item.sessionCount} {t(item.sessionCount === 1 ? 'session' : 'sessions')} · {item.totalMinutes} {t('minutes')}
         </p>
       </div>
     </button>
@@ -100,6 +102,7 @@ function groupJourneyWeeks(weeks: JourneyWeek[]) {
 }
 
 export default function Progress() {
+  const { language, t } = useI18n()
   const navigate = useNavigate()
   const [journey, setJourney] = useState<JourneyWeek[]>([])
   const [loading, setLoading] = useState(true)
@@ -133,7 +136,7 @@ export default function Progress() {
       if (!isMounted) return
 
       if (weeksError || sessionsError || settingsError || programsError) {
-        setError(weeksError?.message ?? sessionsError?.message ?? settingsError?.message ?? programsError?.message ?? 'Could not load practice progress.')
+        setError(weeksError?.message ?? sessionsError?.message ?? settingsError?.message ?? programsError?.message ?? t('Could not load practice progress.'))
         setLoading(false)
         return
       }
@@ -220,19 +223,19 @@ export default function Progress() {
     <div className="space-y-5">
       <section className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Progress</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-100">Practice journey</h1>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('Progress')}</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-100">{t('Practice journey')}</h1>
           <p className="mt-2 text-sm text-slate-300">
-            A tree-style overview of where you are, what you have done, and what is coming next.
+            {t('A tree-style overview of where you are, what you have done, and what is coming next.')}
           </p>
         </div>
       </section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-        {loading && <p className="text-sm text-slate-400">Loading practice journey…</p>}
+        {loading && <p className="text-sm text-slate-400">{t('Loading practice journey…')}</p>}
         {error && <p className="text-sm text-red-300">{error}</p>}
         {!loading && !error && journey.length === 0 && (
-          <p className="text-sm text-slate-400">No scheduled practice weeks yet. Start a program from Plan.</p>
+          <p className="text-sm text-slate-400">{t('No scheduled practice weeks yet. Start a program from Plan.')}</p>
         )}
         {!loading && !error && journey.length > 0 && <div className="relative space-y-5 pl-5 before:absolute before:inset-y-4 before:left-2 before:w-px before:bg-slate-700">
           {programGroups.map((group) => {
@@ -262,7 +265,7 @@ export default function Progress() {
                     <span>
                       <span className="block text-sm font-semibold text-slate-100">{group.programName}</span>
                       <span className="mt-1 block text-xs text-slate-500">
-                        Weeks {firstWeek.week_number}–{lastWeek.week_number} · {group.weeks.length} {group.weeks.length === 1 ? 'week' : 'weeks'} · {formatDateRange(firstWeek.start_date, lastWeek.end_date)}
+                        {t('Week {week}', { week: `${firstWeek.week_number}–${lastWeek.week_number}` })} · {group.weeks.length} {t(group.weeks.length === 1 ? 'week' : 'weeks')} · {formatDateRange(firstWeek.start_date, lastWeek.end_date, language)}
                       </span>
                     </span>
                     <span aria-hidden="true" className="text-slate-400">{isOpen ? '−' : '+'}</span>
@@ -275,8 +278,8 @@ export default function Progress() {
                           <div className="mt-3 flex flex-col items-center">
                             <button
                               type="button"
-                              aria-label={`Add week after week ${item.week_number}`}
-                              title={`Add week after week ${item.week_number}`}
+                              aria-label={t('Add week after week {week}', { week: item.week_number })}
+                              title={t('Add week after week {week}', { week: item.week_number })}
                               onClick={() => beginAddWeek(item)}
                               className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-500/60 bg-sky-500/10 text-xl leading-none text-sky-200 transition hover:border-sky-300 hover:bg-sky-500/20"
                             >
@@ -287,34 +290,34 @@ export default function Progress() {
                             </button>
                             {addAfterWeekId === item.id && (
                               <form onSubmit={(event) => { event.preventDefault(); void saveNewWeek(item) }} className="mt-3 w-full space-y-3 rounded-lg border border-sky-500/30 bg-slate-950/70 p-3">
-                                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200">Add week after Week {item.week_number}</p>
+                                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200">{t('Add week after Week {week}', { week: item.week_number })}</p>
                                 <div className="grid gap-3 sm:grid-cols-2">
                                   <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">Program</span>
+                                    <span className="block">{t('Program')}</span>
                                     <select value={newProgramId} onChange={(event) => setNewProgramId(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required>
                                       {programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}
                                     </select>
                                   </label>
                                   <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">Focus</span>
-                                    <input value={newFocus} onChange={(event) => setNewFocus(event.target.value)} placeholder="Week focus" className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required />
+                                    <span className="block">{t('Focus')}</span>
+                                    <input value={newFocus} onChange={(event) => setNewFocus(event.target.value)} placeholder={t('Week focus')} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required />
                                   </label>
                                   <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">Start</span>
+                                    <span className="block">{t('Start')}</span>
                                     <input type="date" value={newStartDate} onChange={(event) => setNewStartDate(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required />
                                   </label>
                                   <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">End</span>
+                                    <span className="block">{t('End')}</span>
                                     <input type="date" value={newEndDate} onChange={(event) => setNewEndDate(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required />
                                   </label>
                                 </div>
                                 <label className="block space-y-1 text-xs text-slate-400">
-                                  <span className="block">Tasks</span>
-                                  <textarea value={newTasks} onChange={(event) => setNewTasks(event.target.value)} rows={3} placeholder="Describe the week plan" className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" />
+                                  <span className="block">{t('Tasks')}</span>
+                                  <textarea value={newTasks} onChange={(event) => setNewTasks(event.target.value)} rows={3} placeholder={t('Describe the week plan')} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" />
                                 </label>
                                 <div className="flex justify-end gap-2">
-                                  <button type="button" onClick={() => setAddAfterWeekId(null)} className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300">Cancel</button>
-                                  <button type="submit" disabled={savingWeek} className="rounded border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs text-sky-100 disabled:opacity-50">{savingWeek ? 'Saving…' : 'Add week'}</button>
+                                  <button type="button" onClick={() => setAddAfterWeekId(null)} className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300">{t('Cancel')}</button>
+                                  <button type="submit" disabled={savingWeek} className="rounded border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs text-sky-100 disabled:opacity-50">{savingWeek ? t('Saving…') : t('Add week')}</button>
                                 </div>
                               </form>
                             )}

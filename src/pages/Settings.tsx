@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
+import { useI18n } from '../lib/i18n'
 
 type Preferences = {
+  language: Language
   habit_reminders: boolean
   show_completed_weeks: boolean
   collapse_plan_notes: boolean
@@ -9,7 +12,10 @@ type Preferences = {
   show_target_practice_time: boolean
 }
 
+type BooleanPreferenceKey = Exclude<keyof Preferences, 'language'>
+
 const defaultPreferences: Preferences = {
+  language: defaultLanguage,
   habit_reminders: true,
   show_completed_weeks: true,
   collapse_plan_notes: false,
@@ -17,7 +23,7 @@ const defaultPreferences: Preferences = {
   show_target_practice_time: true,
 }
 
-const preferenceGroups: Array<{ label: string; items: Array<{ key: keyof Preferences; label: string }> }> = [
+const preferenceGroups: Array<{ label: string; items: Array<{ key: BooleanPreferenceKey; label: string }> }> = [
   {
     label: 'Practice',
     items: [
@@ -39,8 +45,9 @@ const preferenceGroups: Array<{ label: string; items: Array<{ key: keyof Prefere
 export default function Settings() {
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences)
   const [loading, setLoading] = useState(true)
-  const [savingKey, setSavingKey] = useState<keyof Preferences | null>(null)
+  const [savingKey, setSavingKey] = useState<BooleanPreferenceKey | 'language' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { t, setLanguage: setInterfaceLanguage } = useI18n()
 
   useEffect(() => {
     async function loadPreferences() {
@@ -48,6 +55,7 @@ export default function Settings() {
       if (loadError) setError(loadError.message)
       if (data) {
         setPreferences({
+          language: isLanguage(data.language) ? data.language : defaultLanguage,
           habit_reminders: data.habit_reminders,
           show_completed_weeks: data.show_completed_weeks,
           collapse_plan_notes: data.collapse_plan_notes,
@@ -61,7 +69,7 @@ export default function Settings() {
     void loadPreferences()
   }, [])
 
-  async function togglePreference(key: keyof Preferences) {
+  async function togglePreference(key: BooleanPreferenceKey) {
     const nextValue = !preferences[key]
     setPreferences((current) => ({ ...current, [key]: nextValue }))
     setSavingKey(key)
@@ -79,26 +87,56 @@ export default function Settings() {
     setSavingKey(null)
   }
 
+  async function changeLanguage(language: Language) {
+    const previousLanguage = preferences.language
+    setPreferences((current) => ({ ...current, language }))
+    setInterfaceLanguage(language)
+    setSavingKey('language')
+    setError(null)
+
+    const { error: saveError } = await supabase.from('app_settings').upsert({ ...preferences, language })
+    if (saveError) {
+      setPreferences((current) => ({ ...current, language: previousLanguage }))
+      setInterfaceLanguage(previousLanguage)
+      setError(saveError.message)
+    }
+    setSavingKey(null)
+  }
+
   return (
     <div className="space-y-5">
       <section className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-        <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Settings</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-100">Preferences</h1>
-        <p className="mt-2 text-sm text-slate-300">Preferences are saved to your account.</p>
+        <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('Settings')}</p>
+        <h1 className="mt-2 text-2xl font-semibold text-slate-100">{t('Preferences')}</h1>
+        <p className="mt-2 text-sm text-slate-300">{t('Preferences are saved to your account.')}</p>
       </section>
 
-      {loading && <p className="text-sm text-slate-400">Loading preferences…</p>}
+      {loading && <p className="text-sm text-slate-400">{t('Loading preferences…')}</p>}
+      <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
+        <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('Language')}</p>
+        <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-3 text-sm text-slate-200">
+          <span>{t('Interface language')}</span>
+          <select
+            value={preferences.language}
+            onChange={(e) => { if (isLanguage(e.target.value)) void changeLanguage(e.target.value) }}
+            disabled={loading || savingKey === 'language'}
+            className="rounded border border-slate-700 bg-slate-800 px-3 py-2 disabled:opacity-50"
+          >
+            {supportedLanguages.map((option) => <option key={option} value={option}>{t(option.toUpperCase())}</option>)}
+          </select>
+        </label>
+      </section>
       {preferenceGroups.map((group) => (
         <section key={group.label} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-          <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{group.label}</p>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t(group.label)}</p>
           {group.items.map(({ key, label }) => (
             <div key={key} className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-3 text-sm text-slate-200">
-              <span>{label}</span>
+              <span>{t(label)}</span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={preferences[key]}
-                aria-label={label}
+                aria-label={t(label)}
                 disabled={loading || savingKey === key}
                 onClick={() => void togglePreference(key)}
                 className={[

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
+import { useI18n } from '../lib/i18n'
+import { localeForLanguage } from '../lib/dateFormat'
 
 type Session = Database['public']['Tables']['sessions']['Row']
 type SessionBlock = Database['public']['Tables']['session_blocks']['Row']
@@ -37,17 +39,17 @@ type InsightCard = {
   detail: string
 }
 
-function formatDate(value: string) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString('en-US', {
+function formatDate(value: string, locale: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   })
 }
 
-function formatChartLabel(value: string, scale: ChartScale) {
+function formatChartLabel(value: string, scale: ChartScale, weekLabel: (value: string) => string, locale: string) {
   if (scale === 'daily') {
-    return new Date(`${value}T00:00:00`).toLocaleDateString('en-US', {
+    return new Date(`${value}T00:00:00`).toLocaleDateString(locale, {
       month: 'short',
       day: 'numeric',
     })
@@ -55,13 +57,13 @@ function formatChartLabel(value: string, scale: ChartScale) {
 
   if (scale === 'weekly') {
     const date = new Date(`${value}T00:00:00`)
-    return `Week of ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+    return weekLabel(date.toLocaleDateString(locale, { month: 'short', day: 'numeric' }))
   }
 
   if (scale === 'monthly') {
     const [year, month] = value.split('-')
     const date = new Date(Number(year), Number(month) - 1, 1)
-    return `${new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date)} '${new Intl.DateTimeFormat('en-US', { year: '2-digit' }).format(date)}`
+    return `${new Intl.DateTimeFormat(locale, { month: 'short' }).format(date)} '${new Intl.DateTimeFormat(locale, { year: '2-digit' }).format(date)}`
   }
 
   return value
@@ -129,6 +131,8 @@ function shouldShowChartLabel(index: number, total: number) {
 }
 
 export default function Stats() {
+  const { language, t } = useI18n()
+  const locale = localeForLanguage(language)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
   const [summary, setSummary] = useState<StatsSummary | null>(null)
   const [chartPoints, setChartPoints] = useState<ChartPoint[]>([])
@@ -295,8 +299,8 @@ export default function Stats() {
     setHoveredPointIndex(null)
   }, [sessions, rangeStart, rangeEnd, chartScale])
 
-  if (loading) return <p className="text-sm text-slate-400">Loading…</p>
-  if (error) return <p className="text-red-400">Error: {error}</p>
+  if (loading) return <p className="text-sm text-slate-400">{t('Loading…')}</p>
+  if (error) return <p className="text-red-400">{t('Error: {error}', { error })}</p>
 
   const chartWidth = 720
   const chartHeight = 320
@@ -365,9 +369,9 @@ export default function Stats() {
   const insights: InsightCard[] = (() => {
     if (filteredSessions.length === 0) {
       return [
-        { title: 'Most continuous streak', value: '0 weeks', detail: 'Log a session to start building momentum.' },
-        { title: 'Longest practice', value: '0 min', detail: 'Your best session will appear here.' },
-        { title: 'Peak week', value: '0 min', detail: 'This snapshot will highlight your strongest week.' },
+        { title: t('Most continuous streak'), value: `0 ${t('weeks')}`, detail: t('Log a session to start building momentum.') },
+        { title: t('Longest practice'), value: `0 ${t('min')}`, detail: t('Your best session will appear here.') },
+        { title: t('Peak week'), value: `0 ${t('min')}`, detail: t('This snapshot will highlight your strongest week.') },
       ]
     }
 
@@ -399,23 +403,23 @@ export default function Stats() {
     }
 
     const peakWeek = Array.from(weekBuckets.entries()).sort((a, b) => b[1] - a[1])[0]
-    const peakWeekLabel = peakWeek ? formatDate(peakWeek[0]) : 'No week yet'
+    const peakWeekLabel = peakWeek ? formatDate(peakWeek[0], locale) : t('No week yet')
 
     return [
       {
-        title: 'Most continuous streak',
-        value: `${bestStreak} week${bestStreak === 1 ? '' : 's'}`,
-        detail: 'Longest run of consecutive weeks with practice.',
+        title: t('Most continuous streak'),
+        value: `${bestStreak} ${t(bestStreak === 1 ? 'week' : 'weeks')}`,
+        detail: t('Longest run of consecutive weeks with practice.'),
       },
       {
-        title: 'Longest practice',
-        value: `${longestPractice} min`,
-        detail: 'Your biggest single session in this range.',
+        title: t('Longest practice'),
+        value: `${longestPractice} ${t('min')}`,
+        detail: t('Your biggest single session in this range.'),
       },
       {
-        title: 'Peak week',
-        value: `${peakWeek?.[1] ?? 0} min`,
-        detail: `${peakWeekLabel} was your strongest week.`,
+        title: t('Peak week'),
+        value: `${peakWeek?.[1] ?? 0} ${t('min')}`,
+        detail: t('{date} was your strongest week.', { date: peakWeekLabel }),
       },
     ]
   })()
@@ -423,49 +427,49 @@ export default function Stats() {
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <h1 className="text-xl font-semibold">Stats</h1>
-        <p className="mt-1 text-sm text-slate-400">A simple overview of your practice history.</p>
+        <h1 className="text-xl font-semibold">{t('Stats')}</h1>
+        <p className="mt-1 text-sm text-slate-400">{t('A simple overview of your practice history.')}</p>
       </section>
 
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">Practice time</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.totalMinutes ?? 0} min</p>
+          <p className="text-sm text-slate-400">{t('Practice time')}</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.totalMinutes ?? 0} {t('min')}</p>
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">Sessions logged</p>
+          <p className="text-sm text-slate-400">{t('Sessions logged')}</p>
           <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.totalSessions ?? 0}</p>
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">Current streak</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.streakDays ?? 0} days</p>
+          <p className="text-sm text-slate-400">{t('Current streak')}</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.streakDays ?? 0} {t('days')}</p>
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">Selected period</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.selectedPeriodMinutes ?? 0} min</p>
+          <p className="text-sm text-slate-400">{t('Selected period')}</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.selectedPeriodMinutes ?? 0} {t('min')}</p>
         </div>
       </div>
 
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm text-slate-400">Last session</p>
+            <p className="text-sm text-slate-400">{t('Last session')}</p>
             <p className="mt-1 text-lg font-medium text-slate-200">
-              {summary?.lastSessionDate ? formatDate(summary.lastSessionDate) : 'No sessions yet'}
+              {summary?.lastSessionDate ? formatDate(summary.lastSessionDate, locale) : t('No sessions yet')}
             </p>
           </div>
           <div className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-300">
-            {summary?.lastSessionMinutes ?? 0} min
+            {summary?.lastSessionMinutes ?? 0} {t('min')}
           </div>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
           <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-slate-400">Cumulative practice time</p>
+              <p className="text-sm text-slate-400">{t('Cumulative practice time')}</p>
               <div className="flex flex-wrap gap-2">
                 {(['daily', 'weekly', 'monthly', 'yearly'] as ChartScale[]).map((scale) => (
                   <button
@@ -474,7 +478,7 @@ export default function Stats() {
                     onClick={() => setChartScale(scale)}
                     className={`rounded border px-2.5 py-1 text-xs uppercase tracking-wide ${chartScale === scale ? 'border-slate-200 bg-slate-100 text-slate-900' : 'border-slate-700 bg-slate-900 text-slate-300'}`}
                   >
-                    {scale}
+                    {t(scale)}
                   </button>
                 ))}
               </div>
@@ -484,7 +488,7 @@ export default function Stats() {
                 viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                 className="h-72 w-full"
                 role="img"
-                aria-label="Cumulative practice timeline"
+                aria-label={t('Cumulative practice timeline')}
                 onMouseMove={(event) => {
                   if (chartPointsWithCoords.length === 0) return
                   const bounds = event.currentTarget.getBoundingClientRect()
@@ -526,7 +530,7 @@ export default function Stats() {
                       />
                       {showLabel && (
                         <text x={point.x} y={chartHeight - chartPadding + 18} textAnchor="middle" fontSize="11" fill="#64748b">
-                          {formatChartLabel(point.label, chartScale)}
+                          {formatChartLabel(point.label, chartScale, (date) => t('Week of {date}', { date }), locale)}
                         </text>
                       )}
                     </g>
@@ -542,8 +546,8 @@ export default function Stats() {
                     transform: 'translate(-50%, -120%)',
                   }}
                 >
-                  <p className="font-medium text-slate-100">{formatChartLabel(activePoint.label, chartScale)}</p>
-                  <p className="mt-1 text-slate-400">{activePoint.value} min total</p>
+                  <p className="font-medium text-slate-100">{formatChartLabel(activePoint.label, chartScale, (date) => t('Week of {date}', { date }), locale)}</p>
+                  <p className="mt-1 text-slate-400">{t('{value} min total', { value: activePoint.value })}</p>
                 </div>
               )}
             </div>
@@ -551,12 +555,12 @@ export default function Stats() {
 
           <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm text-slate-400">Practice blocks</p>
-              <p className="text-xs text-slate-500">Selected period</p>
+              <p className="text-sm text-slate-400">{t('Practice blocks')}</p>
+              <p className="text-xs text-slate-500">{t('Selected period')}</p>
             </div>
             {pieSlices.length > 0 ? (
               <>
-                <svg viewBox={`0 0 ${pieWidth} ${pieHeight}`} className="mx-auto h-64 w-full max-w-[260px]" role="img" aria-label="Practice block distribution">
+                  <svg viewBox={`0 0 ${pieWidth} ${pieHeight}`} className="mx-auto h-64 w-full max-w-[260px]" role="img" aria-label={t('Practice block distribution')}>
                   {pieSegments.map((slice) => (
                     <path key={slice.label} d={slice.d} fill={slice.color} />
                   ))}
@@ -579,13 +583,13 @@ export default function Stats() {
                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: slice.color }} />
                         <span>{slice.label}</span>
                       </div>
-                      <span>{Math.floor(slice.value)} min</span>
+                      <span>{Math.floor(slice.value)} {t('min')}</span>
                     </div>
                   ))}
                 </div>
               </>
             ) : (
-              <p className="text-sm text-slate-400">No block data for this period.</p>
+              <p className="text-sm text-slate-400">{t('No block data for this period.')}</p>
             )}
           </div>
         </div>
@@ -595,14 +599,14 @@ export default function Stats() {
         <div className="flex flex-wrap gap-2">
           {(['current-week', 'current-month', 'this-year', 'custom', 'all'] as FilterPreset[]).map((preset) => {
             const label = preset === 'current-week'
-              ? 'Current week'
+                    ? t('Current week')
               : preset === 'current-month'
-                ? 'Current Month'
+                ? t('Current Month')
                 : preset === 'this-year'
-                  ? 'This year'
+                  ? t('This year')
                   : preset === 'custom'
-                    ? 'Custom range'
-                    : 'Reset'
+                    ? t('Custom range')
+                    : t('Reset')
 
             return (
               <button
@@ -629,7 +633,7 @@ export default function Stats() {
           <div className="mt-4 space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="text-sm text-slate-300">
-                <span className="mb-1 block">From</span>
+                <span className="mb-1 block">{t('From')}</span>
                 <input
                   type="date"
                   value={toInputDate(customStart || null)}
@@ -638,7 +642,7 @@ export default function Stats() {
                 />
               </label>
               <label className="text-sm text-slate-300">
-                <span className="mb-1 block">To</span>
+                <span className="mb-1 block">{t('To')}</span>
                 <input
                   type="date"
                   value={toInputDate(customEnd || null)}
@@ -656,7 +660,7 @@ export default function Stats() {
               }}
               className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300"
             >
-              Reset to full history
+              {t('Reset to full history')}
             </button>
           </div>
         )}

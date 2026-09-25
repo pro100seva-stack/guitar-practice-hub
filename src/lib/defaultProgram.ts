@@ -1,12 +1,5 @@
 import { supabase } from './supabase'
-
-const defaultFocuses = [
-  'Warmup and foundation',
-  'Technique and rhythm',
-  'Repertoire building',
-  'Harmony and improvisation',
-  'Review and integration',
-]
+import { defaultLanguage, getDefaultProgramCopy, isLanguage } from './language'
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -22,12 +15,14 @@ export async function ensureDefaultProgramContinuation() {
   const today = toIsoDate(new Date())
   const { data: program, error: programError } = await supabase
     .from('programs')
-    .select('id, name, status')
-    .eq('name', 'Default Practice Program')
+    .select('id, name, status, language')
+    .eq('is_default', true)
     .eq('status', 'active')
     .maybeSingle()
 
   if (programError || !program) return
+  const language = isLanguage(program.language) ? program.language : defaultLanguage
+  const copy = getDefaultProgramCopy(language)
 
   const { data: lastProgramWeek, error: weekError } = await supabase
     .from('plan_weeks')
@@ -59,8 +54,8 @@ export async function ensureDefaultProgramContinuation() {
     week_number: nextWeekNumber,
     start_date: toIsoDate(startDate),
     end_date: toIsoDate(endDate),
-    focus: defaultFocuses[(nextSequence - 1) % defaultFocuses.length],
-    tasks: 'Warmup, Technique, Rhythm, and Improv./Solo practice blocks.',
+    focus: copy.focuses[(nextSequence - 1) % copy.focuses.length],
+    tasks: copy.tasks,
   })
 
   if (insertError && insertError.code !== '23505') {

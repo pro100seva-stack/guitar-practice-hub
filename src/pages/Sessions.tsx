@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
-import { formatDate, formatDateRange } from '../lib/dateFormat'
+import { formatDate, formatDateRange, localeForLanguage } from '../lib/dateFormat'
+import { useI18n } from '../lib/i18n'
 
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
@@ -84,8 +85,8 @@ const tuningPresets: Record<TuningKey, { label: string; notes: Array<{ stringNam
   },
 }
 
-function formatHeadingDate(value: string) {
-  return formatDate(value)
+function formatHeadingDate(value: string, language: Parameters<typeof localeForLanguage>[0]) {
+  return formatDate(value, language)
 }
 
 function formatLocalDate(date: Date) {
@@ -132,6 +133,7 @@ function getSessionEditorState(date: string, templates: BlockTemplate[], session
 }
 
 export default function Sessions() {
+  const { language, t } = useI18n()
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
   const [planWeek, setPlanWeek] = useState<ScheduledPlanWeek | null>(null)
   const [programName, setProgramName] = useState<string | null>(null)
@@ -196,7 +198,7 @@ export default function Sessions() {
       setLearningMaterials(await listLocalMaterials('learning'))
       setLocalStorageEstimate(await estimateLocalStorage())
     } catch (loadError) {
-      setMaterialError(loadError instanceof Error ? loadError.message : 'Could not load local materials.')
+      setMaterialError(loadError instanceof Error ? loadError.message : t('Could not load local materials.'))
     }
   }
 
@@ -246,7 +248,7 @@ export default function Sessions() {
     const allowedTypes = ['application/pdf', 'image/', 'text/plain', 'video/']
     const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? file.type.startsWith(type) : file.type === type)
     if (!isAllowed) {
-      setMaterialError('Use a PDF, image, text, or video file.')
+      setMaterialError(t('Use a PDF, image, text, or video file.'))
       setMaterialSaveState('idle')
       return
     }
@@ -254,7 +256,7 @@ export default function Sessions() {
     if (storageEstimate.quota != null && storageEstimate.usage != null) {
       const availableBytes = storageEstimate.quota - storageEstimate.usage
       if (file.size > availableBytes) {
-        setMaterialError('This file is larger than the browser storage currently available on this device.')
+        setMaterialError(t('This file is larger than the browser storage currently available on this device.'))
         setMaterialSaveState('idle')
         return
       }
@@ -264,7 +266,7 @@ export default function Sessions() {
       const probe = document.createElement('video')
       const support = probe.canPlayType(file.type)
       if (!support) {
-        setMaterialNotice('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.')
+        setMaterialNotice(t('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.'))
       }
     }
 
@@ -284,7 +286,7 @@ export default function Sessions() {
       window.setTimeout(() => setMaterialSaveState('idle'), 2500)
     } catch (uploadError) {
       const isQuotaError = uploadError instanceof DOMException && uploadError.name === 'QuotaExceededError'
-      setMaterialError(isQuotaError ? 'The browser storage quota was reached. Remove local materials or use another device.' : uploadError instanceof Error ? uploadError.message : 'Could not save the local material.')
+      setMaterialError(isQuotaError ? t('The browser storage quota was reached. Remove local materials or use another device.') : uploadError instanceof Error ? uploadError.message : t('Could not save the local material.'))
       setMaterialSaveState('idle')
     }
   }
@@ -295,7 +297,7 @@ export default function Sessions() {
     try {
       const iframeSource = value.match(/src=["']([^"']+)["']/i)?.[1]
       const url = new URL(iframeSource ?? value)
-      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP and HTTPS URLs are supported.')
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error(t('Only HTTP and HTTPS URLs are supported.'))
       await saveLocalMaterial({
         id: crypto.randomUUID(),
         blockKey: 'learning',
@@ -311,7 +313,7 @@ export default function Sessions() {
       setMaterialNotice(null)
       await loadLearningMaterials()
     } catch (urlError) {
-      setMaterialError(urlError instanceof Error ? urlError.message : 'Enter a valid web URL.')
+      setMaterialError(urlError instanceof Error ? urlError.message : t('Enter a valid web URL.'))
     }
   }
 
@@ -908,7 +910,7 @@ export default function Sessions() {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      setError('Not signed in.')
+      setError(t('Not signed in.'))
       setSaving(false)
       return
     }
@@ -930,7 +932,7 @@ export default function Sessions() {
       .single()
 
     if (sessionError || !sessionData) {
-      setError(sessionError?.message ?? 'Could not save the session.')
+      setError(sessionError?.message ?? t('Could not save the session.'))
       setSaving(false)
       return
     }
@@ -988,7 +990,7 @@ export default function Sessions() {
       }))
     )
     await loadData()
-    setMessage('Session saved successfully.')
+    setMessage(t('Session saved successfully.'))
     setSaving(false)
   }
 
@@ -1009,7 +1011,7 @@ export default function Sessions() {
   const visibleWeeks = weeks.slice(Math.max(0, selectedWeekIndex - 2), Math.min(weeks.length, selectedWeekIndex + 3))
 
   if (loading) {
-    return <p className="text-sm text-slate-400">Loading…</p>
+    return <p className="text-sm text-slate-400">{t('Loading…')}</p>
   }
 
   return (
@@ -1017,9 +1019,9 @@ export default function Sessions() {
       <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Session {formatHeadingDate(date)}</h1>
+            <h1 className="text-2xl font-semibold">{t('Session {date}', { date: formatHeadingDate(date, language) })}</h1>
             <p className="mt-1 text-sm text-slate-400">
-              Practice week navigator for the current cycle.
+              {t('Practice week navigator for the current cycle.')}
             </p>
           </div>
 
@@ -1027,15 +1029,15 @@ export default function Sessions() {
             <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[280px]">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Metronome</p>
-                  <p className="text-sm text-slate-300">{isMetronomePlaying ? 'Playing' : 'Standby'}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">{t('Metronome')}</p>
+                  <p className="text-sm text-slate-300">{t(isMetronomePlaying ? 'Playing' : 'Standby')}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => { void toggleMetronome() }}
                   className="rounded bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-900"
                 >
-                  {isMetronomePlaying ? 'Stop' : 'Start'}
+                  {isMetronomePlaying ? t('Stop') : t('Start')}
                 </button>
               </div>
 
@@ -1054,7 +1056,7 @@ export default function Sessions() {
                 </label>
 
                 <label className="text-xs text-slate-400">
-                  Time
+                  {t('Time')}
                   <select
                     value={timeSignatureMode}
                     onChange={(event) => handleTimeSignatureChange(event.target.value as '3/4' | '4/4' | '5/4' | 'custom')}
@@ -1063,14 +1065,14 @@ export default function Sessions() {
                     <option value="3/4">3/4</option>
                     <option value="4/4">4/4</option>
                     <option value="5/4">5/4</option>
-                    <option value="custom">Custom</option>
+                    <option value="custom">{t('Custom')}</option>
                   </select>
                 </label>
 
                 {timeSignatureMode === 'custom' && (
                   <div className="flex items-end gap-2">
                     <label className="text-xs text-slate-400">
-                      Beat
+                      {t('Beat')}
                       <input
                         type="number"
                         min="2"
@@ -1082,7 +1084,7 @@ export default function Sessions() {
                     </label>
 
                     <label className="text-xs text-slate-400">
-                      Measure
+                      {t('Measure')}
                       <input
                         type="number"
                         min="2"
@@ -1100,7 +1102,7 @@ export default function Sessions() {
                   onClick={handleTapTempo}
                   className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
                 >
-                  Tap
+                  {t('Tap')}
                 </button>
               </div>
             </div>
@@ -1112,8 +1114,8 @@ export default function Sessions() {
                 onClick={() => setIsTunerOpen((current) => !current)}
                 className="flex w-full items-center justify-between gap-3 text-left"
               >
-                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Tuner</span>
-                <span className="text-xs text-slate-500">{isTunerOpen ? 'Hide' : 'Show'}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{t('Tuner')}</span>
+                <span className="text-xs text-slate-500">{t(isTunerOpen ? 'Hide' : 'Show')}</span>
               </button>
               {isTunerOpen && (
                 <div className="mt-2">
@@ -1124,23 +1126,30 @@ export default function Sessions() {
                       setTuningKey(event.target.value as TuningKey)
                     }}
                     className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200"
-                    aria-label="Guitar tuning"
+                    aria-label={t('Guitar tuning')}
                   >
                     {Object.entries(tuningPresets).map(([key, tuning]) => (
-                      <option key={key} value={key}>{tuning.label}</option>
+                      <option key={key} value={key}>{t(tuning.label)}</option>
                     ))}
                   </select>
                   <div key={tuningKey} className="mt-2 grid grid-cols-3 gap-1">
                     {tuningPresets[tuningKey].notes.map((note) => (
+                      (() => {
+                        const displayNote = note.stringName.startsWith('Low ') || note.stringName.startsWith('High ')
+                          ? t(note.stringName)
+                          : note.stringName
+                        return (
                       <button
                         key={note.stringName}
                         type="button"
-                        title={`Play ${note.stringName} reference tone`}
+                        title={t('Play {note} reference tone', { note: displayNote })}
                         onClick={() => { void playReferenceTone(note.stringName, note.frequency) }}
                         className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:border-sky-500 hover:text-sky-200"
                       >
-                        {activeReferenceTone === note.stringName ? 'Playing' : note.stringName}
+                        {activeReferenceTone === note.stringName ? t('Playing') : displayNote}
                       </button>
+                        )
+                      })()
                     ))}
                   </div>
                   <button
@@ -1149,16 +1158,16 @@ export default function Sessions() {
                     disabled={!activeReferenceTone}
                     className="mt-2 w-full rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Stop tone
+                    {t('Stop tone')}
                   </button>
                 </div>
               )}
             </div>
 
             <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[240px]">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Practice time</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">{t('Practice time')}</p>
               <p className="mt-1 text-2xl font-semibold text-slate-100">{totalBlockMinutes} min</p>
-              <p className="text-sm text-slate-400">Total across selected blocks</p>
+              <p className="text-sm text-slate-400">{t('Total across selected blocks')}</p>
             </div>
           </div>
         </div>
@@ -1166,11 +1175,11 @@ export default function Sessions() {
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Practice weeks</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t('Practice weeks')}</p>
             </div>
 
             <label className="flex items-center gap-2 text-xs text-slate-300">
-              <span>Jump to</span>
+              <span>{t('Jump to')}</span>
               <select
                 value={planWeek?.id ?? ''}
                 onChange={(event) => {
@@ -1183,7 +1192,7 @@ export default function Sessions() {
               >
                 {weeks.map((weekItem) => (
                   <option key={weekItem.id} value={weekItem.id}>
-                    Week {weekItem.week_number} · {formatDateRange(weekItem.start_date, weekItem.end_date)}
+                    {t('Week {week}', { week: weekItem.week_number })} · {formatDateRange(weekItem.start_date, weekItem.end_date, language)}
                   </option>
                 ))}
               </select>
@@ -1207,15 +1216,15 @@ export default function Sessions() {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week {weekItem.week_number}</p>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week {week}', { week: weekItem.week_number })}</p>
                     {isCurrentWeek && (
                       <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
-                        Today
+                        {t('Today')}
                       </span>
                     )}
                   </div>
-                  <p className="mt-2 text-lg font-semibold">{weekItem.focus || 'Plan focus'}</p>
-                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date)}</p>
+                  <p className="mt-2 text-lg font-semibold">{weekItem.focus || t('Focus')}</p>
+                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date, language)}</p>
                 </button>
               )
             })}
@@ -1225,39 +1234,39 @@ export default function Sessions() {
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Selected week</p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-100">{planWeek?.focus ?? 'No week selected'}</h2>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Selected week')}</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-100">{planWeek?.focus ?? t('No week selected')}</h2>
             </div>
 
             {planWeek && planWeek.start_date <= new Date().toISOString().slice(0, 10) && planWeek.end_date >= new Date().toISOString().slice(0, 10) && (
               <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-sky-300">
-                Current week
+                {t('Current week')}
               </span>
             )}
           </div>
 
           <div className="mt-3 grid gap-2 text-sm text-slate-300 md:grid-cols-2">
             <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Program</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Program')}</p>
               <p className="mt-1">{programName ?? '—'}</p>
             </div>
             <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Dates</p>
-              <p className="mt-1">{planWeek ? formatDateRange(planWeek.start_date, planWeek.end_date) : '—'}</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Dates')}</p>
+              <p className="mt-1">{planWeek ? formatDateRange(planWeek.start_date, planWeek.end_date, language) : '—'}</p>
             </div>
           </div>
 
           <div className="mt-3 rounded border border-slate-800 bg-slate-950/70 p-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Week description</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week description')}</p>
             <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">
-              {planWeek?.tasks?.trim() || 'No description recorded for this week yet.'}
+              {planWeek?.tasks?.trim() || t('No description recorded for this week yet.')}
             </p>
           </div>
         </div>
 
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Days in selected week</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Days in selected week')}</p>
           </div>
 
           <div className="mt-3 grid gap-2 sm:grid-cols-7">
@@ -1282,22 +1291,22 @@ export default function Sessions() {
                 >
                   {isToday && (
                     <span
-                      aria-label="Current day"
-                      title="Current day"
+                      aria-label={t('Current day')}
+                      title={t('Current day')}
                       className="absolute right-2 top-2 h-3 w-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.75)]"
                     />
                   )}
                   <div className="flex items-center justify-center gap-1">
                     <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                      {new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })}
+                      {new Date(`${day}T00:00:00`).toLocaleDateString(localeForLanguage(language), { weekday: 'short' })}
                     </p>
                     {isCompleted && (
                       <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-emerald-200">
-                        ✓ Done
+                        ✓ {t('Done')}
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-sm font-medium">{new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                  <p className="mt-1 text-sm font-medium">{new Date(`${day}T00:00:00`).toLocaleDateString(localeForLanguage(language), { month: 'short', day: 'numeric' })}</p>
                 </button>
               )
             })}
@@ -1307,25 +1316,25 @@ export default function Sessions() {
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Selected day</p>
-              <h3 className="mt-1 text-lg font-semibold text-slate-100">{formatHeadingDate(date)}</h3>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Selected day')}</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-100">{formatHeadingDate(date, language)}</h3>
             </div>
             {isTodayDate(date) && (
               <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
-                Today
+                {t('Today')}
               </span>
             )}
           </div>
 
           <div className="mt-4 flex flex-col gap-2 rounded border border-slate-800 bg-slate-950/60 p-3 sm:flex-row sm:items-end">
             <label className="flex-1 text-xs text-slate-400">
-              Add practice block
+              {t('Add practice block')}
               <select
                 value={blockToAddId}
                 onChange={(event) => setBlockToAddId(event.target.value)}
                 className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm text-slate-200"
               >
-                <option value="">Choose a block</option>
+                <option value="">{t('Choose a block')}</option>
                 {templates
                   .filter((template) => !selectedBlocks.some((block) => block.id === template.id))
                   .map((template) => (
@@ -1341,13 +1350,13 @@ export default function Sessions() {
               disabled={!blockToAddId}
               className="rounded bg-slate-100 px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
             >
-              Add block
+              {t('Add block')}
             </button>
           </div>
 
           <div className="mt-4 space-y-3">
             {selectedBlocks.length === 0 && (
-              <p className="text-sm text-slate-400">No practice blocks selected for this day.</p>
+              <p className="text-sm text-slate-400">{t('No practice blocks selected for this day.')}</p>
             )}
 
             {templates.map((template) => {
@@ -1382,23 +1391,23 @@ export default function Sessions() {
                         className="min-w-0 text-left"
                       >
                         <p className="text-sm font-semibold text-slate-100">{template.label}</p>
-                        {showTargetPracticeTime && <p className="text-xs text-slate-400">Target: {template.target_minutes ?? 0} min</p>}
+                        {showTargetPracticeTime && <p className="text-xs text-slate-400">{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</p>}
                       </button>
                     </div>
 
                     {isExpanded && (
                       <>
                         <p className="mt-2 text-sm text-slate-300">
-                          {template.description?.trim() || 'No description available for this practice block.'}
+                          {template.description?.trim() || t('No description available for this practice block.')}
                         </p>
                         {template.key === 'learning' && (
                           <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/60 p-3">
                             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                              Materials stay on this device
+                              {t('Materials stay on this device')}
                             </p>
                             <p className="text-[11px] text-slate-500">
-                              Local storage: {formatStorageSize(localStorageEstimate.usage)} used
-                              {localStorageEstimate.quota != null ? ` of ${formatStorageSize(localStorageEstimate.quota)}` : ''}
+                              {t('Local storage: {used} used', { used: formatStorageSize(localStorageEstimate.usage) })}
+                              {localStorageEstimate.quota != null ? ` ${t('of {quota}', { quota: formatStorageSize(localStorageEstimate.quota) })}` : ''}
                             </p>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                               <input
@@ -1409,7 +1418,7 @@ export default function Sessions() {
                               />
                               {materialSaveState !== 'idle' && (
                                 <span className={`text-xs ${materialSaveState === 'saved' ? 'text-emerald-300' : 'text-slate-400'}`}>
-                                  {materialSaveState === 'saving' ? 'Saving locally…' : 'Saved on this device'}
+                                  {materialSaveState === 'saving' ? t('Saving locally…') : t('Saved on this device')}
                                 </span>
                               )}
                             </div>
@@ -1418,7 +1427,7 @@ export default function Sessions() {
                                 type="url"
                                 value={materialUrlInput}
                                 onChange={(event) => setMaterialUrlInput(event.target.value)}
-                                placeholder="https://example.com/material"
+                                placeholder={t('Material URL')}
                                 className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
                               />
                               <button
@@ -1426,7 +1435,7 @@ export default function Sessions() {
                                 onClick={() => { void addMaterialUrl() }}
                                 className="rounded border border-slate-700 px-2 py-1.5 text-xs text-slate-300"
                               >
-                                Add URL
+                                {t('Add URL')}
                               </button>
                             </div>
                             {learningMaterials.length > 0 && (
@@ -1445,7 +1454,7 @@ export default function Sessions() {
                                       onClick={() => { void removeLearningMaterial(material.id) }}
                                       className="shrink-0 text-rose-300"
                                     >
-                                      Remove
+                                      {t('Remove')}
                                     </button>
                                   </div>
                                 ))}
@@ -1469,7 +1478,7 @@ export default function Sessions() {
                                       onClick={() => setActiveMaterialId(null)}
                                       className="shrink-0 text-xs text-slate-400 hover:text-slate-200"
                                     >
-                                      Close
+                                      {t('Close')}
                                     </button>
                                   </div>
                                   {externalMediaKind === 'embed' && inlineMaterialUrl ? (
@@ -1483,14 +1492,14 @@ export default function Sessions() {
                                     />
                                   ) : isExternalPage && activeMaterial.url ? (
                                     <div className="space-y-3 p-4 text-sm text-slate-300">
-                                      <p>This web page does not provide an embeddable media format, or it blocks inline viewing.</p>
+                                      <p>{t('This web page does not provide an embeddable media format, or it blocks inline viewing.')}</p>
                                       <a
                                         href={activeMaterial.url}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="inline-block rounded border border-slate-700 px-3 py-2 text-sky-300 hover:border-sky-500 hover:text-sky-200"
                                       >
-                                        Open in browser
+                                        {t('Open in browser')}
                                       </a>
                                     </div>
                                   ) : isVideo || externalMediaKind === 'video' ? (
@@ -1508,7 +1517,7 @@ export default function Sessions() {
                                             void event.currentTarget.play()
                                           }
                                         }}
-                                        onError={() => setMediaError('This video codec or container is not fully supported by this browser.')}
+                                        onError={() => setMediaError(t('This video codec or container is not fully supported by this browser.'))}
                                         className="max-h-[420px] w-full"
                                       />
                                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
@@ -1517,14 +1526,14 @@ export default function Sessions() {
                                           onClick={() => setLoopPoint('start')}
                                           className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500"
                                         >
-                                          Set A {loopStart == null ? '' : `(${loopStart.toFixed(1)}s)`}
+                                          {t('Set A')} {loopStart == null ? '' : `(${loopStart.toFixed(1)}s)`}
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => setLoopPoint('end')}
                                           className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500"
                                         >
-                                          Set B {loopEnd == null ? '' : `(${loopEnd.toFixed(1)}s)`}
+                                          {t('Set B')} {loopEnd == null ? '' : `(${loopEnd.toFixed(1)}s)`}
                                         </button>
                                         <button
                                           type="button"
@@ -1532,25 +1541,25 @@ export default function Sessions() {
                                           onClick={() => setIsLooping((current) => !current)}
                                           className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
-                                          {isLooping ? 'Looping' : 'Loop A-B'}
+                                          {isLooping ? t('Looping') : t('Loop A-B')}
                                         </button>
                                         <button
                                           type="button"
                                           onClick={clearLoop}
                                           className="rounded border border-slate-700 px-2 py-1 text-slate-400 hover:text-slate-200"
                                         >
-                                          Clear
+                                          {t('Clear')}
                                         </button>
                                       </div>
                                       {activeMaterial.source === 'file' && (
                                         <div>
-                                          <p className="mb-1 text-[11px] text-slate-400">Audio track fallback</p>
+                                          <p className="mb-1 text-[11px] text-slate-400">{t('Audio track fallback')}</p>
                                           <audio
                                             src={activeMaterialUrl}
                                             controls
                                             preload="metadata"
                                             className="w-full"
-                                            onError={() => setMediaError('The audio codec is not supported by this browser.')}
+                                            onError={() => setMediaError(t('The audio codec is not supported by this browser.'))}
                                           />
                                         </div>
                                       )}
@@ -1571,7 +1580,7 @@ export default function Sessions() {
                                       rel="noreferrer"
                                       className="block border-t border-slate-800 px-3 py-2 text-xs text-sky-300 hover:text-sky-200"
                                     >
-                                      Playback trouble? Open on YouTube
+                                      {t('Playback trouble? Open on YouTube')}
                                     </a>
                                   )}
                                   {mediaError && <p className="px-3 py-2 text-xs text-rose-300">{mediaError}</p>}
@@ -1593,19 +1602,19 @@ export default function Sessions() {
                         onClick={() => toggleTimer(template.id)}
                         className="rounded bg-slate-800 px-2 py-1 text-xs font-medium text-slate-200"
                       >
-                        {timers[template.id]?.isRunning ? 'Pause' : 'Start'}
+                        {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
                       </button>
                       <button
                         type="button"
                         onClick={() => resetTimer(template.id)}
                         className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
                       >
-                        Reset
+                        {t('Reset')}
                       </button>
                     </div>
 
                     <fieldset className="flex shrink-0 items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">
-                      <legend>Timer</legend>
+                      <legend>{t('Timer')}</legend>
                       <input
                         type="number"
                         min="0"
@@ -1633,7 +1642,7 @@ export default function Sessions() {
                       onClick={() => removeBlock(template.id)}
                       className="text-[11px] font-medium text-rose-300 whitespace-nowrap"
                     >
-                      Remove block
+                      {t('Remove block')}
                     </button>
                   </div>
                 </div>
@@ -1644,13 +1653,13 @@ export default function Sessions() {
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <label className="block space-y-1 text-sm">
-            <span className="block text-slate-300">Notes</span>
+            <span className="block text-slate-300">{t('Notes')}</span>
             <textarea
               rows={3}
               value={comment}
               onChange={(event) => setComment(event.target.value)}
               className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2"
-              placeholder="What did you work on?"
+              placeholder={t('What did you work on?')}
             />
           </label>
 
@@ -1664,7 +1673,7 @@ export default function Sessions() {
             disabled={saving}
             className="rounded bg-slate-100 px-3 py-2 font-medium text-slate-900 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save session'}
+            {saving ? t('Saving…') : t('Save session')}
           </button>
         </form>
       </section>
@@ -1676,15 +1685,15 @@ export default function Sessions() {
           aria-expanded={isRecentSessionsOpen}
           className="flex w-full items-center justify-between gap-2 text-left"
         >
-          <h2 className="text-lg font-semibold">Recent sessions</h2>
+          <h2 className="text-lg font-semibold">{t('Recent sessions')}</h2>
           <span className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300">
-            {isRecentSessionsOpen ? 'Hide' : 'Show'}
+            {t(isRecentSessionsOpen ? 'Hide' : 'Show')}
           </span>
         </button>
 
         {isRecentSessionsOpen && (
           <div className="mt-3 space-y-3">
-            {sessions.length === 0 && <p className="text-sm text-slate-400">No sessions yet.</p>}
+            {sessions.length === 0 && <p className="text-sm text-slate-400">{t('No sessions yet.')}</p>}
 
             {sessions.slice(0, 5).map((session) => (
               <button
@@ -1695,11 +1704,11 @@ export default function Sessions() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="font-medium text-slate-200">{formatDate(session.session_date)}</p>
-                    <p className="text-sm text-slate-400">{session.total_minutes} min</p>
+                    <p className="font-medium text-slate-200">{formatDate(session.session_date, language)}</p>
+                    <p className="text-sm text-slate-400">{session.total_minutes} {t('min')}</p>
                   </div>
                   <span className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">
-                    {session.source === 'notion_import' ? 'Imported' : 'App'}
+                    {t(session.source === 'notion_import' ? 'Imported' : 'App')}
                   </span>
                 </div>
 

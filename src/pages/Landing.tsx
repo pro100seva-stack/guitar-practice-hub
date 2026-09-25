@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import evhImage from '../assets/EVH_Frankenstrat.jpg'
+import { useI18n } from '../lib/i18n'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type ScheduledPlanWeek = PlanWeek & {
@@ -19,6 +20,7 @@ export default function Landing() {
   const navigate = useNavigate()
   const [currentWeek, setCurrentWeek] = useState<ScheduledPlanWeek | null>(null)
   const [loading, setLoading] = useState(true)
+  const { t } = useI18n()
 
   useEffect(() => {
     let isMounted = true
@@ -51,21 +53,21 @@ export default function Landing() {
   }, [])
 
   const currentWeekDescription = loading
-    ? 'Loading current week…'
+    ? t('Loading current week…')
     : currentWeek
-      ? `Week ${currentWeek.week_number ?? '?'} · ${currentWeek.focus?.trim() || 'Current week plan'}`
-      : 'No current week plan yet'
+      ? `${t('Week {week}', { week: currentWeek.week_number ?? '?' })} · ${currentWeek.focus?.trim() || t('Current week plan')}`
+      : t('No current week plan yet')
 
   const navItems = [
-    { label: 'My Progress', path: '/progress', tone: 'sky', variant: 'default' },
+    { label: t('My Progress'), path: '/progress', tone: 'sky', variant: 'default' },
     {
-      label: 'Current Week',
+      label: t('Current Week'),
       path: '/plan',
       tone: 'violet',
       variant: 'snippet',
       description: currentWeekDescription,
     },
-    { label: 'Practice!', path: '/practice', tone: 'emerald', variant: 'ellipse' },
+    { label: t('Practice!'), path: '/practice', tone: 'emerald', variant: 'ellipse' },
   ]
 
   return (
@@ -100,7 +102,7 @@ export default function Landing() {
       >
         <img
           src={evhImage}
-          alt="Frankenstrat electric guitar"
+          alt={t('Frankenstrat')}
           className="h-full w-auto max-h-[calc(100vh-73px)] object-contain"
           style={{
             display: 'block',
@@ -112,14 +114,12 @@ export default function Landing() {
       </div>
 
       <footer className="absolute bottom-4 left-1/2 z-20 w-[min(92vw,44rem)] -translate-x-1/2 rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-3 text-left backdrop-blur-sm">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400">Featured guitar</p>
+        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400">{t('Featured guitar')}</p>
         <p className="mt-2 text-sm text-slate-200">
-          <span className="font-semibold text-white">Frankenstrat</span> became famous because Eddie Van Halen used it to
-          popularize the two-handed tapping technique, turning a familiar guitar into a new voice for rock.
+          <span className="font-semibold text-white">{t('Frankenstrat')}</span> {t('Frankenstrat became famous because Eddie Van Halen used it to popularize the two-handed tapping technique, turning a familiar guitar into a new voice for rock.')}
         </p>
         <p className="mt-1 text-xs leading-relaxed text-slate-300">
-          Its significance was part practicality and part rebellion: a homemade body, modified pickups, and a slim, fast neck
-          gave it punchy attack, sustain, and a bright, expressive tone that helped define 80s hard rock.
+          {t('Its significance was part practicality and part rebellion: a homemade body, modified pickups, and a slim, fast neck gave it punchy attack, sustain, and a bright, expressive tone that helped define 80s hard rock.')}
         </p>
       </footer>
     </div>

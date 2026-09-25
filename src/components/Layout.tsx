@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
+import { useI18n } from '../lib/i18n'
 
 const navigationItems = [
-  { label: 'Home', path: '/landing' },
-  { label: 'Progress', path: '/progress' },
-  { label: 'Plan', path: '/plan' },
-  { label: 'Practice', path: '/practice' },
-  { label: 'Stats', path: '/stats' },
-  { label: 'Settings', path: '/settings' },
+  { key: 'Home', path: '/landing' }, { key: 'Progress', path: '/progress' }, { key: 'Plan', path: '/plan' },
+  { key: 'Practice', path: '/practice' }, { key: 'Stats', path: '/stats' }, { key: 'Settings', path: '/settings' },
 ]
 
 export default function Layout() {
@@ -16,6 +13,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const panelRef = useRef<HTMLDivElement | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -38,7 +36,7 @@ export default function Layout() {
   }
 
   const currentScreen = navigationItems.find((item) => item.path === location.pathname) ?? {
-    label: 'Home',
+    key: 'Home',
     path: '/landing',
   }
   const isLandingScreen = location.pathname === '/landing'
@@ -51,7 +49,7 @@ export default function Layout() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                aria-label="Open navigation menu"
+                aria-label={t('Open navigation menu')}
                 onClick={() => setMenuOpen((current) => !current)}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
               >
@@ -61,7 +59,7 @@ export default function Layout() {
               {!isLandingScreen && (
                 <button
                   type="button"
-                  aria-label="Go back"
+                  aria-label={t('Go back')}
                   onClick={handleBack}
                   className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
                 >
@@ -72,9 +70,9 @@ export default function Layout() {
 
             <div className="min-w-0 flex-1 text-center">
               <p className="truncate text-[10px] uppercase tracking-[0.25em] text-slate-400">
-                {isLandingScreen ? 'Guitar Practice Hub' : 'Current screen'}
+                {isLandingScreen ? t('Guitar Practice Hub') : t('Current screen')}
               </p>
-              {!isLandingScreen && <p className="text-sm font-medium text-slate-200">{currentScreen.label}</p>}
+              {!isLandingScreen && <p className="text-sm font-medium text-slate-200">{t(currentScreen.key)}</p>}
             </div>
 
             {isLandingScreen && (
@@ -83,7 +81,7 @@ export default function Layout() {
                 onClick={() => void supabase.auth.signOut()}
                 className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white"
               >
-                Sign out
+                {t('Sign out')}
               </button>
             )}
 
@@ -93,7 +91,7 @@ export default function Layout() {
                 onClick={() => navigate('/stats')}
                 className="rounded-lg border border-amber-700/60 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition hover:border-amber-500"
               >
-                Stats
+                {t('Stats')}
               </button>
             )}
           </div>
@@ -101,10 +99,10 @@ export default function Layout() {
           {menuOpen && (
             <div ref={panelRef} className="absolute left-4 top-16 z-40 w-[min(18rem,calc(100%-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-slate-950/50">
               <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">
-                Navigation
+                {t('Navigation')}
               </div>
 
-              <nav aria-label="App navigation" className="py-1">
+              <nav aria-label={t('App navigation')} className="py-1">
                 {navigationItems.map((item) => {
                   const isActive = location.pathname === item.path
                   return (
@@ -121,7 +119,7 @@ export default function Layout() {
                         isActive ? 'border-y border-sky-500/60 bg-slate-800/80 text-sky-200' : 'text-slate-300 hover:bg-slate-900 hover:text-white',
                       ].join(' ')}
                     >
-                      <span>{item.label}</span>
+                      <span>{t(item.key)}</span>
                       {isActive ? <span className="text-sky-300">●</span> : null}
                     </button>
                   )

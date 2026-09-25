@@ -4,7 +4,7 @@
 
 Guitar Practice Hub is a multi-user guitar practice tracking app, built as a PWA and backed by Supabase. It covers session logging, block tracking, weekly planning, stats, account creation/password reset, program continuation, and device-local learning materials.
 
-## Current status (2026-09-24)
+## Current status (2026-09-25)
 
 The core workflow, account foundation, session-block upsert, program foundation, and Flexible Programs actions have been implemented and validated. The application is currently ready for a user-defined pivot rather than another speculative feature slice.
 
@@ -31,6 +31,17 @@ The core workflow, account foundation, session-block upsert, program foundation,
 - inline current/future week insertion with program, dates, focus, and tasks
 - editable Plan program assignment and automatic program completion status sync
 - persistent Settings toggles and shared date-range formatting
+- account-creation language selection for English, Russian, Italian, and French
+- Settings language selector for the interface preference
+- immutable content-language ownership for default programs and continuation weeks
+
+## Localization status
+
+- `app_settings.language` is live and defaults existing accounts to English.
+- `programs.is_default` and `programs.language` are live; existing default programs are marked as English.
+- Changing the Settings language is intentionally UI-only and does not translate programs, weeks, sessions, songs, comments, or notes.
+- The language-aware `account-gateway` Edge Function has been deployed to Supabase.
+- Full UI translation coverage is implemented across the current app surfaces. User-owned Supabase content remains unchanged when the interface language changes.
 
 The session write path is explicitly marked with `source: 'app'`; parent session upsert, targeted block removal, and block upsert all passed live verification.
 
@@ -64,6 +75,9 @@ The next grooming session should prioritize the user-selected pivot. No further 
 - src/pages/Sessions.tsx — sessions UI, date flow, block actions, timer logic, metronome
 - src/pages/Plan.tsx — weekly planning and program controls
 - src/lib/defaultProgram.ts — default program continuation logic
+- src/lib/language.ts — supported languages and default-program copy
+- src/pages/Login.tsx — account-creation language selection
+- src/pages/Settings.tsx — persisted interface-language setting
 - src/components/AuthGate.tsx — login/session continuation entry point
 - src/pages/Stats.tsx — practice analytics
 - src/components/Layout.tsx — app shell

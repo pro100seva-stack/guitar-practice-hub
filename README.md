@@ -18,6 +18,9 @@ The core v1 workflow is complete and validated, and the app now includes the Fle
 - Tuning presets with continuous local reference tones
 - Device-local learning materials with inline PDF, image, text, video, and YouTube embed viewing
 - Login, account creation, password reset, and five-week default program initialization
+- Account-creation language selection for English, Russian, Italian, and French
+- Persisted interface-language setting in Settings; changing it does not rewrite stored programs, weeks, sessions, or notes
+- Default programs retain the language selected at account creation, including future continuation weeks
 - Default program continuation for logged-in users when a new calendar week should begin
 - Automatic program completion status synchronization after prescribed weeks end
 - Program start, pause, custom start, and resume actions through the Plan screen
@@ -56,6 +59,8 @@ The app shell currently provides:
 
 The current implementation includes session-block uniqueness/upsert behavior, owner-scoped account data, program lifecycle handling, and a server-only Supabase Edge Function for account creation and password reset.
 
+Language behavior is split deliberately between interface preference and practice content. The language is selected when an account is created and can later be changed from Settings for the interface. Each default program stores its own content language, so changing the interface preference never translates or rewrites existing practice records.
+
 ## Tech stack
 
 - Frontend: React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 8
@@ -80,7 +85,7 @@ Useful scripts:
 
 ## Deployment
 
-The Vite frontend can be built and deployed to Cloudflare Pages from the repository. Supabase migrations must be applied in order, and the `account-gateway` Edge Function is deployed separately with its server-only secrets. Never add Supabase service-role credentials or account peppers to frontend environment variables.
+The Vite frontend can be built and deployed to Cloudflare Pages from the repository. Supabase migrations must be applied in order, including `20260925100000_add_language_and_default_program.sql` and `20260925110000_add_program_language.sql`. The language-aware `account-gateway` Edge Function has been deployed separately with its server-only secrets. Never add Supabase service-role credentials or account peppers to frontend environment variables.
 
 The production frontend only requires `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
@@ -95,6 +100,9 @@ All SQL lives under the supabase folder.
 - schema.sql — base schema and tables
 - rls-policies.sql — row-level security rules
 - migrations/ — schema adjustments and live database corrections
+- migrations/20260925100000_add_language_and_default_program.sql — persisted language preference and default-program marker
+- migrations/20260925110000_add_program_language.sql — immutable content language for each program
+- migrations/20260925120000_grant_account_gateway_tables.sql — service-role grants required by account creation
 - functions/account-gateway/ — server-only account creation and password-reset boundary
 - seed/plan-weeks.sql — seeded weekly plan data
 - seed/notion-import-sessions.sql — imported historical practice sessions
@@ -109,6 +117,6 @@ All SQL lives under the supabase folder.
 
 ## Status and next direction
 
-The project has a working, validated core workflow and a reliable Flexible Programs model. The app is ready for the next product pivot chosen by the user; no further implementation work should begin without explicit approval.
+The project has a working, validated core workflow and a reliable Flexible Programs model. Language preference storage, localized default-program data, the language-aware `account-gateway` deployment, and the full UI translation catalog are complete for English, Russian, Italian, and French.
 
 See the backlog document for the live status, decisions, and current product baseline.

@@ -46,6 +46,8 @@ The project uses **Backend as a Service** instead of a custom Node.js or Python 
 - **Database:** PostgreSQL with Row Level Security (RLS).
 - **API layer:** PostgREST provides access to database tables.
 - **Server-only account boundary:** `account-gateway` creates accounts and resets passwords using service-role access that never reaches the browser.
+- **Language preference:** account creation accepts one of `en`, `ru`, `it`, or `fr`; the preference is persisted in `app_settings` and can later be changed from Settings.
+- **Program content language:** default programs store their creation language in `programs.language`. Continuation weeks use that stored value rather than the current interface preference.
 - **Program lifecycle actions:** database RPCs manage default starts, custom starts, pause behaviors, and resume flows for programs.
 - **Local materials:** IndexedDB stores uploaded learning files on the current device; files are not sent to Supabase.
 
@@ -76,9 +78,16 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 
 ### Continuing the Default program
 1. Auth restoration triggers `ensureDefaultProgramContinuation()` from the auth gate.
-2. The app loads the active Default program and its last scheduled week.
-3. If the final week is in the past, it inserts the next logical week for the same program.
+2. The app loads the active default program, its stored content language, and its last scheduled week.
+3. If the final week is in the past, it inserts the next logical week using the program's stored language.
 4. The app keeps the continuation idempotent and avoids creating catch-up weeks for missed time.
+
+### Language selection and content ownership
+1. A new user selects a language only in Create account mode.
+2. `account-gateway` validates the language, creates `app_settings`, and creates the first default program with the matching `programs.language` value.
+3. A returning user signs in without changing the saved language.
+4. Settings can update `app_settings.language` for interface behavior only.
+5. Existing programs, weeks, sessions, songs, comments, and notes are never translated as a side effect of changing Settings.
 
 ## Current Limitations
 
@@ -88,3 +97,4 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 - Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. This is an explicit v1 trade-off; the application and seed data currently enforce the expected values by convention.
 - Microphone pitch detection is deferred. The tuner reference-tone slice and the local learning-materials viewer are live.
 - Mobile pinch zoom is intentionally disabled through the viewport configuration.
+- The language preference and UI string catalog support English, Russian, Italian, and French. User-owned content remains in its stored language by design.

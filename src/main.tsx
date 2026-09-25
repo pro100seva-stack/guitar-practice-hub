@@ -1,10 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import AuthGate from './components/AuthGate'
+import { I18nProvider } from './lib/i18n'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthGate />
+    <I18nProvider>
+      <AuthGate />
+    </I18nProvider>
   </StrictMode>,
 )
