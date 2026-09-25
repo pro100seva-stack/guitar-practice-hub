@@ -142,7 +142,6 @@ export default function Sessions() {
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
   const [todos, setTodos] = useState<Todo[]>([])
-  const [newTodoName, setNewTodoName] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -644,25 +643,26 @@ export default function Sessions() {
     )
   }
 
-  function toggleTodo(todo: Todo) {
-    const done = !todo.done
-    setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done } : item))
-  }
-
   function addTodo() {
-    const name = newTodoName.trim()
-    if (!name || !planWeek) return
+    if (!planWeek) return
 
     const nextSortOrder = Math.max(-1, ...todos.map((todo) => todo.sort_order)) + 1
     setTodos((current) => [...current, {
       id: `draft-${Date.now()}`,
       week_id: planWeek.id,
-      name,
+      name: '',
       done: false,
       sort_order: nextSortOrder,
       source: 'app',
     }])
-    setNewTodoName('')
+  }
+
+  function updateTodo(index: number, updates: Partial<Todo>) {
+    setTodos((current) => current.map((todo, todoIndex) => todoIndex === index ? { ...todo, ...updates } : todo))
+  }
+
+  function removeTodo(index: number) {
+    setTodos((current) => current.filter((_, todoIndex) => todoIndex !== index))
   }
 
   function addBlock() {
@@ -1348,44 +1348,43 @@ export default function Sessions() {
         </div>
 
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('ToDo checklist')}</p>
-            <span className="text-xs text-slate-500">{todos.filter((todo) => todo.done).length}/{todos.length}</span>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <input
-              value={newTodoName}
-              onChange={(event) => setNewTodoName(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addTodo() } }}
-              placeholder={t('Add a ToDo')}
-              className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
-            />
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-slate-200">{t('ToDo')}</p>
             <button
               type="button"
-              onClick={() => { void addTodo() }}
-              disabled={!newTodoName.trim() || !planWeek}
-              className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-50"
+              onClick={addTodo}
+              className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
             >
-              {t('Add')}
+              {t('+ Add ToDo')}
             </button>
           </div>
-          {todos.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-400">{t('No ToDo items for this week.')}</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {todos.map((todo) => (
-                <label key={todo.id} className="flex items-center gap-3 rounded border border-slate-800 bg-slate-950/70 px-3 py-2 text-sm text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={todo.done}
-                    onChange={() => { void toggleTodo(todo) }}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-950"
-                  />
-                  <span className={todo.done ? 'text-slate-500 line-through' : ''}>{todo.name}</span>
-                </label>
-              ))}
-            </div>
-          )}
+          <div className="mt-3 space-y-2">
+            {todos.length === 0 && <p className="text-sm text-slate-400">{t('No ToDo items yet for this week.')}</p>}
+
+            {todos.map((todo, index) => (
+              <div key={`${todo.id}-${index}`} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={todo.done}
+                  onChange={(event) => updateTodo(index, { done: event.target.checked })}
+                  className="h-4 w-4 rounded border-slate-700 bg-slate-950"
+                />
+                <input
+                  value={todo.name}
+                  onChange={(event) => updateTodo(index, { name: event.target.value })}
+                  className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none transition focus:border-slate-500"
+                  placeholder={t('ToDo name')}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeTodo(index)}
+                  className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400"
+                >
+                  {t('Remove')}
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
