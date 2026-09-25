@@ -75,7 +75,7 @@ No blocking items.
    - keep Plan editing and completion behavior unchanged
    - do not translate or rewrite existing user-entered item names
 
-11. **Next — P1:** Add a ToDo checklist to the Sessions screen
+11. **Completed — 2026-09-25:** Add a ToDo checklist to the Sessions screen
    - show the selected week's ToDo items beside the practice-session controls
    - allow completion to be toggled directly from Sessions
    - persist changes to the same `todos.done` field used by Plan
@@ -214,13 +214,13 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Moved language selection off sign-in and into account creation; Settings now owns later interface-language changes, while default-program content retains its original language.
 - 2026-09-25 — Groomed the immediate-start, Topics-to-ToDo, and Sessions ToDo-checklist requests; ordered the database/UI rename before the Sessions integration.
 - 2026-09-25 — Applied the Topics-to-ToDo rename in place; the next item is exposing the same ToDo checklist in Sessions.
+- 2026-09-25 — Added the selected-week ToDo checklist to Sessions; checkbox changes update `todos.done` independently of session totals and practice blocks.
 
 ## Recommended next steps
 
-1. Rename the `topics` model to `todos` while preserving all existing data and behavior.
-2. Add the persisted ToDo checklist to Sessions.
-3. Keep the current Flexible Programs and localization models as the baseline.
-4. Revisit the landing/home explainer only after the next product direction is defined.
+1. Keep the current Flexible Programs and localization models as the baseline.
+2. Groom the next P2 practice enhancement: sticky metronome, per-block materials, or video bookmarks.
+3. Revisit the landing/home explainer only after the next product direction is defined.
 
 ## Delivery pipeline
 

@@ -8,6 +8,7 @@ import { useI18n } from '../lib/i18n'
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
+type Todo = Database['public']['Tables']['todos']['Row']
 type ScheduledPlanWeek = PlanWeek & {
   end_date: string
   start_date: string
@@ -140,6 +141,7 @@ export default function Sessions() {
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
+  const [todos, setTodos] = useState<Todo[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -449,7 +451,7 @@ export default function Sessions() {
 
     const today = new Date().toISOString().slice(0, 10)
 
-    const [weeksResult, planResult, templatesResult, sessionsResult, programsResult] = await Promise.all([
+    const [weeksResult, planResult, templatesResult, sessionsResult, programsResult, todosResult] = await Promise.all([
       supabase
         .from('plan_weeks')
         .select('*')
@@ -469,6 +471,7 @@ export default function Sessions() {
         .select('*, session_blocks(*)')
         .order('session_date', { ascending: false }),
       supabase.from('programs').select('*'),
+      supabase.from('todos').select('*').order('sort_order', { ascending: true }),
     ])
 
     if (weeksResult.error) {
@@ -501,6 +504,12 @@ export default function Sessions() {
       return
     }
 
+    if (todosResult.error) {
+      setError(todosResult.error.message)
+      setLoading(false)
+      return
+    }
+
     const allWeeks = ((weeksResult.data ?? []) as PlanWeek[]).filter(isScheduledWeek)
     const currentWeek = allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
     const currentWeekIndex = currentWeek ? allWeeks.findIndex((item) => item.id === currentWeek.id) : 0
@@ -516,6 +525,7 @@ export default function Sessions() {
 
     setWeeks(allWeeks)
     setPlanWeek(currentWeek)
+    setTodos(currentWeek ? ((todosResult.data ?? []) as Todo[]).filter((todo) => todo.week_id === currentWeek.id) : [])
     setProgramName((programsResult.data as Program[] | null)?.find((program) => program.id === currentWeek?.program_id)?.name ?? null)
     setSelectedWeekIndex(currentWeekIndex >= 0 ? currentWeekIndex : 0)
     setDate(defaultDate)
@@ -558,8 +568,29 @@ export default function Sessions() {
     return weekDates.find((value) => isTodayDate(value)) ?? weekDates[0]
   }
 
+  async function loadTodos(weekId: string | null) {
+    if (!weekId) {
+      setTodos([])
+      return
+    }
+
+    const { data, error: todoError } = await supabase
+      .from('todos')
+      .select('*')
+      .eq('week_id', weekId)
+      .order('sort_order', { ascending: true })
+
+    if (todoError) {
+      setError(todoError.message)
+      return
+    }
+
+    setTodos((data ?? []) as Todo[])
+  }
+
   function handleSelectWeek(week: ScheduledPlanWeek) {
     setPlanWeek(week)
+    void loadTodos(week.id)
     const nextDate = getDefaultDateForWeek(week)
     const editorState = getSessionEditorState(nextDate, templates, sessions)
     setDate(nextDate)
@@ -592,6 +623,7 @@ export default function Sessions() {
 
     if (nextWeek) {
       setPlanWeek(nextWeek)
+      void loadTodos(nextWeek.id)
       setSelectedWeekIndex(sessionWeekIndex)
     }
     setDate(session.session_date)
@@ -609,6 +641,16 @@ export default function Sessions() {
         block.id === templateId ? { ...block, done: !block.done } : block
       )
     )
+  }
+
+  async function toggleTodo(todo: Todo) {
+    const done = !todo.done
+    setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done } : item))
+    const { error: todoError } = await supabase.from('todos').update({ done }).eq('id', todo.id)
+    if (todoError) {
+      setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done: todo.done } : item))
+      setError(todoError.message)
+    }
   }
 
   function addBlock() {
@@ -1262,6 +1304,30 @@ export default function Sessions() {
               {planWeek?.tasks?.trim() || t('No description recorded for this week yet.')}
             </p>
           </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('ToDo checklist')}</p>
+            <span className="text-xs text-slate-500">{todos.filter((todo) => todo.done).length}/{todos.length}</span>
+          </div>
+          {todos.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-400">{t('No ToDo items for this week.')}</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {todos.map((todo) => (
+                <label key={todo.id} className="flex items-center gap-3 rounded border border-slate-800 bg-slate-950/70 px-3 py-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={todo.done}
+                    onChange={() => { void toggleTodo(todo) }}
+                    className="h-4 w-4 rounded border-slate-700 bg-slate-950"
+                  />
+                  <span className={todo.done ? 'text-slate-500 line-through' : ''}>{todo.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
