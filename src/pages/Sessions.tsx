@@ -1289,7 +1289,7 @@ export default function Sessions() {
           </div>
 
           <>
-            <div className={[
+            <div data-tour="practice-tools" className={[
               'fixed top-1 z-40',
               isMetronomeSettingsOpen
                 ? 'right-4 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-800 bg-slate-900/95 p-3 shadow-lg shadow-slate-950/30 backdrop-blur-sm'
@@ -1611,7 +1611,7 @@ export default function Sessions() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
+        <div data-tour="practice-day-blocks" className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Days in selected week')}</p>
           </div>
@@ -2085,6 +2085,7 @@ export default function Sessions() {
 
           <button
             type="submit"
+            data-tour="practice-save"
             disabled={saving}
             className="rounded bg-slate-100 px-3 py-2 font-medium text-slate-900 disabled:opacity-50"
           >

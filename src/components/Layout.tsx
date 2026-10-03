@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
+import TourOverlay from './tour/TourOverlay'
+import { useScreenTour } from './tour/useScreenTour'
 
 const navigationItems = [
   { key: 'Home', path: '/landing' }, { key: 'Progress', path: '/progress' }, { key: 'Plan', path: '/plan' },
@@ -14,6 +16,7 @@ export default function Layout() {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const { t } = useI18n()
+  const tour = useScreenTour(location.pathname)
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -42,7 +45,7 @@ export default function Layout() {
   const isLandingScreen = location.pathname === '/landing'
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-dvh bg-slate-900 text-slate-100">
       <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm">
         <div className="relative mx-auto max-w-6xl px-4 py-3">
           <div className="flex items-center justify-between gap-3">
@@ -89,6 +92,7 @@ export default function Layout() {
             {location.pathname === '/progress' && (
               <button
                 type="button"
+                data-tour="stats-link"
                 onClick={() => navigate('/stats')}
                 className="rounded-lg border border-amber-700/60 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition hover:border-amber-500"
               >
@@ -131,7 +135,24 @@ export default function Layout() {
         </div>
       </header>
 
-      <main className="mx-auto min-h-screen max-w-6xl px-4 pb-4 pt-[81px]"><Outlet key={location.pathname} /></main>
+      <main className="mx-auto flex min-h-dvh max-w-6xl flex-col px-4 pb-4 pt-[81px]">
+        <div className={isLandingScreen ? 'flex flex-1 flex-col' : 'flex-1'}><Outlet key={location.pathname} /></div>
+        {tour.canReplay && (
+          <footer className="flex justify-center pt-6">
+            <button
+              type="button"
+              hidden={tour.isOpen}
+              title={t('Guided tour')}
+              onClick={tour.replay}
+              className="min-h-10 rounded-lg border border-slate-700 bg-slate-950 px-4 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white"
+            >
+              {t('Help')}
+            </button>
+          </footer>
+        )}
+      </main>
+
+      {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} />}
     </div>
   )
 }

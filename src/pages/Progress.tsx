@@ -231,7 +231,7 @@ export default function Progress() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
+      <section data-tour="progress-timeline" className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
         {loading && <p className="text-sm text-slate-400">{t('Loading practice journey…')}</p>}
         {error && <p className="text-sm text-red-300">{error}</p>}
         {!loading && !error && journey.length === 0 && (

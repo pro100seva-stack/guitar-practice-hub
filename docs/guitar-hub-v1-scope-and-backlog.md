@@ -64,6 +64,35 @@ No blocking items.
 
 ### P1 — High priority
 
+13. **Completed — 2026-10-03:** Rework the guided tour into per-screen, once-per-account onboarding
+   - the tour runs only on the first app entry after registration, never on later logins, including logins from another browser or device
+   - each screen has its own tour steps and they appear only on that screen, the first time the user opens it during onboarding (Home, Progress, Plan, Practice, Stats, Settings)
+   - the completion state is stored per account on the server (not per device), so a new device does not restart the tour
+   - every screen has a "Help" button at the bottom; pressing it replays the tour for that screen only
+   - Skip ends the whole tour on all screens; Done finishes the current screen's steps
+   - Help replay does not change the stored onboarding state and works at any time
+   - Skip, Done, and Help are localized EN/RU/IT/FR; keyboard, touch, and narrow-screen use remain supported
+   - existing accounts are treated as having already completed the tour, so they are not shown it
+   - no Settings replay action (replaced by per-screen Help)
+
+14. **Completed — 2026-10-03 (owner manual test passed):** QA pass on the guided tour and multilingual coverage
+   - all findings below were fixed in code and pass lint/build; the metronome-only highlight on the Practice tools step is deferred as cosmetic
+   - findings: Plan tour silently lost when no week covers today; 1.5 s anchor timeout short on slow loads; flag-clear write unchecked; tour copy inconsistent with app labels in RU/IT/FR; shared `Next`/`Done` keys changed existing labels; possible Home page overflow with the Help footer
+   - runs after item 13 and verifies new account, repeat login, second device, per-screen Help replay, and all four languages
+
+16. **In progress — 2026-10-03:** Collapsible featured-guitar note on Home
+   - the Home footer shows only the guitar name as a collapsed, tappable control (default state)
+   - activating it expands the existing description text; activating it again collapses it
+   - expanded state is not persisted; every visit to Home starts collapsed
+   - keyboard and screen-reader accessible (button with `aria-expanded`); localized EN/RU/IT/FR via existing keys
+   - assumed: the name is shown with a leading asterisk as a footnote marker ("*Frankenstrat") and the "Featured guitar" label is hidden while collapsed
+   - 2026-10-03: also fixed Home on mobile (guitar image dimmed and faded, nav buttons near-opaque below lg, tighter spacing, 2-line clamp on the Current Week text); QA passed from code, owner device check pending
+
+15. **Open — 2026-10-03:** Harden data integrity and add a safety net
+   - add database `CHECK` constraints (or enums) for `songs.status`, `sessions.source`, and `block_templates.key` after verifying existing data conforms
+   - add automated tests for the highest-risk logic (session block save, program continuation, week insertion/renumbering)
+   - scope of the first test slice to be confirmed with the Solution Architect
+
 9. **Completed — 2026-09-25:** Start the default program on account creation
    - week 1 starts on the account-creation date rather than the next Monday
    - the five-week sequence and seven-day week durations remain unchanged
@@ -256,11 +285,15 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Removed three no-op Settings controls and applied the preference cleanup migration; active settings now have documented runtime behavior.
 - 2026-09-25 — Implemented the localized first-entry guided tour with highlighted navigation and Home actions.
 - 2026-09-25 — Added supplied Warmup and Learning PDFs to the default-exercise catalog with inline Sessions viewing.
+- 2026-10-03 — Owner confirmed: Skip ends the whole tour; replay is a per-screen bottom Help button instead of a Settings action.
+- 2026-10-03 — Backlog review found no open items. Owner chose a QA/hardening focus (items 14, 15) before the next feature, and asked to rework the guided tour to be per-screen, one-time after registration, and replayable per screen (item 13). The current tour stores completion in browser `localStorage` per user, so it restarts on a new device and only covers the Home screen.
 
 ## Recommended next steps
 
 1. Keep the current Flexible Programs and localization models as the baseline.
-2. Test the first-entry guided tour across new accounts, languages, keyboard, touch, and narrow screens.
+2. Deliver item 13 (per-screen, once-per-account guided tour with per-screen Help replay), then verify it with item 14.
+3. Deliver item 15 (data-integrity constraints and tests).
+4. Choose the next feature afterwards (candidates: practice streaks/goals, song repertoire tracking).
 
 ## Delivery pipeline
 
@@ -269,9 +302,8 @@ Context: the app now has a working program model that separates scheduled calend
 - **Done:** default five-week practice program creation and logged-in continuation flow.
 - **Done:** language preference schema, default-program content-language ownership, Edge Function deployment, and complete UI translation coverage.
 - **Done:** Sessions tuner presets, continuous reference tones, and device-local learning-materials viewer.
-- **Open P2:** active metronome stays accessible while scrolling; learning materials can be attached per practice block; video reference bookmarks can resume saved positions.
-- **Ready for pivot:** additional product direction remains user-defined; the three explicit Sessions/materials P2 stories above are captured in the backlog for grooming/approval.
-- **Planned only after pivot:** landing/home explainer and any other new UX re-scoping.
+- **Done:** metronome lock, per-block learning materials, video bookmarks, default block references, and first-entry tour (v1, to be reworked).
+- **In planning (P1):** items 13 (tour rework), 14 (tour QA), 15 (integrity constraints and tests).
 
 ## Completed milestones
 

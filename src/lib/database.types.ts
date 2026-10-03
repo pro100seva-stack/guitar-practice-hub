@@ -20,6 +20,7 @@ export type Database = {
           language: string
           metronome_beats: number
           metronome_bpm: number
+          onboarding_tour_pending: boolean
           show_completed_weeks: boolean
           show_target_practice_time: boolean
           updated_at: string
@@ -30,6 +31,7 @@ export type Database = {
           language?: string
           metronome_beats?: number
           metronome_bpm?: number
+          onboarding_tour_pending?: boolean
           show_completed_weeks?: boolean
           show_target_practice_time?: boolean
           updated_at?: string
@@ -40,6 +42,7 @@ export type Database = {
           language?: string
           metronome_beats?: number
           metronome_bpm?: number
+          onboarding_tour_pending?: boolean
           show_completed_weeks?: boolean
           show_target_practice_time?: boolean
           updated_at?: string

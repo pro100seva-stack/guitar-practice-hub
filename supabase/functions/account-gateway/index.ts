@@ -140,7 +140,7 @@ Deno.serve(async (request) => {
     }
 
     const copy = defaultProgramCopy[language]
-    const { error: settingsError } = await supabaseAdmin.from('app_settings').insert({ user_id: createdUser.user.id, language })
+    const { error: settingsError } = await supabaseAdmin.from('app_settings').insert({ user_id: createdUser.user.id, language, onboarding_tour_pending: true })
     if (settingsError) {
       console.error('app_settings insert failed', settingsError)
       await supabaseAdmin.from('user_profiles').delete().eq('user_id', createdUser.user.id)

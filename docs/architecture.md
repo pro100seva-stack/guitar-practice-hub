@@ -47,6 +47,7 @@ The project uses **Backend as a Service** instead of a custom Node.js or Python 
 - **API layer:** PostgREST provides access to database tables.
 - **Server-only account boundary:** `account-gateway` creates accounts and resets passwords using service-role access that never reaches the browser.
 - **Language preference:** account creation accepts one of `en`, `ru`, `it`, or `fr`; the preference is persisted in `app_settings` and can later be changed from Settings.
+- **Onboarding tour state:** `app_settings.onboarding_tour_pending` (boolean, default `false`) is set to `true` only by `account-gateway` at account creation. The app reads it once on first entry, clears it immediately, and runs the per-screen tour from in-memory state. Existing accounts keep `false`, so they never see the tour. The per-screen Help button replays one screen's tour and never touches this flag.
 - **Program content language:** default programs store their creation language in `programs.language`. Continuation weeks use that stored value rather than the current interface preference.
 - **Program lifecycle actions:** database RPCs manage default starts, custom starts, pause behaviors, and resume flows for programs.
 - **Local materials:** IndexedDB stores uploaded learning files on the current device; files are not sent to Supabase.
@@ -88,6 +89,12 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 3. A returning user signs in without changing the saved language.
 4. Settings can update `app_settings.language` for interface behavior only.
 5. Existing programs, weeks, sessions, songs, comments, and notes are never translated as a side effect of changing Settings.
+
+### First-entry guided tour
+1. `account-gateway` inserts `app_settings` with `onboarding_tour_pending = true` for a new account.
+2. `Layout` (inside the router) reads the flag once; if `true`, it sets `onboarding_tour_pending = false` and keeps an in-memory onboarding state with a set of visited screens.
+3. On each route, if onboarding is active and the screen is unvisited, that screen's steps run once; Skip ends onboarding for all screens.
+4. The Help button in `Layout` replays the current screen's steps at any time without writing to Supabase.
 
 ## Current Limitations
 

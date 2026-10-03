@@ -114,6 +114,7 @@ create table if not exists app_settings (
   user_id uuid primary key references auth.users(id) on delete cascade default auth.uid(),
   metronome_bpm int not null default 90,
   metronome_beats int not null default 4,
+  onboarding_tour_pending boolean not null default false,
   updated_at timestamptz not null default now()
 );
 

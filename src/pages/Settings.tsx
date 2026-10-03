@@ -101,7 +101,7 @@ export default function Settings() {
       </section>
 
       {loading && <p className="text-sm text-slate-400">{t('Loading preferences…')}</p>}
-      <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
+      <section data-tour="settings-language" className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
         <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('Language')}</p>
         <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-3 text-sm text-slate-200">
           <span>{t('Interface language')}</span>
@@ -116,7 +116,7 @@ export default function Settings() {
         </label>
       </section>
       {preferenceGroups.map((group) => (
-        <section key={group.label} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
+        <section key={group.label} data-tour={group.label === 'Practice' ? 'settings-preferences' : undefined} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
           <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t(group.label)}</p>
           {group.items.map(({ key, label }) => (
             <div key={key} className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-3 text-sm text-slate-200">

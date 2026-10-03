@@ -431,7 +431,7 @@ export default function Stats() {
         <p className="mt-1 text-sm text-slate-400">{t('A simple overview of your practice history.')}</p>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div data-tour="stats-summary" className="grid gap-4 md:grid-cols-4">
         <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
           <p className="text-sm text-slate-400">{t('Practice time')}</p>
           <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.totalMinutes ?? 0} {t('min')}</p>
@@ -595,7 +595,7 @@ export default function Stats() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+      <section data-tour="stats-filters" className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
         <div className="flex flex-wrap gap-2">
           {(['current-week', 'current-month', 'this-year', 'custom', 'all'] as FilterPreset[]).map((preset) => {
             const label = preset === 'current-week'

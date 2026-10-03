@@ -722,7 +722,7 @@ export default function Plan() {
       </section>
 
       <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div data-tour="plan-week" className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Selected week')}</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-100">{t('Week {week}', { week: week.week_number })}: {week.focus}</h2>
@@ -859,7 +859,7 @@ export default function Plan() {
           />
         </label>
 
-        <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+        <div data-tour="plan-songs-todos" className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium text-slate-200">{t('ToDo')}</p>
             <button

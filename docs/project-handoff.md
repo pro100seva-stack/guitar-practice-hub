@@ -46,6 +46,12 @@ The core workflow, account foundation, session-block upsert, program foundation,
 
 The session write path is explicitly marked with `source: 'app'`; parent session upsert, targeted block removal, and block upsert all passed live verification.
 
+### In planning (2026-10-03)
+
+- Backlog item 13: guided tour rework is coded, passes lint/build, and is deployed: migration `20261003100000_add_onboarding_tour_pending.sql` is applied and recorded, and `account-gateway` is redeployed. QA (item 14) is pending. It is per-screen, once per account stored server-side, with a per-screen Help button that replays that screen's tour.
+- Backlog item 14: QA pass on the tour across languages and devices.
+- Backlog item 15: database `CHECK` constraints and first automated tests.
+
 ### Ready for the next product decision
 
 - Flexible Programs story 15 and 16 are implemented and validated in the current codebase
