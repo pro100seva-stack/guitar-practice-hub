@@ -37,6 +37,22 @@ Object.assign(pageTranslations.ru, {
   'Retry is available.': 'Можно попробовать ещё раз.',
   'Retry': 'Повторить',
 })
+Object.assign(pageTranslations.en, {
+  'Play video': 'Play video', 'Pause video': 'Pause video', 'Jump': 'Jump', 'Loading video...': 'Loading video...', 'Video practice: {name}': 'Video practice: {name}',
+  'Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.': 'Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.',
+})
+Object.assign(pageTranslations.ru, {
+  'Play video': 'Воспроизвести видео', 'Pause video': 'Приостановить видео', 'Jump': 'Перейти', 'Loading video...': 'Загрузка видео...', 'Video practice: {name}': 'Практика с видео: {name}',
+  'Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.': 'Клавиши видео: пробел — воспроизведение/пауза; влево/вправо — переход на 5 секунд; Shift+влево/вправо — на 15 секунд. Встроенные элементы видео используют свои клавиши.',
+})
+Object.assign(pageTranslations.it, {
+  'Play video': 'Riproduci video', 'Pause video': 'Metti in pausa il video', 'Jump': 'Vai', 'Loading video...': 'Caricamento video...', 'Video practice: {name}': 'Pratica con video: {name}',
+  'Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.': 'Scorciatoie video: spazio riproduci/pausa; sinistra/destra sposta di 5 secondi; Shift+sinistra/destra sposta di 15 secondi. I controlli video nativi mantengono le proprie scorciatoie.',
+})
+Object.assign(pageTranslations.fr, {
+  'Play video': 'Lire la vidéo', 'Pause video': 'Mettre la vidéo en pause', 'Jump': 'Aller', 'Loading video...': 'Chargement vidéo...', 'Video practice: {name}': 'Pratique vidéo : {name}',
+  'Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.': 'Raccourcis vidéo : espace lecture/pause ; gauche/droite déplace de 5 secondes ; Maj+gauche/droite déplace de 15 secondes. Les commandes vidéo natives conservent leurs propres raccourcis.',
+})
 Object.assign(pageTranslations.it, {
   'Page unavailable': 'Pagina non disponibile',
   'This page could not load. The app may have been updated.': 'Impossibile caricare la pagina. L’app potrebbe essere stata aggiornata.',

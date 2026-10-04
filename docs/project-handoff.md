@@ -6,7 +6,7 @@ Guitar Practice Hub is a multi-user guitar practice tracking app, built as a PWA
 
 ## Current status (2026-10-04)
 
-Requested work through backlog item 33 is implemented. Latest recorded checks passed 209 tests and the production build; lint reports three existing warnings. Test counts below are historical snapshots. Backend migrations were audited with 21 applied and zero pending on 2026-10-03; no fresh remote audit is claimed today.
+Requested work through backlog item 34 is implemented. Latest recorded checks passed 229 tests and the production build; lint reports three existing warnings. Test counts below are historical snapshots. Backend migrations were audited with 21 applied and zero pending on 2026-10-03; no fresh remote audit is claimed today.
 
 ### Next Priorities
 
@@ -16,6 +16,8 @@ Requested work through backlog item 33 is implemented. Latest recorded checks pa
 4. Choose the next product change only after release checks. No-week recovery is a real UX decision: Plan can select existing weeks, but has no visible Start Default/Custom/Resume actions. A new recovery button is not approved yet. Goals/streak and repertoire enhancements remain suggestions, not commitments.
 
 Use Active Work in `docs/guitar-hub-v1-scope-and-backlog.md` for prioritization. Preserve local materials; do not clear IndexedDB or media caches as a testing shortcut.
+
+**Owner feedback and item 34 (2026-10-04):** the owner reported the deployed app working well after their commit/build. Added video-driven block-timer start/resume on confirmed playback, shared uploaded/YouTube loop/speed/bookmark controls, and focus-scoped Space/arrow shortcuts. Video pause does not stop the counter; manual stop/Done survives automatic looping/buffering. App shortcuts require local-controller focus, not focus inside the YouTube iframe or form controls. Native-video browser checks and YouTube mock checks passed, including the repaired first native paused/cued Play boundary. Real YouTube native-control acceptance remains; the previous release probe below predates the owner's latest deployment and is not proof of current staleness.
 
 **Live release check (2026-10-04):** entry `index-B2lwA2jd.js`, Landing `Landing-B2__UE3u.js`, and Practice `Sessions-CgTKqBbV.js` were served. The custom recovery markers were absent; Practice still used interval callback increments rather than timestamp anchors. Old and deliberately missing asset URLs returned the same 722-byte root HTML with HTTP 200. The live build therefore differs from the latest local artifact, but its Git revision/deployment time are not established. Obtain Cloudflare deployment revision, build/deploy commands, output directory, and effective asset/fallback configuration before changing hosting rules. Never infer a 404 fix from a header rule or disable SPA deep links blindly.
 

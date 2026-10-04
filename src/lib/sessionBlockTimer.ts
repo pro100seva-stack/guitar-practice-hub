@@ -2,6 +2,11 @@ import type { BlockTimerState } from './sessionEditorState'
 
 type BlockTimers = Record<string, BlockTimerState>
 
+export function activateBlockTimer(timers: BlockTimers, id: string, nowMs: number, intent: 'initial' | 'explicit', blocked: boolean): BlockTimers {
+  if (timers[id]?.isRunning || (blocked && intent !== 'explicit')) return timers
+  return toggleBlockTimer(timers, id, nowMs)
+}
+
 export function timerElapsedSeconds(timer: BlockTimerState | undefined, nowMs: number): number {
   if (!timer) return 0
   if (!timer.isRunning || !timer.anchor) return timer.elapsedSeconds

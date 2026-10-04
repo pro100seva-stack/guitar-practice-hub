@@ -10,13 +10,14 @@ import { getDefaultMaterials } from '../lib/defaultMaterials'
 import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../lib/sessionBlockSavePlan'
 import { getPracticedDates } from '../lib/sessionActivity'
 import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
-import { completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, toggleBlockTimer } from '../lib/sessionBlockTimer'
+import { activateBlockTimer, completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, toggleBlockTimer } from '../lib/sessionBlockTimer'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
 import MetronomeIcon from '../components/icons/MetronomeIcon'
 import TuningForkIcon from '../components/icons/TuningForkIcon'
 import { isYouTubeEmbedUrl, isYouTubeHostLink, lookupYouTubeTitle, toYouTubeEmbedUrl, youTubeTitleFallback } from '../lib/youtube'
-import { formatPracticeTime, validDuration } from '../lib/youtubePractice'
+import type { PlaybackIntent } from '../lib/youtubePractice'
 import YouTubePracticePlayer from '../components/YouTubePracticePlayer'
+import LocalVideoPracticePlayer from '../components/LocalVideoPracticePlayer'
 
 type MaterialFeedback = { error: string | null; notice: string | null; saveState: 'idle' | 'saving' | 'saved' }
 const emptyMaterialFeedback: MaterialFeedback = { error: null, notice: null, saveState: 'idle' }
@@ -154,14 +155,9 @@ export default function Sessions() {
   const [activeDefaultMaterial, setActiveDefaultMaterial] = useState<{ blockKey: string; title: string; url: string } | null>(null)
   const [activeMaterialUrl, setActiveMaterialUrl] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
-  const [loopStart, setLoopStart] = useState<number | null>(null)
-  const [loopEnd, setLoopEnd] = useState<number | null>(null)
-  const [isLooping, setIsLooping] = useState(false)
-  const [videoDuration, setVideoDuration] = useState(0)
-  const [bookmarkSaving, setBookmarkSaving] = useState(false)
+  const playbackBlockedRef = useRef(new Set<string>())
   const [materialRename, setMaterialRename] = useState<{ id: string; blockKey: string; draft: string; saving: boolean; error: string | null } | null>(null)
   const materialFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
-  const videoRef = useRef<HTMLVideoElement | null>(null)
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
   const referenceToneRef = useRef<OscillatorNode | null>(null)
@@ -240,6 +236,20 @@ export default function Sessions() {
   const activeMaterialSourceUrl = activeMaterialRecord?.url ?? null
   const activeMaterialHasBlob = Boolean(activeMaterialRecord?.blob)
 
+  const playbackScopeRef = useRef({ date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord })
+  useEffect(() => { playbackScopeRef.current = { date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord } })
+
+  function confirmMaterialPlayback(sessionDate: string, weekId: string | null, blockId: string, blockKey: string, materialId: string, intent: PlaybackIntent) {
+    const { date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord } = playbackScopeRef.current
+    if (!materialsMountedRef.current || sessionDate !== date || weekId !== (planWeek?.id ?? null)
+      || !expandedBlockIds.has(blockId) || !selectedBlocks.some((block) => block.id === blockId && block.key === blockKey)
+      || activeMaterial?.blockKey !== blockKey || activeMaterial.id !== materialId || activeMaterialRecord?.id !== materialId) return
+    const key = `${sessionDate}:${blockId}`
+    const blocked = playbackBlockedRef.current.has(key) || selectedBlocks.some((block) => block.id === blockId && block.done)
+    if (intent === 'explicit') playbackBlockedRef.current.delete(key)
+    setTimers((current) => activateBlockTimer(current, blockId, Date.now(), intent, blocked))
+  }
+
   useEffect(() => {
     activeMaterialRecordRef.current = activeMaterialRecord
   })
@@ -247,31 +257,21 @@ export default function Sessions() {
   // Depends only on stable primitives so bookmark saves and list reloads keep the blob URL and A-B loop.
   useEffect(() => {
     const record = activeMaterialRecordRef.current
-    setVideoDuration(0)
     if (!record) {
       setActiveMaterialUrl(null)
       setMediaError(null)
-      setLoopStart(null)
-      setLoopEnd(null)
-      setIsLooping(false)
       return
     }
 
     if (record.source === 'url') {
       setActiveMaterialUrl(record.url ?? null)
       setMediaError(null)
-      setLoopStart(null)
-      setLoopEnd(null)
-      setIsLooping(false)
       return
     }
 
     if (!record.blob && record.storage !== 'cache') {
       setActiveMaterialUrl(null)
       setMediaError(null)
-      setLoopStart(null)
-      setLoopEnd(null)
-      setIsLooping(false)
       return
     }
 
@@ -283,9 +283,6 @@ export default function Sessions() {
       objectUrl = nextObjectUrl
       setActiveMaterialUrl(nextObjectUrl)
       setMediaError(null)
-      setLoopStart(null)
-      setLoopEnd(null)
-      setIsLooping(false)
     }).catch((loadError) => {
       if (cancelled) return
       setActiveMaterialUrl(null)
@@ -430,47 +427,12 @@ export default function Sessions() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  function setLoopPoint(point: 'start' | 'end') {
-    const currentTime = videoRef.current?.currentTime
-    if (currentTime == null) return
-    if (point === 'start') setLoopStart(currentTime)
-    else setLoopEnd(currentTime)
-  }
-
-  function clearLoop() {
-    setLoopStart(null)
-    setLoopEnd(null)
-    setIsLooping(false)
-  }
-
-  async function saveBookmark() {
-    const currentTime = videoRef.current?.currentTime
-    if (!activeMaterial || currentTime == null || !Number.isFinite(currentTime) || currentTime < 0 || !validDuration(videoDuration)) return
-    await saveLocalBookmarks(activeMaterial.blockKey, activeMaterial.id, [...bookmarks, currentTime])
-  }
-
-  async function removeBookmark(bookmark: number) {
-    if (!activeMaterial) return
-    await saveLocalBookmarks(activeMaterial.blockKey, activeMaterial.id, bookmarks.filter((value) => value !== bookmark))
-  }
-
   async function saveMaterialBookmarks(blockKey: string, id: string, next: number[]) {
     materialsRequestTrackerRef.current.begin(blockKey)
     const updated = await patchLocalMaterialMetadata(id, blockKey, { bookmarks: next })
     if (!materialsMountedRef.current) return
     materialsRequestTrackerRef.current.begin(blockKey)
     setMaterialsByBlock((current) => updateBlockMaterial(current, blockKey, id, { bookmarks: updated.bookmarks }))
-  }
-
-  async function saveLocalBookmarks(blockKey: string, id: string, next: number[]) {
-    setBookmarkSaving(true)
-    try {
-      await saveMaterialBookmarks(blockKey, id, next)
-    } catch {
-      if (materialsMountedRef.current) patchMaterialFeedback(blockKey, { error: t('Could not save material changes.') })
-    } finally {
-      if (materialsMountedRef.current) setBookmarkSaving(false)
-    }
   }
 
   function getExternalMediaKind(material: LocalMaterial) {
@@ -750,6 +712,7 @@ export default function Sessions() {
     if (!block) return
     if (!block.done && done) {
       const nowMs = Date.now()
+      playbackBlockedRef.current.add(`${date}:${templateId}`)
       setTimers((current) => completeBlockTimer(current, templateId, done, nowMs))
     }
     setSelectedBlocks((current) =>
@@ -1278,11 +1241,13 @@ export default function Sessions() {
   }
 
   function toggleTimer(templateId: string) {
+    if (timers[templateId]?.isRunning) playbackBlockedRef.current.add(`${date}:${templateId}`)
     const nowMs = Date.now()
     setTimers((current) => toggleBlockTimer(current, templateId, nowMs))
   }
 
   function resetTimer(templateId: string) {
+    playbackBlockedRef.current.add(`${date}:${templateId}`)
     setTimers((current) => ({
       ...current,
       [templateId]: resetBlockTimer(),
@@ -2155,6 +2120,7 @@ export default function Sessions() {
                                       name={activeMaterial.name}
                                       bookmarks={bookmarks}
                                       onBookmarksChange={(next) => saveMaterialBookmarks(template.key, activeMaterial.id, next)}
+                                      onPlaybackConfirmed={(intent) => confirmMaterialPlayback(date, planWeek?.id ?? null, template.id, template.key, activeMaterial.id, intent)}
                                     />
                                   ) : isExternalPage && activeMaterial.url ? (
                                     <div className="space-y-3 p-4 text-sm text-slate-300">
@@ -2169,87 +2135,9 @@ export default function Sessions() {
                                       </a>
                                     </div>
                                   ) : isVideo || externalMediaKind === 'video' ? (
-                                    <div className="space-y-2 bg-black p-2">
-                                      <video
-                                        ref={videoRef}
-                                        src={activeMaterialUrl}
-                                        key={`${activeMaterial.id}-${activeMaterial.type}`}
-                                        controls
-                                        playsInline
-                                        preload="metadata"
-                                        onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration)}
-                                        onDurationChange={(event) => setVideoDuration(event.currentTarget.duration)}
-                                        onTimeUpdate={(event) => {
-                                          if (!isLooping || loopStart == null || loopEnd == null || loopEnd <= loopStart) return
-                                          if (event.currentTarget.currentTime >= loopEnd) {
-                                            event.currentTarget.currentTime = loopStart
-                                            void event.currentTarget.play()
-                                          }
-                                        }}
-                                        onError={() => setMediaError(t('This video codec or container is not fully supported by this browser.'))}
-                                        className="max-h-[420px] w-full"
-                                      />
-                                      <div className="space-y-2 py-2">
-                                        <div className="flex items-center justify-between gap-2">
-                                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{t('Bookmarks')}</p>
-                                          <button
-                                            type="button"
-                                            onClick={() => { void saveBookmark() }}
-                                            disabled={bookmarkSaving || !validDuration(videoDuration)}
-                                            className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
-                                          >
-                                            {t('Save position')}
-                                          </button>
-                                        </div>
-                                        {bookmarks.length > 0 ? (
-                                          <div className="flex flex-wrap gap-2">
-                                            {bookmarks.map((bookmark) => (
-                                              <span key={bookmark} className="inline-flex items-center rounded border border-slate-700 bg-slate-950 text-sm text-slate-300">
-                                                <button type="button" disabled={!validDuration(videoDuration) || bookmark > videoDuration} onClick={() => { if (videoRef.current) videoRef.current.currentTime = bookmark }} className="min-h-11 px-3 text-sky-300 hover:text-sky-100 disabled:opacity-40">
-                                                  {formatPracticeTime(bookmark)}
-                                                </button>
-                                                <button type="button" disabled={bookmarkSaving} onClick={() => { void removeBookmark(bookmark) }} aria-label={t('Remove bookmark')} className="min-h-11 min-w-11 text-slate-300 hover:text-rose-300 disabled:opacity-40">
-                                                  ×
-                                                </button>
-                                              </span>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <p className="text-sm text-slate-400">{t('No bookmarks yet')}</p>
-                                        )}
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
-                                        <button
-                                          type="button"
-                                          onClick={() => setLoopPoint('start')}
-                                          className="min-h-11 rounded border border-slate-700 px-3 hover:border-sky-500"
-                                        >
-                                          {t('Set A')} {loopStart == null ? '' : `(${loopStart.toFixed(1)}s)`}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setLoopPoint('end')}
-                                          className="min-h-11 rounded border border-slate-700 px-3 hover:border-sky-500"
-                                        >
-                                          {t('Set B')} {loopEnd == null ? '' : `(${loopEnd.toFixed(1)}s)`}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          disabled={loopStart == null || loopEnd == null || loopEnd <= loopStart}
-                                          onClick={() => setIsLooping((current) => !current)}
-                                          className="min-h-11 rounded border border-slate-700 px-3 hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
-                                        >
-                                          {isLooping ? t('Looping') : t('Loop A-B')}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={clearLoop}
-                                          className="min-h-11 rounded border border-slate-700 px-3 text-slate-300 hover:text-slate-100"
-                                        >
-                                          {t('Clear')}
-                                        </button>
-                                      </div>
-                                    </div>
+                                    <LocalVideoPracticePlayer key={`${date}:${activeMaterial.id}:${activeMaterialUrl}`} url={activeMaterialUrl} name={activeMaterial.name} bookmarks={bookmarks}
+                                      onBookmarksChange={(next) => saveMaterialBookmarks(template.key, activeMaterial.id, next)}
+                                      onPlaybackConfirmed={(intent) => confirmMaterialPlayback(date, planWeek?.id ?? null, template.id, template.key, activeMaterial.id, intent)} />
                                   ) : isImage || externalMediaKind === 'image' ? (
                                     <img src={activeMaterialUrl} alt={activeMaterial.name} className="max-h-[420px] w-full object-contain" />
                                   ) : activeMaterial.type === 'application/pdf' || externalMediaKind === 'pdf' ? (

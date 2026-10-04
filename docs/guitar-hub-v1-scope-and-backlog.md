@@ -244,6 +244,15 @@ No blocking items.
    - Save uses a stable submit-time elapsed snapshot without stopping live clocks before validation/network success; rejected or failed saves preserve running continuity and never restart manually stopped or previously paused timers
    - 209 tests and build pass; focused QA reproduced background-delay/completion and failed-save paths. Lint reports three existing warnings. Actual browser throttling/OS sleep still requires a stopwatch comparison; system-clock changes can distort wall-clock duration
 
+34. **Implemented — 2026-10-04 (focused/browser-mock QA passed; real YouTube native-control acceptance pending):** Video-driven timing and unified video controls
+   - confirmed playback starts/resumes the video owner's block timer idempotently, preserving accumulated time and the existing single-running-block handoff; video pause/end/close does not automatically stop the practice counter
+   - manual timer stop, reset, or completion is not undone by buffering recovery or automatic loop restarts; a fresh explicit Play can resume even while Done remains checked
+   - native uploaded video and YouTube share flat practice controls: Play/Pause, position, whole/A-B loops, boundary capture, Jump, speed, and persistent bookmarks; exactly one uploaded video/audio track is retained
+   - focused local viewer surface supports Space Play/Pause, Left/Right seek -/+5 seconds, and Shift+Left/Right -/+15 seconds, clamped to duration and preserving paused/playing state
+   - shortcuts do not capture typing, native media controls, links, buttons, modified/composing keys, or repeated Space. Inside the cross-origin YouTube iframe, YouTube's own shortcuts apply; the app shortcuts require focus on its local controller
+   - actual native-video playback and 320/375/1280px layouts were checked; YouTube timer/event controls use mock-API browser evidence. First native paused/cued Play after stop/Done passed the repaired mock regression
+   - 229 tests and build pass; lint has three existing warnings. Real YouTube native-play acceptance, translated/mobile focus, and delayed callbacks after navigation remain device checks
+
 9. **Completed — 2026-09-25:** Start the default program on account creation
    - week 1 starts on the account-creation date rather than the next Monday
    - the five-week sequence and seven-day week durations remain unchanged
