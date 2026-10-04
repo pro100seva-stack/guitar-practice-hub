@@ -22,6 +22,39 @@ const pageTranslations: Record<Language, Record<string, string>> = {
 }
 
 Object.assign(pageTranslations.en, {
+  'Page unavailable': 'Page unavailable',
+  'This page could not load. The app may have been updated.': 'This page could not load. The app may have been updated.',
+  'Something went wrong. Please try again.': 'Something went wrong. Please try again.',
+  'You are offline. Reconnect to retry.': 'You are offline. Reconnect to retry.',
+  'Retry is available.': 'Retry is available.',
+  'Retry': 'Retry',
+})
+Object.assign(pageTranslations.ru, {
+  'Page unavailable': 'Страница недоступна',
+  'This page could not load. The app may have been updated.': 'Не удалось загрузить страницу. Возможно, приложение обновилось.',
+  'Something went wrong. Please try again.': 'Что-то пошло не так. Попробуйте ещё раз.',
+  'You are offline. Reconnect to retry.': 'Нет подключения к интернету. Подключитесь и попробуйте ещё раз.',
+  'Retry is available.': 'Можно попробовать ещё раз.',
+  'Retry': 'Повторить',
+})
+Object.assign(pageTranslations.it, {
+  'Page unavailable': 'Pagina non disponibile',
+  'This page could not load. The app may have been updated.': 'Impossibile caricare la pagina. L’app potrebbe essere stata aggiornata.',
+  'Something went wrong. Please try again.': 'Si è verificato un problema. Riprova.',
+  'You are offline. Reconnect to retry.': 'Sei offline. Riconnettiti per riprovare.',
+  'Retry is available.': 'Puoi riprovare.',
+  'Retry': 'Riprova',
+})
+Object.assign(pageTranslations.fr, {
+  'Page unavailable': 'Page indisponible',
+  'This page could not load. The app may have been updated.': 'Impossible de charger cette page. L’application a peut-être été mise à jour.',
+  'Something went wrong. Please try again.': 'Un problème est survenu. Veuillez réessayer.',
+  'You are offline. Reconnect to retry.': 'Vous êtes hors connexion. Reconnectez-vous pour réessayer.',
+  'Retry is available.': 'Vous pouvez réessayer.',
+  'Retry': 'Réessayer',
+})
+
+Object.assign(pageTranslations.en, {
   'Rename': 'Rename', 'Rename {name}': 'Rename {name}', 'Material name': 'Material name', 'Save name': 'Save name', 'Enter a material name.': 'Enter a material name.', 'Could not save material changes.': 'Could not save material changes.',
   'Video loop': 'Video loop', 'Loop off': 'Off', 'Whole video': 'Whole video', 'Playback speed': 'Playback speed', 'Speed unavailable': 'Unavailable', '{rate}x': '{rate}x', 'A (seconds)': 'A (seconds)', 'B (seconds)': 'B (seconds)', 'Now': 'Now', 'Set A to current position': 'Set A to current position', 'Set B to current position': 'Set B to current position', 'Position (seconds)': 'Position (seconds)', 'Jump and play': 'Jump and play', 'Remove bookmark at {time}': 'Remove bookmark at {time}',
   'Loop suspended: use 0 <= A < B <= video duration.': 'Loop suspended: use 0 <= A < B <= video duration.', 'Loading YouTube player...': 'Loading YouTube player...', 'Retry player': 'Retry player', 'YouTube is unavailable offline.': 'YouTube is unavailable offline.', 'YouTube requires a valid HTTP or HTTPS origin.': 'YouTube requires a valid HTTP or HTTPS origin.', 'YouTube could not load. Check your connection or open on YouTube.': 'YouTube could not load. Check your connection or open on YouTube.', 'YouTube could not verify this embed origin.': 'YouTube could not verify this embed origin.', 'This video is unavailable or cannot be embedded. Open on YouTube.': 'This video is unavailable or cannot be embedded. Open on YouTube.',

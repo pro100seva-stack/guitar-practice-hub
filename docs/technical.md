@@ -25,6 +25,16 @@ The app is a client-side PWA that talks directly to Supabase Postgres for accoun
 6. Local learning materials are stored as browser Blobs and metadata in IndexedDB.
 7. The UI updates after the data load or write completes.
 
+### Lazy route recovery after deployment
+
+An open tab can retain references to obsolete hashed route chunks. Only recognized dynamic-import/chunk-load failures trigger recovery, using the shared helper in `src/lib/lazyChunkRecovery.ts` from both `vite:preloadError` and the root router error fallback. The preload listener is attached before React mounts and never suppresses the import rejection, so a cancelled reload or blocked recovery still reaches the fallback.
+
+Automatic recovery is limited to initial route loading, one attempt per document, and one attempt per tab within a five-minute sessionStorage cooldown. The timestamp is not cleared on startup. Offline status or inaccessible storage disables automatic recovery without consuming the guard. Once any route has successfully initialized, subsequent failures require manual retry to avoid automatically refreshing an active practice editor. Retry becomes available on reconnect; reconnect itself does not reload. Explicit Retry reloads the current URL and renews the cooldown where storage is available.
+
+The fallback is localized in EN/RU/IT/FR, hides raw errors, and offers Home except when already on Home. Reload preserves path, query, and hash, but unsaved edits and running timers can be lost. Existing browser `beforeunload` handlers are not removed or bypassed by recovery; a route error may already have unmounted the editor before manual Retry. No caches, service workers, IndexedDB, or uploaded materials are cleared.
+
+The service worker's navigation fallback excludes `/assets/` as well as the existing default-PDF and device-local-media paths. This prevents SW navigation fallback from treating asset URLs as app pages; it does not change server responses or module-fetch caching. Public GETs on 2026-10-04 confirmed that the obsolete `/assets/Landing-BzwG3QX0.js` and `/` returned identical HTML, status 200, `Content-Type: text/html`, `Cache-Control: public, max-age=0, must-revalidate`, and `CF-Cache-Status: HIT`. Cloudflare should return an asset miss rather than app HTML for missing `/assets/*` files. No Wrangler config is present in this repository; deployment configuration, old-asset retention, and cache rules still need verification by the deployment owner. PWA `autoUpdate` alone cannot guarantee that an already-running shell never references a removed chunk.
+
 ## Main application areas
 
 ### App shell and navigation

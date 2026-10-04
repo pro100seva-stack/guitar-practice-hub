@@ -11,7 +11,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       workbox: {
         // Without this, the SW answers iframe/object navigations to the PDFs with index.html.
-        navigateFallbackDenylist: [/^\/default-exercises\//, /^\/__guitar_practice_hub_local_media\//],
+        navigateFallbackDenylist: [/^\/assets\//, /^\/default-exercises\//, /^\/__guitar_practice_hub_local_media\//],
         globIgnores: ['**/default-exercises/**'],
       },
       manifest: {

@@ -1,8 +1,32 @@
 # Guitar Practice Hub — scope and backlog
 
-Status: the app has a working core v1 workflow plus the Flexible Programs foundation and program actions. The implementation is stable and validated; the current state is ready for a user-defined product pivot rather than another feature spike.
+Status (2026-10-04): requested features through item 33 are implemented. Implementation, deployment, and owner/device verification are separate statuses; a passing test suite does not establish production acceptance.
 
-## Current status (2026-09-25)
+## Active Work (Groomed 2026-10-04)
+
+Historical item IDs are retained below, including reused IDs in the original P2/Programs sections. New IDs must be unique from 34 onward. Per-item historical test counts are snapshots, not the current suite count.
+
+### P1 - Release And Verification
+
+- **Item 32: deployment follow-up.** Recovery is implemented and tested; verify the latest Cloudflare deployment and decide how missing `/assets/*.js` requests should return a genuine missing-asset response instead of the SPA HTML shell. Do not change hosting configuration without inspecting the actual Workers asset configuration first.
+   Live read-only check on 2026-10-04 served entry `index-B2lwA2jd.js` and Practice `Sessions-CgTKqBbV.js`; custom recovery markers were absent and the Practice timer still incremented per interval callback. Both an obsolete Landing chunk and a deliberately missing asset returned the same 722-byte HTML shell with `200 text/html`. Fix deployment provenance/release identity before claiming items 32/33 live. Build revision and effective Cloudflare configuration remain unknown.
+- **Item 33: timer acceptance.** Compare against a stopwatch after background-tab throttling and sleep; check completion pause, resume, and save failures. Implementation and synthetic QA passed; physical acceptance is pending.
+- **Items 23, 27, 30, 31: consolidated acceptance.** Verify translated tours/text scaling, scoped empty-session clearing and notes-only history, the total counter, physical-phone YouTube loops/rates/bookmarks/renames, and persistence after restarting the browser. Do not wipe device-local materials for testing.
+- **Item 18: PDF device acceptance.** Confirm the supplied PDFs open in their own material row or via the visible external fallback on mobile. The service-worker exclusion is implemented; blank-viewer diagnosis was not reproduced directly.
+
+### P2 - Approved Technical Follow-Ups
+
+- **Item 15: actual client persistence coverage.** The original hardening slice is completed (constraints applied; local reset and 35 pgTAP tests passed). A real disposable-local test of the client session save/delete sequence remains deferred; this is not a pending migration.
+- **Item 15: conditional bulk-write risk.** Advisory-lock deadlock/retry coverage is needed only if a multi-user service-role bulk schedule writer is introduced. No such feature is approved.
+
+### Product Decisions - Not Approved Features
+
+- **No-week recovery.** Decide the user action when no week covers today. Existing planning functions and program lifecycle constraints must be checked before promising a new Default-program button; do not automatically extend custom programs or rewrite historical weeks.
+- Practice goals/streak enhancements and a repertoire screen were suggestions, not approved backlog features. Scope either only after an owner decision.
+
+**Recommended next step:** release verification first, starting with the item-32 Cloudflare asset-response investigation; then choose the no-week recovery flow or a new product feature. No pending migration was reported in the last live audit (21 applied); that audit is dated 2026-10-03, not a fresh query today.
+
+## Delivered Baseline And History
 
 - The project remains aligned with the original architecture: React frontend, Supabase as the app backend, and a PWA shell for phone and desktop use.
 - Sessions, Plan, Stats, auth, default-program continuation, and program actions are connected to real Supabase data and are operational.
@@ -10,14 +34,14 @@ Status: the app has a working core v1 workflow plus the Flexible Programs founda
 - Flexible Programs is implemented at the schema and app-action layer: `programs` rows, nullable scheduled weeks, pausing/resuming, and default continuation are live.
 - Plan weeks now use `program_id` as their ownership source; the unused `plan_weeks.phase` field has been removed, and programs carry a prescribed `total_weeks` duration.
 - `session_blocks` enforces unique `(session_id, block_key)` through migration `03-session-block-uniqueness.sql`.
-- Program state is visible in the Plan UI through active/paused program badges and Start Default / Start Custom / Resume actions.
+- Program lifecycle RPCs exist; current visible Plan behavior includes program assignment and week actions. Older claims about Start Default / Start Custom / Resume buttons must not be treated as current UI acceptance without checking the code.
 - Account creation now captures English, Russian, Italian, or French as the initial language preference; Settings can change the interface preference later without rewriting practice content.
 - Default programs store their content language independently from the interface preference, so continuation weeks remain consistent with the original program language.
 - New accounts now begin default week 1 on the UTC calendar date of account creation; the remaining weeks continue in seven-day intervals.
 - The former Topics checklist is now named ToDo in the database and Plan UI; existing checklist rows and completion states were preserved.
 - Settings now exposes only preferences with active behavior: language, completed-week visibility, target-practice-time visibility, and default-exercise visibility.
 - The landing screen now includes a right-side featured guitar panel and a compact informational footnote for the Frankenstrat, establishing the pattern for future rotating-guitar highlights.
-- The codebase is in a validated state with the program timeline and week insertion workflow active; remaining work is limited to the open P2 practice enhancements.
+- The program timeline and week insertion workflow are implemented. Remaining release checks and product decisions are listed in Active Work above.
 
 ## Product direction
 
@@ -31,7 +55,7 @@ The project is no longer in a greenfield discovery phase. The app is now a valid
 - default-program continuation and program branching/resume behavior
 - mobile-friendly app shell and plan UX
 - future product pivots after explicit approval
-- explicitly requested Sessions UX enhancements currently tracked as open P2 stories
+- approved Practice/materials improvements and their remaining acceptance checks
 
 ### Out of scope for the current phase
 
@@ -101,7 +125,7 @@ No blocking items.
    - migration `20261003110000_add_practice_field_domain_constraints.sql` was applied alone and recorded as applied; verification confirmed all three constraints are validated and all domains still have zero offending rows
    - linked migration history now shows 21 applied and zero pending; audit details are documented in `docs/project-handoff.md`
    - Vitest unit-test slice passes (2 files, 8 tests); the compatible Node engine range is declared in `package.json`; session deletion is not exercised against Supabase
-   - scope was approved by the Solution Architect; local Supabase RPC integration coverage for week insertion/renumbering remains deferred, as does testing the actual Supabase deletion consumer
+   - local Supabase RPC integration coverage for week insertion/removal and continuation is implemented; testing the actual client Supabase save/deletion consumer remains deferred
    - local Supabase bootstrap is verified: the analytics container (Logflare) was unhealthy on Windows Docker and the CLI was ignoring the config because it sat outside `<workdir>/supabase/`; config moved, analytics/studio/inbucket/edge runtime disabled, a fresh `db reset --local` replays all 32 migrations, and 35 pgTAP tests pass (plan-week RPCs and `continue_default_program`)
    - QA found and verified a continuation mismatch; fixed it so an overdue active Default program schedules the current UTC Monday-Sunday week, then does not continue again during that week
    - approved overlap policy: if any scheduled user week overlaps the current UTC Monday-Sunday target, skip/defer continuation without modifying existing weeks; insert only when no overlap exists
@@ -117,7 +141,6 @@ No blocking items.
    - root cause found: one shared materials list and one shared current-block key for all blocks (so every expanded block showed the same list and saves could land in the wrong block), a single shared file-input ref, a global load counter, and an unconditional mount-time load of the `learning` block; IndexedDB keying was correct
    - fixed with per-block state, explicit owning block key on every load/save/delete/bookmark, per-block stale-response protection, and a per-block file input; new `src/lib/materialScope.ts` with unit tests
    - a material uploaded or opened in one practice block must never appear in another block; materials stay scoped to the owning block key
-   - suspected cause to verify: Sessions.tsx loads materials into one shared state (`loadLearningMaterials`, including an unconditional `loadLearningMaterials('learning')` on mount) so late or stale async loads overwrite the visible list
    - QA covers upload, link, bookmark, delete, switching blocks quickly, reload, and default vs user materials across all seven blocks
 
 18. **Implemented — 2026-10-03 (browser check pending):** Default-material PDFs open reliably and in place
@@ -128,7 +151,7 @@ No blocking items.
    - applies to default PDFs under `public/default-exercises/` and still respects the default-exercise Settings toggle
 
 19. **Completed — 2026-10-04 (owner playback test passed):** YouTube links work as plain links
-   - owner confirmed adding and playing the supplied YouTube watch link works after the embed-rendering fix; render uses `www.youtube.com/embed/` without unused `origin` or `enablejsapi` parameters, retaining start time and the watch-page fallback
+   - owner confirmed plain-link playback after the initial embed fix; item 31 superseded plain playback with official API controls, which now legitimately require an accurate origin and enablejsapi
    - scheme-less links (`youtube.com/watch?v=...`) are accepted; invalid YouTube-host links show a localized error instead of being saved as page links; the fallback link opens a real watch URL
    - `src/lib/youtube.ts` converts watch, youtu.be, shorts, live, embed, m. and music. URLs and pasted iframe snippets to a nocookie embed with `start=` seconds; only exact hosts and 11-character IDs are accepted; unit tests cover lookalike hosts and `javascript:`/`data:` input
    - pasting a normal YouTube URL (`watch?v=`, `youtu.be/`, `shorts/`, `live/`, with or without extra query parameters or a timestamp) is converted automatically to the embed form
@@ -140,18 +163,15 @@ No blocking items.
    - verified at 320, 360, 390, and 430 px widths and with all four languages
 
 21. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone check pending):** Practice screen mobile layout
-   - UX design recorded: grid header with a centered title, one sticky in-flow tools bar replacing the two fixed icons, flat full-bleed sections instead of nested cards, 44px controls, single-column desktop; implementation split into steps (header and tools bar, section flattening, empty-blocks flow, block-row flattening)
+   - delivered layout uses flat sections and a single-column Practice page; item 28 superseded the initial sticky tools bar by moving metronome/tuner controls into the shared header
    - UX Designer reviews the Practice screen on mobile: too many nested containers each with their own margins make the content narrow
    - apply best practices (reduce nested cards and horizontal padding, use full-width sections and dividers, consistent spacing scale) and hand a concrete spec to the Frontend Developer
 
 22. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone check pending):** No practice blocks shown by default
    - also fixed after QA: ToDo changes now persist immediately and independently of Save (they no longer depend on a saved session)
-   - decisions adopted from UX defaults: today/future/past days without a saved session start empty; saved sessions still show their saved blocks; inline picker when empty and a bottom sheet to add more; blocks shown in the order added; newly added block opens and the others collapse; undo toast on remove; Save is disabled with zero blocks unless clearing an already saved session (this also removes the phantom 45-minute default); the week-card strip is collapsed behind a week select; dirty-state prompt before discarding edits
+   - delivered: unsaved days start empty; saved sessions restore blocks; inline picker when empty and a bottom sheet to add more; blocks follow order added and start collapsed (item 28 supersedes the initial auto-expand choice); opening one collapses the others; Undo on remove; no phantom 45-minute default; week-card strip collapsed; dirty-state prompt before discarding edits
    - assumed behaviour (to confirm with UX and owner): a new or empty day starts with no blocks; the user chooses which block to start with from a block picker and adds others as needed
    - UX Designer specifies the flow, including how it interacts with the existing add/remove-block and expand/collapse behaviour, saved sessions, and the guided tour
-
-23. **Historical audit — superseded by the approved 19-card implementation below:** Guided tour coverage audit
-   - the initial larger card proposal was revised after Practice and uniform-layout changes; use the current implementation entry below
 
 24. **Implemented — 2026-10-03 (owner phone check pending):** Home featured-guitar note placement
    - move the collapsible "*Frankenstrat" container underneath the guitar image, aligned to the right
@@ -163,7 +183,7 @@ No blocking items.
 
 30. **Implemented — 2026-10-04 (code QA passed; visual check pending):** Restore a prominent Practice total-time counter
    - implemented directly below the selected-date heading with a body-size label and larger semibold, high-contrast tabular total; all 69 tests, lint, and build pass, with three existing lint warnings
-   - the current total exists as a subdued "Practice time: N min" line beneath the selected-date heading; promote it so it is easy to find
+   - the formerly subdued total has been promoted; remaining work is visual acceptance, not implementation
    - UX recommendation: keep the total directly beneath that heading, above the blocks or empty picker; use a semibold, high-contrast value with tabular numerals and normal body-size label
    - preserve the header (metronome/tuner only), existing spacing, and current total calculation; no new card, sticky bar, or duplicate total near Save
    - reuse `Practice time` and `{minutes} min` in EN/RU/IT/FR; display 0 min when empty, and verify active, paused, saved, and cleared-block states
@@ -208,6 +228,21 @@ No blocking items.
    - QA played the supplied b5SbZwd0egM video at confirmed 0.5x and observed 15 A-B restarts; mock/browser checks covered rates, pause/seek, rename continuity, scoped persistence, metadata concurrency, cached MP4 decoding, and 320px four-language controls
    - deletion-race fixes passed isolated Chrome recheck: late lists cannot restore deleted materials, deleting A cannot close newly selected B, and offline/error bookmarks remain removable
    - 150 tests and build pass; lint reports three existing warnings. Physical-phone playback, real YouTube end-of-video looping, background recovery, screen readers, and persistence after full browser restart remain manual checks
+
+32. **Implemented — 2026-10-04 (focused QA and disposable-browser tests passed; deployment pending):** Recover stale lazy-route chunks after deployment
+   - owner saw a failed Landing dynamic import after deploying, then reload succeeded; the obsolete hashed chunk URL was confirmed to return the same HTML as the app root with `200 text/html`
+   - recognized initial lazy-chunk failures get at most one automatic refresh per document, with a five-minute session-storage cooldown; offline or unavailable storage disables automatic attempts
+   - redirects and pre-auth initialization retain eligibility until the first actual lazy page renders successfully with idle navigation; later navigation/runtime errors do not auto-refresh
+   - localized Retry/Home fallback replaces the raw router stack; URL/query/hash and local material storage are preserved; existing unload warnings are not bypassed, but refreshing may lose unsaved timer/edit state
+   - service-worker navigation fallback excludes `/assets/`; this does not fix Cloudflare origin behavior for missing JS. Origin/CDN missing-asset HTML fallback remains an operational follow-up
+   - 179 tests, build, and six disposable Chrome scenarios pass; 29 focused recovery tests passed independent QA, lint reports three existing warnings. No hosting changes or deploy were performed
+
+33. **Implemented — 2026-10-04 (focused QA passed; physical background/sleep check pending):** Accurate background timers and completion pause
+   - block elapsed time derives from a wall-clock start/resume anchor plus accumulated milliseconds, not interval callback counts; intervals only refresh the display, and visibility return catches up missed ticks
+   - checking a block done pauses only its timer at operation-time elapsed; unchecking never auto-starts, while explicit Start can resume even when the block remains checked
+   - fractional elapsed is retained across pause/resume; reset/manual editing/remove/undo preserve intended timing semantics. Running timers remain in-memory and are not restored across full reload
+   - Save uses a stable submit-time elapsed snapshot without stopping live clocks before validation/network success; rejected or failed saves preserve running continuity and never restart manually stopped or previously paused timers
+   - 209 tests and build pass; focused QA reproduced background-delay/completion and failed-save paths. Lint reports three existing warnings. Actual browser throttling/OS sleep still requires a stopwatch comparison; system-clock changes can distort wall-clock duration
 
 9. **Completed — 2026-09-25:** Start the default program on account creation
    - week 1 starts on the account-creation date rather than the next Monday
@@ -398,7 +433,7 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-09-25 — Scoped user-added learning materials to every expanded practice block while preserving the existing device-local storage model.
 - 2026-09-25 — Added device-local video bookmarks with timestamp jump, save, and removal controls.
 - 2026-09-25 — Replaced the removed Home explainer concept with a first-entry guided-tour backlog item.
-- 2026-09-25 — Removed three no-op Settings controls and applied the preference cleanup migration; active settings now have documented runtime behavior.
+- 2026-09-25 — Removed three no-op Settings controls; the later live audit established the cleanup migration was absent until its approved application on 2026-10-03.
 - 2026-09-25 — Implemented the localized first-entry guided tour with highlighted navigation and Home actions.
 - 2026-09-25 — Added supplied Warmup and Learning PDFs to the default-exercise catalog with inline Sessions viewing.
 - 2026-10-03 — Owner confirmed: Skip ends the whole tour; replay is a per-screen bottom Help button instead of a Settings action.
@@ -408,9 +443,9 @@ Context: the app now has a working program model that separates scheduled calend
 
 ## Recommended next steps
 
-1. Keep the current Flexible Programs and localization models as the baseline.
-2. Deliver item 15 (data-integrity constraints and tests).
-3. Choose the next feature afterwards (candidates: practice streaks/goals, song repertoire tracking).
+1. Follow Active Work at the top: release identity and Cloudflare missing-asset response review, then consolidated device acceptance.
+2. Keep completed hardening and UTC Default continuation as the baseline; do not treat verified migrations as pending work.
+3. Scope no-week recovery or another product direction only after an owner decision.
 
 ## Delivery pipeline
 
@@ -419,8 +454,9 @@ Context: the app now has a working program model that separates scheduled calend
 - **Done:** default five-week practice program creation and logged-in continuation flow.
 - **Done:** language preference schema, default-program content-language ownership, Edge Function deployment, and complete UI translation coverage.
 - **Done:** Sessions tuner presets, continuous reference tones, and device-local learning-materials viewer.
-- **Done:** metronome lock, per-block learning materials, video bookmarks, default block references, and first-entry tour (v1, to be reworked).
-- **In planning (P1):** items 13 (tour rework), 14 (tour QA), 15 (integrity constraints and tests).
+- **Implemented:** header metronome/tuner, per-block materials, YouTube API loops/rates/bookmarks/rename, default references, 19-card per-screen tour, consistent rounding, safe session clearing, and background timers.
+- **Completed hardening:** item 15 constraints, migration reconciliation, isolated local reset, and pgTAP coverage.
+- **Acceptance/operations pending:** see Active Work above. No new product feature is approved by this grooming pass.
 
 ## Completed milestones
 

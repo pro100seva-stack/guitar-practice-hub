@@ -42,13 +42,15 @@ describe('legacy block save preflight', () => {
   it('returns before any parent mutation or child deletion when preflight refuses the save', () => {
     const source = readFileSync(new URL('../src/pages/Sessions.tsx', import.meta.url), 'utf8')
     const submit = source.slice(source.indexOf('async function handleSubmit'), source.indexOf('const totalBlockMinutes ='))
-    const guard = submit.indexOf('if (existingSession && hasUnsupportedSessionBlocks(existingSession.session_blocks, templates))')
+    const guard = submit.indexOf('if (savedSession && hasUnsupportedSessionBlocks(savedSession.session_blocks, templates))')
     const parentDelete = submit.indexOf(".from('sessions')")
     const childDelete = submit.indexOf(".from('session_blocks')")
     expect(guard).toBeGreaterThan(-1)
     expect(parentDelete).toBeGreaterThan(guard)
     expect(childDelete).toBeGreaterThan(parentDelete)
-    expect(submit.slice(guard, parentDelete)).toMatch(/setError\(t\('Cannot save this session[^\r\n]+\r?\n\s+setSaving\(false\)\r?\n\s+return\r?\n\s+}/)
+    expect(guard).toBeLessThan(submit.indexOf('const saveTimers ='))
+    expect(guard).toBeLessThan(submit.indexOf('setSaving(true)'))
+    expect(submit.slice(guard, parentDelete)).toMatch(/setError\(t\('Cannot save this session[^\r\n]+\r?\n\s+return\r?\n\s+}/)
   })
 })
 

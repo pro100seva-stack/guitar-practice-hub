@@ -10,6 +10,7 @@ export type SelectedBlock = {
 export type BlockTimerState = {
   isRunning: boolean
   elapsedSeconds: number
+  anchor?: { startedAtMs: number; elapsedSeconds: number }
 }
 
 type EditorTemplate = {

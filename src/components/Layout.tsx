@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Outlet, useLocation, useNavigate } from 'react-router'
+import { Outlet, useLocation, useMatches, useNavigate, useNavigation } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import TourOverlay from './tour/TourOverlay'
 import { useScreenTour } from './tour/useScreenTour'
 import { HeaderSlotsContext } from './headerSlots'
+import { isRenderedLazyPageReady, lazyChunkRecovery } from '../lib/lazyChunkRecovery'
 
 const navigationItems = [
   { key: 'Home', path: '/landing' }, { key: 'Progress', path: '/progress' }, { key: 'Plan', path: '/plan' },
@@ -14,6 +15,9 @@ const navigationItems = [
 export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const matches = useMatches()
+  const navigation = useNavigation()
+  const pageHandle = matches.at(-1)?.handle
   const panelRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -22,6 +26,10 @@ export default function Layout() {
   const headerSlots = useMemo(() => ({ actions: actionsSlot, panel: panelSlot }), [actionsSlot, panelSlot])
   const { t } = useI18n()
   const tour = useScreenTour(location.pathname)
+
+  useEffect(() => {
+    if (isRenderedLazyPageReady(pageHandle, navigation.state)) lazyChunkRecovery.markRouteReady()
+  }, [pageHandle, navigation.state])
 
   useEffect(() => {
     if (tour.isOpen) setMenuOpen(false)

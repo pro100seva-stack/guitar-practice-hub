@@ -10,6 +10,7 @@ import { getDefaultMaterials } from '../lib/defaultMaterials'
 import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../lib/sessionBlockSavePlan'
 import { getPracticedDates } from '../lib/sessionActivity'
 import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
+import { completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, toggleBlockTimer } from '../lib/sessionBlockTimer'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
 import MetronomeIcon from '../components/icons/MetronomeIcon'
 import TuningForkIcon from '../components/icons/TuningForkIcon'
@@ -483,21 +484,20 @@ export default function Sessions() {
   }
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setTimers((current) => {
-        const nextEntries = Object.entries(current).map(([id, timer]) => {
-          if (!timer.isRunning) {
-            return [id, timer]
-          }
+    function refreshTimers() {
+      const nowMs = Date.now()
+      setTimers((current) => snapshotBlockTimers(current, nowMs))
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') refreshTimers()
+    }
+    const intervalId = window.setInterval(refreshTimers, 1000)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
-          return [id, { ...timer, elapsedSeconds: timer.elapsedSeconds + 1 }]
-        })
-
-        return Object.fromEntries(nextEntries)
-      })
-    }, 1000)
-
-    return () => window.clearInterval(intervalId)
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [])
 
   useEffect(() => {
@@ -745,10 +745,16 @@ export default function Sessions() {
     setRemovedBlock(null)
   }
 
-  function toggleBlock(templateId: string) {
+  function toggleBlock(templateId: string, done: boolean) {
+    const block = selectedBlocks.find((item) => item.id === templateId)
+    if (!block) return
+    if (!block.done && done) {
+      const nowMs = Date.now()
+      setTimers((current) => completeBlockTimer(current, templateId, done, nowMs))
+    }
     setSelectedBlocks((current) =>
       current.map((block) =>
-        block.id === templateId ? { ...block, done: !block.done } : block
+        block.id === templateId ? { ...block, done } : block
       )
     )
   }
@@ -876,7 +882,7 @@ export default function Sessions() {
     const index = selectedBlocks.findIndex((block) => block.id === templateId)
     if (index < 0) return
     const block = selectedBlocks[index]
-    const timer = timers[templateId]
+    const timer = timers[templateId] ? pauseBlockTimer(timers[templateId], Date.now()) : undefined
 
     setSelectedBlocks((current) => current.filter((item) => item.id !== templateId))
     setExpandedBlockIds((current) => {
@@ -910,7 +916,7 @@ export default function Sessions() {
       next.splice(Math.min(index, next.length), 0, block)
       return next
     })
-    if (timer) setTimers((current) => ({ ...current, [block.id]: { ...timer, isRunning: false } }))
+    if (timer) setTimers((current) => ({ ...current, [block.id]: timer }))
   }
 
   function clampBpm(value: number) {
@@ -1272,171 +1278,147 @@ export default function Sessions() {
   }
 
   function toggleTimer(templateId: string) {
-    setTimers((current) => {
-      const isTargetRunning = current[templateId]?.isRunning ?? false
-
-      const pausedTimers = Object.fromEntries(
-        Object.entries(current).map(([id, timer]) => [
-          id,
-          {
-            ...timer,
-            isRunning: false,
-          },
-        ])
-      )
-
-      return {
-        ...pausedTimers,
-        [templateId]: {
-          ...(current[templateId] ?? { isRunning: false, elapsedSeconds: 0 }),
-          isRunning: !isTargetRunning,
-        },
-      }
-    })
+    const nowMs = Date.now()
+    setTimers((current) => toggleBlockTimer(current, templateId, nowMs))
   }
 
   function resetTimer(templateId: string) {
     setTimers((current) => ({
       ...current,
-      [templateId]: {
-        isRunning: false,
-        elapsedSeconds: 0,
-      },
+      [templateId]: resetBlockTimer(),
     }))
+    setSelectedBlocks((current) => current.map((block) => block.id === templateId ? { ...block, actualMinutes: '' } : block))
   }
 
   function updateTimerPart(templateId: string, part: 'minutes' | 'seconds', value: string) {
     const parsedValue = Number(value)
     if (!Number.isFinite(parsedValue) || parsedValue < 0) return
-
-    const normalizedValue = part === 'seconds' ? Math.min(59, Math.floor(parsedValue)) : Math.floor(parsedValue)
-
-    setTimers((current) => ({
-      ...current,
-      [templateId]: {
-        ...(current[templateId] ?? { isRunning: false, elapsedSeconds: 0 }),
-        elapsedSeconds: part === 'minutes'
-          ? normalizedValue * 60 + ((current[templateId]?.elapsedSeconds ?? 0) % 60)
-          : Math.floor((current[templateId]?.elapsedSeconds ?? 0) / 60) * 60 + normalizedValue,
-      },
-    }))
+    const nowMs = Date.now()
+    setTimers((current) => {
+      const edited = editBlockTimer(current[templateId], part, value, nowMs)
+      return edited ? { ...current, [templateId]: edited } : current
+    })
+    setSelectedBlocks((current) => current.map((block) => block.id === templateId ? { ...block, actualMinutes: '' } : block))
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!canSave) return
-    setSaving(true)
-    setMessage(null)
-    setError(null)
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      setError(t('Not signed in.'))
-      setSaving(false)
-      return
-    }
-
-    const existingSession = sessions.find((session) => session.session_date === date && session.user_id === user.id)
-    if (existingSession && hasUnsupportedSessionBlocks(existingSession.session_blocks, templates)) {
+    const savedSession = sessions.find((session) => session.session_date === date)
+    if (savedSession && hasUnsupportedSessionBlocks(savedSession.session_blocks, templates)) {
+      setMessage(null)
       setError(t('Cannot save this session because it contains unsupported legacy blocks. All saved blocks and notes have been preserved.'))
-      setSaving(false)
       return
     }
-    if (existingSession && shouldDeleteClearedSession(true, selectedBlocks.length, comment)) {
-      try {
-        const { error: deletionError } = await supabase
-          .from('sessions')
-          .delete()
-          .eq('id', existingSession.id)
-          .eq('user_id', user.id)
-          .eq('session_date', date)
-          .select('id')
-          .single()
-
-        if (deletionError) {
-          setError(t('Could not delete the empty session. Your changes have been kept.'))
-          setSaving(false)
-          return
-        }
-      } catch {
-        setError(t('Could not delete the empty session. Your changes have been kept.'))
-        setSaving(false)
-        return
-      }
-
-      await loadData({ date, weekId: planWeek?.id ?? null })
-      setMessage(t('Empty session deleted successfully.'))
-      setSaving(false)
-      return
-    }
-
-    const { data: sessionData, error: sessionError } = await supabase
-      .from('sessions')
-      .upsert(
-        {
-          user_id: user.id,
-          session_date: date,
-          total_minutes: totalBlockMinutes,
-          comment: comment.trim() ? comment.trim() : null,
-          week_id: planWeek?.id ?? null,
-          source: 'app',
-        },
-        { onConflict: 'user_id,session_date' }
-      )
-      .select()
-      .single()
-
-    if (sessionError || !sessionData) {
-      setError(sessionError?.message ?? t('Could not save the session.'))
-      setSaving(false)
-      return
-    }
-
-    const blockSavePlan = planSessionBlockSave(sessionData.id, selectedBlocks.map((block) => ({
+    const saveTimers = snapshotBlockTimers(timers, Date.now())
+    const saveBlocks = selectedBlocks.map((block) => ({
       key: block.key,
       label: block.label,
       done: block.done,
       targetMinutes: block.targetMinutes,
       actualMinutes: block.actualMinutes,
-      elapsedSeconds: timers[block.id]?.elapsedSeconds,
-    })))
-    const blocksRemovalQuery = supabase
-      .from('session_blocks')
-      .delete()
-      .eq('session_id', sessionData.id)
+      elapsedSeconds: saveTimers[block.id]?.elapsedSeconds,
+    }))
+    const saveTotalMinutes = saveBlocks.reduce((sum, block) => sum + (sessionBlockMinutes(block) ?? 0), 0)
+    setSaving(true)
+    setMessage(null)
+    setError(null)
 
-    const { error: blocksRemovalError } = blockSavePlan.blockKeysToKeep.length > 0
-      ? await blocksRemovalQuery.not('block_key', 'in', `(${blockSavePlan.blockKeysToKeep.join(',')})`)
-      : await blocksRemovalQuery
-
-    if (blocksRemovalError) {
-      setError(blocksRemovalError.message)
-      setSaving(false)
-      return
-    }
-
-    if (blockSavePlan.upserts.length > 0) {
-      const { error: blocksError } = await supabase
-        .from('session_blocks')
-        .upsert(blockSavePlan.upserts, { onConflict: 'session_id,block_key' })
-
-      if (blocksError) {
-        setError(blocksError.message)
-        setSaving(false)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        setError(t('Not signed in.'))
         return
       }
-    }
 
-    await loadData({ date, weekId: planWeek?.id ?? null })
-    setMessage(t('Session saved successfully.'))
-    setSaving(false)
+      const existingSession = sessions.find((session) => session.session_date === date && session.user_id === user.id)
+      if (existingSession && shouldDeleteClearedSession(true, selectedBlocks.length, comment)) {
+        try {
+          const { error: deletionError } = await supabase
+            .from('sessions')
+            .delete()
+            .eq('id', existingSession.id)
+            .eq('user_id', user.id)
+            .eq('session_date', date)
+            .select('id')
+            .single()
+
+          if (deletionError) {
+            setError(t('Could not delete the empty session. Your changes have been kept.'))
+            return
+          }
+        } catch {
+          setError(t('Could not delete the empty session. Your changes have been kept.'))
+          return
+        }
+
+        await loadData({ date, weekId: planWeek?.id ?? null })
+        setMessage(t('Empty session deleted successfully.'))
+        return
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('sessions')
+        .upsert(
+          {
+            user_id: user.id,
+            session_date: date,
+            total_minutes: saveTotalMinutes,
+            comment: comment.trim() ? comment.trim() : null,
+            week_id: planWeek?.id ?? null,
+            source: 'app',
+          },
+          { onConflict: 'user_id,session_date' }
+        )
+        .select()
+        .single()
+
+      if (sessionError || !sessionData) {
+        setError(sessionError?.message ?? t('Could not save the session.'))
+        return
+      }
+
+      const blockSavePlan = planSessionBlockSave(sessionData.id, saveBlocks)
+      const blocksRemovalQuery = supabase
+        .from('session_blocks')
+        .delete()
+        .eq('session_id', sessionData.id)
+
+      const { error: blocksRemovalError } = blockSavePlan.blockKeysToKeep.length > 0
+        ? await blocksRemovalQuery.not('block_key', 'in', `(${blockSavePlan.blockKeysToKeep.join(',')})`)
+        : await blocksRemovalQuery
+
+      if (blocksRemovalError) {
+        setError(blocksRemovalError.message)
+        return
+      }
+
+      if (blockSavePlan.upserts.length > 0) {
+        const { error: blocksError } = await supabase
+          .from('session_blocks')
+          .upsert(blockSavePlan.upserts, { onConflict: 'session_id,block_key' })
+
+        if (blocksError) {
+          setError(blocksError.message)
+          return
+        }
+      }
+
+      await loadData({ date, weekId: planWeek?.id ?? null })
+      setMessage(t('Session saved successfully.'))
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t('Could not save the session.'))
+    } finally {
+      setSaving(false)
+    }
   }
 
+  const displayTimers = snapshotBlockTimers(timers, Date.now())
   const totalBlockMinutes = selectedBlocks.reduce((sum, block) => {
     return sum + (sessionBlockMinutes({
-      elapsedSeconds: timers[block.id]?.elapsedSeconds,
+      elapsedSeconds: displayTimers[block.id]?.elapsedSeconds,
       actualMinutes: block.actualMinutes,
     }) ?? 0)
   }, 0)
@@ -1447,13 +1429,16 @@ export default function Sessions() {
   const practicedDates = getPracticedDates(sessions)
   const isPastDay = date < todayDate
   const savedForDate = hasSavedSession(date, sessions)
-  const isDirty = isSessionEditorDirty(getSessionEditorState(date, templates, sessions), { comment, timers, selectedBlocks })
+  const isDirty = isSessionEditorDirty(getSessionEditorState(date, templates, sessions), { comment, timers: displayTimers, selectedBlocks })
   const canSave = selectedBlocks.length > 0 || savedForDate
   const availableTemplates = templates.filter((template) => !selectedBlocks.some((block) => block.id === template.id))
   const todosDone = todos.filter((todo) => todo.done).length
 
   function confirmDiscard(action: () => void) {
-    if (isDirty) setPendingDiscardAction({ run: action })
+    const currentTimers = snapshotBlockTimers(timers, Date.now())
+    setTimers(currentTimers)
+    const dirty = isSessionEditorDirty(getSessionEditorState(date, templates, sessions), { comment, timers: currentTimers, selectedBlocks })
+    if (dirty) setPendingDiscardAction({ run: action })
     else action()
   }
 
@@ -1925,7 +1910,7 @@ export default function Sessions() {
 
               if (!template) return null
 
-              const elapsedSeconds = timers[template.id]?.elapsedSeconds ?? 0
+              const elapsedSeconds = Math.floor(displayTimers[template.id]?.elapsedSeconds ?? 0)
               const timerMinutes = Math.floor(elapsedSeconds / 60)
               const timerSeconds = elapsedSeconds % 60
               const isExpanded = expandedBlockIds.has(template.id)
@@ -1941,7 +1926,7 @@ export default function Sessions() {
                         <input
                           type="checkbox"
                           checked={selected.done}
-                          onChange={() => toggleBlock(template.id)}
+                          onChange={(event) => toggleBlock(template.id, event.target.checked)}
                           aria-label={template.label}
                           className="h-5 w-5 rounded border-slate-700 bg-slate-950"
                         />
