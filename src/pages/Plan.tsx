@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
@@ -64,6 +65,89 @@ function getMonthGrid(monthDate: Date) {
   return cells
 }
 
+const POPOVER_WIDTH = 320
+
+// Bottom sheet below `sm`; from `sm` up, a body-level popover positioned from the anchor so no ancestor clips it.
+function CalendarSurface({ label, onClose, anchorRef, children }: { label: string; onClose: () => void; anchorRef: RefObject<HTMLElement | null>; children: ReactNode }) {
+  const sheetRef = useRef<HTMLDivElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+
+  useLayoutEffect(() => {
+    function update() {
+      const rect = anchorRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8))
+      setPosition({ top: rect.bottom + 8, left })
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [anchorRef])
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    const sheet = sheetRef.current
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const getFocusable = () => Array.from(sheet?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])
+    getFocusable()[0]?.focus()
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = getFocusable()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (!sheet?.contains(active)) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      opener?.focus()
+    }
+  }, [])
+
+  const style = { '--pop-top': `${position.top}px`, '--pop-left': `${position.left}px` } as CSSProperties
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 sm:block sm:bg-transparent"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
+    >
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        style={style}
+        className="max-h-[80dvh] w-full overflow-y-auto rounded-t-xl border-t border-slate-700 bg-slate-900 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:fixed sm:left-[var(--pop-left)] sm:top-[var(--pop-top)] sm:max-h-[calc(100dvh-var(--pop-top)-0.5rem)] sm:w-[320px] sm:rounded-lg sm:border sm:bg-slate-950 sm:p-3 sm:shadow-2xl sm:shadow-slate-950/60"
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export default function Plan() {
   const { language, t } = useI18n()
   const [searchParams] = useSearchParams()
@@ -75,6 +159,7 @@ export default function Plan() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [focus, setFocus] = useState('')
   const [tasks, setTasks] = useState('')
   const [weekStartDate, setWeekStartDate] = useState('')
@@ -88,6 +173,8 @@ export default function Plan() {
   const [selectedProgramId, setSelectedProgramId] = useState('')
     const [otherProgramName, setOtherProgramName] = useState('')
   const weekListRef = useRef<HTMLDivElement | null>(null)
+  const weekPickerRef = useRef<HTMLDivElement | null>(null)
+  const rangePickerRef = useRef<HTMLDivElement | null>(null)
 
   const coveredDates = useMemo(() => {
     const availableDates = new Set<string>()
@@ -291,7 +378,7 @@ export default function Plan() {
 
   async function addWeek() {
     setSaving(true)
-    setError(null)
+    setActionError(null)
     setMessage(null)
 
     const selectedIndex = week ? weeks.findIndex((item) => item.id === week.id) : weeks.length - 1
@@ -308,7 +395,7 @@ export default function Plan() {
     })
 
     if (insertError || !insertedWeekId) {
-      setError(insertError?.message ?? t('Could not add the week.'))
+      setActionError(insertError?.message ?? t('Could not add the week.'))
       setSaving(false)
       return
     }
@@ -323,12 +410,12 @@ export default function Plan() {
     if (!week || weeks.length <= 1) return
 
     setSaving(true)
-    setError(null)
+    setActionError(null)
     setMessage(null)
 
     const { data: nextWeekId, error: deleteError } = await supabase.rpc('remove_plan_week', { p_week_id: week.id })
     if (deleteError || !nextWeekId) {
-      setError(deleteError?.message ?? t('Could not remove the week.'))
+      setActionError(deleteError?.message ?? t('Could not remove the week.'))
       setSaving(false)
       return
     }
@@ -523,15 +610,11 @@ export default function Plan() {
       }
     }
 
-    setMessage(t('Plan updated successfully.'))
-    setSaving(false)
     await loadWeeks()
     await loadWeek(week.id)
+    setMessage(t('Plan updated successfully.'))
+    setSaving(false)
   }
-
-  if (error) return <p className="text-red-400">{t('Error: {error}', { error })}</p>
-  if (loading && !week) return <p>{t('Loading…')}</p>
-  if (!week) return <p>{t("No plan_weeks row covers today's date.")}</p>
 
   const monthGrid = getMonthGrid(calendarMonth)
   const locale = localeForLanguage(language)
@@ -541,388 +624,349 @@ export default function Plan() {
   const currentWeek = weeks.find((weekItem) => weekItem.start_date <= today && weekItem.end_date >= today) ?? null
   const isCurrentWeekSelected = currentWeek?.id === selectedWeekId
 
+  const todayRange = (item: { end_date: string; start_date: string }) => item.start_date <= today && item.end_date >= today
+  const programName = (programId: string) => programs.find((program) => program.id === programId)?.name ?? t('Program')
+  const initialLoading = loading && !week
+
+  const calendarNav = (
+    <>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+          className="btn btn-secondary"
+        >
+          {t('Prev')}
+        </button>
+        <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
+        <button
+          type="button"
+          onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+          className="btn btn-secondary"
+        >
+          {t('Next')}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center text-xs uppercase text-slate-400">
+        {weekdayLabels.map((dayLabel) => (
+          <div key={dayLabel} className="py-1">
+            {dayLabel}
+          </div>
+        ))}
+      </div>
+    </>
+  )
+
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t('Practice plan')}</p>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-100">{t('Week overview')}</h1>
-          </div>
+    <div className="page-wide">
+      <h1 className="page-title">{t('Week overview')}</h1>
+      {initialLoading && <p role="status" className="state">{t('Loading…')}</p>}
+      {!week && error && <p role="alert" className="msg-error mt-3">{t('Error: {error}', { error })}</p>}
 
-        </div>
-      </section>
+      {!initialLoading && (
+        <div className="mt-4 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start lg:gap-6">
+          <section className="section lg:sticky lg:top-[calc(var(--app-header-h)+1rem)] lg:max-h-[calc(100dvh-var(--app-header-h)-2rem)] lg:overflow-y-auto">
+            <h2 className="section-title">{t('Practice weeks')}</h2>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Practice weeks')}</p>
-          </div>
-
-          <div className="flex w-full flex-1 flex-col gap-3">
-            <button
-              type="button"
-              onClick={() => void addWeek()}
-              disabled={saving}
-              className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-            >
-              {t('Insert after selected')}
-            </button>
-
-            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-              <p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Navigate weeks')}</p>
-              <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void removeWeek()}
-              disabled={saving || weeks.length <= 1 || !week}
-              className="shrink-0 rounded border border-rose-900/70 bg-slate-950 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-700 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-            >
-              {t('Remove week')}
-            </button>
-            <button
-              type="button"
-              disabled={!currentWeek || isCurrentWeekSelected}
-              onClick={() => {
-                if (currentWeek) {
-                  void loadWeek(currentWeek.id)
-                }
-              }}
-              className="shrink-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-            >
-              {t('Current week')}
-            </button>
-
-            <div className="relative min-w-0 flex-1 basis-full sm:basis-auto">
+            <div ref={weekPickerRef} className="mt-3">
               <button
                 type="button"
+                aria-haspopup="dialog"
+                aria-expanded={calendarOpen}
                 onClick={() => setCalendarOpen((current) => !current)}
-                className="flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm text-slate-200 focus:border-slate-500"
+                className="field flex items-center justify-between gap-2 text-left"
               >
-                <span>{week ? t('Week {week}', { week: week.week_number }) + ` · ${formatDateRange(week.start_date, week.end_date, language)}` : t('Choose a covered week')}</span>
-                <span className="text-slate-400">▾</span>
+                <span className="min-w-0">{week ? t('Week {week}', { week: week.week_number }) + ` · ${formatDateRange(week.start_date, week.end_date, language)}` : t('Choose a covered week')}</span>
+                <span aria-hidden="true" className="text-slate-400">▾</span>
               </button>
 
               {calendarOpen && (
-                <div className="absolute left-0 right-0 z-20 mt-2 w-[320px] max-w-full rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60 sm:left-auto sm:right-0 sm:max-w-[calc(100vw-2rem)]">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
-                    }
-                    className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                  >
-                    {t('Prev')}
-                  </button>
-                  <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
-                    }
-                    className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                  >
-                    {t('Next')}
-                  </button>
-                </div>
+                <CalendarSurface label={t('Choose a covered week')} anchorRef={weekPickerRef} onClose={() => setCalendarOpen(false)}>
+                  {calendarNav}
 
-                <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.15em] text-slate-400">
-                  {weekdayLabels.map((dayLabel) => (
-                    <div key={dayLabel} className="py-1">
-                      {dayLabel}
-                    </div>
-                  ))}
-                </div>
+                  <div className="mt-2 grid grid-cols-7 gap-1">
+                    {monthGrid.map((day) => {
+                      const isoDate = toIsoDate(day)
+                      const isCovered = coveredDates.availableDates.has(isoDate)
+                      const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
+                      const isSelected = coveredDates.weekByDate.get(isoDate)?.id === selectedWeekId
 
-                <div className="mt-2 grid grid-cols-7 gap-1">
-                  {monthGrid.map((day) => {
-                    const isoDate = toIsoDate(day)
-                    const isCovered = coveredDates.availableDates.has(isoDate)
-                    const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
-                    const isSelected = coveredDates.weekByDate.get(isoDate)?.id === selectedWeekId
-
-                    return (
-                      <button
-                        key={isoDate}
-                        type="button"
-                        disabled={!isCovered || !isCurrentMonth}
-                        onClick={() => {
-                          if (!isCovered) return
-                          const targetWeek = coveredDates.weekByDate.get(isoDate)
-                          if (targetWeek) {
-                            setCalendarOpen(false)
-                            void loadWeek(targetWeek.id)
-                          }
-                        }}
-                        className={[
-                          'aspect-square rounded-md text-sm transition',
-                          isCurrentMonth ? 'text-slate-200' : 'text-slate-500',
-                          isCovered ? 'hover:bg-slate-800' : 'cursor-not-allowed bg-slate-900/80 text-slate-600',
-                          isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
-                        ].join(' ')}
-                      >
-                        {day.getDate()}
-                      </button>
-                    )
-                  })}
-                </div>
-                </div>
+                      return (
+                        <button
+                          key={isoDate}
+                          type="button"
+                          disabled={!isCovered || !isCurrentMonth}
+                          onClick={() => {
+                            if (!isCovered) return
+                            const targetWeek = coveredDates.weekByDate.get(isoDate)
+                            if (targetWeek) {
+                              setCalendarOpen(false)
+                              void loadWeek(targetWeek.id)
+                            }
+                          }}
+                          className={[
+                            'aspect-square min-h-11 rounded-md text-sm transition',
+                            isCurrentMonth ? 'text-slate-200' : 'text-slate-400',
+                            isCovered ? 'hover:bg-slate-800' : 'cursor-not-allowed bg-slate-900/80 text-slate-600',
+                            isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
+                          ].join(' ')}
+                        >
+                          {day.getDate()}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </CalendarSurface>
               )}
             </div>
-          </div>
-        </div>
-        </div>
-      </div>
 
-        <div ref={weekListRef} className="plan-week-list max-h-[420px] overflow-y-auto pr-2">
-          <div className="space-y-3">
-            {weeks.map((weekItem) => {
-              const isSelected = weekItem.id === selectedWeekId
-              const isCurrentWeek =
-                weekItem.start_date <= new Date().toISOString().slice(0, 10) &&
-                weekItem.end_date >= new Date().toISOString().slice(0, 10)
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!currentWeek || isCurrentWeekSelected}
+                onClick={() => {
+                  if (currentWeek) {
+                    void loadWeek(currentWeek.id)
+                  }
+                }}
+                className="btn btn-secondary"
+              >
+                {t('Current week')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void addWeek()}
+                disabled={saving}
+                className="btn btn-secondary"
+              >
+                {t('Insert after selected')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeWeek()}
+                disabled={saving || weeks.length <= 1 || !week}
+                className="btn btn-danger"
+              >
+                {t('Remove week')}
+              </button>
+            </div>
+            {actionError && <p role="alert" className="msg-error mt-3">{actionError}</p>}
 
-              return (
-                <button
-                  key={weekItem.id}
-                  type="button"
-                  data-week-id={weekItem.id}
-                  onClick={() => void loadWeek(weekItem.id)}
-                  className={`w-full rounded-lg border p-3 text-left transition ${
-                    isSelected
-                      ? 'border-sky-500 bg-sky-500/10 text-sky-100'
-                      : 'border-slate-700 bg-slate-900/70 text-slate-200 hover:border-slate-500'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week {week}', { week: weekItem.week_number })}</p>
-                    {isCurrentWeek && (
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.16em] text-emerald-300">
-                        {t('Today')}
+            <div ref={weekListRef} className="plan-week-list mt-3 max-h-[40dvh] overflow-y-auto lg:max-h-none">
+              <div className="list">
+                {weeks.map((weekItem) => {
+                  const isSelected = weekItem.id === selectedWeekId
+
+                  return (
+                    <button
+                      key={weekItem.id}
+                      type="button"
+                      data-week-id={weekItem.id}
+                      aria-current={isSelected ? 'true' : undefined}
+                      onClick={() => void loadWeek(weekItem.id)}
+                      className="list-row text-slate-200"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm text-slate-300">{t('Week {week}', { week: weekItem.week_number })}</span>
+                          {todayRange(weekItem) && <span className="badge badge-success">{t('Today')}</span>}
+                          <span className="badge badge-neutral">{programName(weekItem.program_id)}</span>
+                        </span>
+                        <span className="mt-1 block text-base font-semibold text-slate-100">{weekItem.focus || t('Focus')}</span>
+                        <span className="meta mt-0.5 block">
+                          {formatDateRange(weekItem.start_date, weekItem.end_date, language)} · {weekItem.updated_at !== weekItem.created_at || weekItem.focus.trim() !== 'New practice week' || Boolean(weekItem.tasks?.trim()) ? t('Updated') : t('Draft')}
+                        </span>
                       </span>
-                    )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </section>
+
+          <form onSubmit={handleSubmit} className="section space-y-4 lg:border-t-0 lg:pt-0">
+            <div data-tour="plan-week">
+              {week ? (
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="section-title">{t('Week {week}', { week: week.week_number })}: {week.focus}</h2>
+                    <p className="meta mt-1">{formatDateRange(week.start_date, week.end_date, language)} · {programName(week.program_id)}</p>
                   </div>
+                  {todayRange(week) && <span className="badge badge-info">{t('Current week')}</span>}
+                </div>
+              ) : (
+                <p className="state">{t("No plan_weeks row covers today's date.")}</p>
+              )}
+            </div>
 
-                  <p className="mt-2 text-base font-semibold text-slate-100">{weekItem.focus || t('Focus')}</p>
-                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date, language)}</p>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-300">
-                      {programs.find((program) => program.id === weekItem.program_id)?.name ?? t('Program')}
-                    </span>
-                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                      {weekItem.updated_at !== weekItem.created_at || weekItem.focus.trim() !== 'New practice week' || Boolean(weekItem.tasks?.trim()) ? t('Updated') : t('Draft')}
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </section>
+            {week && (
+              <>
+                <label className="block">
+                  <span className="label">{t('Focus')}</span>
+                  <input
+                    value={focus}
+                    onChange={(event) => setFocus(event.target.value)}
+                    className="field"
+                    required
+                    placeholder={t('Short title for the week')}
+                  />
+                </label>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div data-tour="plan-week" className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Selected week')}</p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-100">{t('Week {week}', { week: week.week_number })}: {week.focus}</h2>
-            <p className="mt-1 text-sm text-slate-400">{formatDateRange(week.start_date, week.end_date, language)} · {programs.find((program) => program.id === week.program_id)?.name ?? t('Program')}</p>
-          </div>
-
-          {week.start_date <= new Date().toISOString().slice(0, 10) && week.end_date >= new Date().toISOString().slice(0, 10) && (
-            <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-sky-300">
-              {t('Current week')}
-            </span>
-          )}
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
-          <label className="block space-y-2 text-sm">
-            <span className="block text-slate-300">{t('Focus')}</span>
-            <input
-              value={focus}
-              onChange={(event) => setFocus(event.target.value)}
-              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none ring-0 transition focus:border-slate-500"
-              required
-              placeholder={t('Short title for the week')}
-            />
-          </label>
-
-              <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week info')}</p>
-            <div className="mt-3 space-y-2 text-sm text-slate-300">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-400">{t('Program')}</span>
+                <label className="block">
+                  <span className="label">{t('Program')}</span>
                   <select
                     value={selectedProgramId}
                     onChange={(event) => setSelectedProgramId(event.target.value)}
-                    className="max-w-[65%] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-left text-sm text-slate-200"
+                    className="field"
                   >
                     {programs.map((program) => (
                       <option key={program.id} value={program.id}>{program.name}</option>
                     ))}
                     <option value={otherProgramOption}>{t('Other')}</option>
                   </select>
-              </div>
+                </label>
+
                 {selectedProgramId === otherProgramOption && (
-                  <label className="flex items-center justify-between gap-3">
-                    <span className="text-slate-400">{t('Program name')}</span>
+                  <label className="block">
+                    <span className="label">{t('Program name')}</span>
                     <input
                       value={otherProgramName}
                       onChange={(event) => setOtherProgramName(event.target.value)}
                       placeholder={t('Your program name')}
-                      className="max-w-[65%] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-right text-sm text-slate-200"
+                      className="field"
                       required
                     />
                   </label>
                 )}
-                  <div className="relative">
-                    <span className="text-slate-400">{t('Dates')}</span>
-                    <button
-                      type="button"
-                      onClick={() => setRangeCalendarOpen((open) => !open)}
-                      className="mt-1 flex w-full items-center justify-between rounded border border-slate-700 bg-slate-950 px-2 py-1 text-left text-sm text-slate-200 focus:border-slate-500"
-                    >
-                      <span>{formatDateRange(weekStartDate, weekEndDate, language)}</span>
-                      <span className="text-slate-400">▾</span>
-                    </button>
 
-                    {rangeCalendarOpen && (
-                      <div className="absolute right-0 z-20 mt-2 w-[320px] max-w-full rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-slate-950/60">
-                        <div className="mb-3 flex items-center justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
-                            className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                          >
-                            {t('Prev')}
-                          </button>
-                          <span className="text-sm font-medium text-slate-100">{monthLabel}</span>
-                          <button
-                            type="button"
-                            onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
-                            className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                          >
-                            {t('Next')}
-                          </button>
-                        </div>
+                <div ref={rangePickerRef}>
+                  <span className="label">{t('Dates')}</span>
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded={rangeCalendarOpen}
+                    aria-label={`${t('Dates')}: ${formatDateRange(weekStartDate, weekEndDate, language)}`}
+                    onClick={() => setRangeCalendarOpen((open) => !open)}
+                    className="field flex items-center justify-between gap-2 text-left"
+                  >
+                    <span className="min-w-0">{formatDateRange(weekStartDate, weekEndDate, language)}</span>
+                    <span aria-hidden="true" className="text-slate-400">▾</span>
+                  </button>
 
-                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.15em] text-slate-400">
-                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayLabel) => <div key={dayLabel} className="py-1">{dayLabel}</div>)}
-                        </div>
+                  {rangeCalendarOpen && (
+                    <CalendarSurface label={t('Dates')} anchorRef={rangePickerRef} onClose={() => setRangeCalendarOpen(false)}>
+                      {calendarNav}
 
-                        <div className="mt-2 grid grid-cols-7 gap-1">
-                          {monthGrid.map((day) => {
-                            const isoDate = toIsoDate(day)
-                            const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
-                            const rangeStart = parseIsoDate(weekStartDate)
-                            const rangeEnd = parseIsoDate(weekEndDate)
-                            const isSelected = day >= rangeStart && day <= rangeEnd
+                      <div className="mt-2 grid grid-cols-7 gap-1">
+                        {monthGrid.map((day) => {
+                          const isoDate = toIsoDate(day)
+                          const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
+                          const rangeStart = parseIsoDate(weekStartDate)
+                          const rangeEnd = parseIsoDate(weekEndDate)
+                          const isSelected = day >= rangeStart && day <= rangeEnd
 
-                            return (
-                              <button
-                                key={isoDate}
-                                type="button"
-                                disabled={!isCurrentMonth}
-                                onClick={() => {
-                                  const selectedStart = startOfWeekMonday(day)
-                                  setWeekStartDate(toIsoDate(selectedStart))
-                                  setWeekEndDate(toIsoDate(addDays(selectedStart, 6)))
-                                  setRangeCalendarOpen(false)
-                                }}
-                                className={[
-                                  'aspect-square rounded-md text-sm transition',
-                                  isCurrentMonth ? 'text-slate-200 hover:bg-slate-800' : 'cursor-not-allowed text-slate-600',
-                                  isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
-                                ].join(' ')}
-                              >
-                                {day.getDate()}
-                              </button>
-                            )
-                          })}
-                        </div>
+                          return (
+                            <button
+                              key={isoDate}
+                              type="button"
+                              disabled={!isCurrentMonth}
+                              onClick={() => {
+                                const selectedStart = startOfWeekMonday(day)
+                                setWeekStartDate(toIsoDate(selectedStart))
+                                setWeekEndDate(toIsoDate(addDays(selectedStart, 6)))
+                                setRangeCalendarOpen(false)
+                              }}
+                              className={[
+                                'aspect-square min-h-11 rounded-md text-sm transition',
+                                isCurrentMonth ? 'text-slate-200 hover:bg-slate-800' : 'cursor-not-allowed text-slate-600',
+                                isSelected ? 'border border-sky-500 bg-sky-500/10 text-sky-100' : '',
+                              ].join(' ')}
+                            >
+                              {day.getDate()}
+                            </button>
+                          )
+                        })}
                       </div>
-                    )}
+                    </CalendarSurface>
+                  )}
+                </div>
+
+                <label className="block">
+                  <span className="label">{t('Tasks')}</span>
+                  <textarea
+                    rows={8}
+                    value={tasks}
+                    onChange={(event) => setTasks(event.target.value)}
+                    className="field"
+                    placeholder={t('Describe the week plan')}
+                  />
+                </label>
+              </>
+            )}
+
+            <div data-tour="plan-songs-todos">
+              <fieldset disabled={!week} className="min-w-0 space-y-4">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="item-title">{t('ToDo')}</h3>
+                    <button type="button" onClick={addTodo} className="btn btn-secondary">
+                      {t('+ Add ToDo')}
+                    </button>
                   </div>
+
+                  <div className="mt-3 space-y-2">
+                    {todos.length === 0 && <p className="meta">{t('No ToDo items yet for this week.')}</p>}
+
+                    {todos.map((todo, index) => (
+                      <div key={`${todo.id ?? 'new'}-${index}`} className="flex items-center gap-2">
+                        <label className="flex min-h-11 min-w-11 shrink-0 items-center justify-center">
+                          <input
+                            type="checkbox"
+                            aria-label={t('ToDo')}
+                            checked={todo.done}
+                            onChange={(event) => updateTodo(index, { done: event.target.checked })}
+                            className="h-5 w-5 rounded border-slate-700 bg-slate-950"
+                          />
+                        </label>
+                        <input
+                          value={todo.name}
+                          onChange={(event) => updateTodo(index, { name: event.target.value })}
+                          className="field min-w-0 flex-1"
+                          placeholder={t('ToDo name')}
+                        />
+                        <button type="button" onClick={() => removeTodo(index)} className="btn btn-ghost shrink-0">
+                          {t('Remove')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="block">
+                  <span className="label">{t('Songs')}</span>
+                  <textarea
+                    rows={6}
+                    value={songText}
+                    onChange={(event) => setSongText(event.target.value)}
+                    className="field"
+                    placeholder={t('Add one song per line')}
+                  />
+                  <span className="mt-1 block text-xs text-slate-400">{t('Separate songs with line breaks or commas.')}</span>
+                </label>
+              </fieldset>
             </div>
-          </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="submit" disabled={saving || !week} className="btn btn-primary w-full sm:w-auto">
+                {saving ? t('Saving…') : t('Save plan')}
+              </button>
+              {message && <p role="status" className="msg-success">{message}</p>}
+              {week && error && <p role="alert" className="msg-error">{error}</p>}
+            </div>
+          </form>
         </div>
-
-        <label className="block space-y-2 text-sm">
-          <span className="block text-slate-300">{t('Tasks')}</span>
-          <textarea
-            rows={8}
-            value={tasks}
-            onChange={(event) => setTasks(event.target.value)}
-            className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none transition focus:border-slate-500"
-            placeholder={t('Describe the week plan')}
-          />
-        </label>
-
-        <div data-tour="plan-songs-todos" className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-200">{t('ToDo')}</p>
-            <button
-              type="button"
-              onClick={addTodo}
-              className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-            >
-              {t('+ Add ToDo')}
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {todos.length === 0 && <p className="text-sm text-slate-400">{t('No ToDo items yet for this week.')}</p>}
-
-            {todos.map((todo, index) => (
-              <div key={`${todo.id ?? 'new'}-${index}`} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={todo.done}
-                  onChange={(event) => updateTodo(index, { done: event.target.checked })}
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-950"
-                />
-                <input
-                  value={todo.name}
-                  onChange={(event) => updateTodo(index, { name: event.target.value })}
-                  className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none transition focus:border-slate-500"
-                  placeholder={t('ToDo name')}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeTodo(index)}
-                  className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400"
-                >
-                  {t('Remove')}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <label className="block space-y-2 text-sm">
-          <span className="block text-slate-300">{t('Songs')}</span>
-          <textarea
-            rows={6}
-            value={songText}
-            onChange={(event) => setSongText(event.target.value)}
-            className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 outline-none transition focus:border-slate-500"
-            placeholder={t('Add one song per line')}
-          />
-          <span className="text-xs text-slate-400">{t('Separate songs with line breaks or commas.')}</span>
-        </label>
-
-        {message && <p className="text-sm text-emerald-400">{message}</p>}
-        {error && <p className="text-sm text-red-400">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded bg-slate-100 px-3 py-2 font-medium text-slate-900 disabled:opacity-50"
-        >
-          {saving ? t('Saving…') : t('Save plan')}
-        </button>
-      </form>
+      )}
     </div>
   )
 }

@@ -93,60 +93,63 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-        <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('Settings')}</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-100">{t('Preferences')}</h1>
-        <p className="mt-2 text-sm text-slate-300">{t('Preferences are saved to your account.')}</p>
-      </section>
-
-      {loading && <p className="text-sm text-slate-400">{t('Loading preferences…')}</p>}
-      <section data-tour="settings-language" className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-        <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('Language')}</p>
-        <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-3 text-sm text-slate-200">
-          <span>{t('Interface language')}</span>
-          <select
-            value={preferences.language}
-            onChange={(e) => { if (isLanguage(e.target.value)) void changeLanguage(e.target.value) }}
-            disabled={loading || savingKey === 'language'}
-            className="rounded border border-slate-700 bg-slate-800 px-3 py-2 disabled:opacity-50"
-          >
-            {supportedLanguages.map((option) => <option key={option} value={option}>{t(option.toUpperCase())}</option>)}
-          </select>
-        </label>
+    <div className="page">
+      <div className="pb-4">
+        <h1 className="page-title">{t('Preferences')}</h1>
+        <p className="meta mt-1">{t('Preferences are saved to your account.')}</p>
+        {error && <p role="alert" className="msg-error mt-2">{error}</p>}
+        {loading && <p role="status" className="state pb-0">{t('Loading preferences…')}</p>}
+      </div>
+      <section data-tour="settings-language" className="section">
+        <h2 className="section-title">{t('Language')}</h2>
+        <div className="list mt-3">
+          <label className="list-row justify-between text-sm text-slate-200">
+            <span>{t('Interface language')}</span>
+            <select
+              value={preferences.language}
+              onChange={(e) => { if (isLanguage(e.target.value)) void changeLanguage(e.target.value) }}
+              disabled={loading || savingKey === 'language'}
+              className="field w-auto disabled:opacity-50"
+            >
+              {supportedLanguages.map((option) => <option key={option} value={option}>{t(option.toUpperCase())}</option>)}
+            </select>
+          </label>
+        </div>
       </section>
       {preferenceGroups.map((group) => (
-        <section key={group.label} data-tour={group.label === 'Practice' ? 'settings-preferences' : undefined} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-          <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t(group.label)}</p>
-          {group.items.map(({ key, label }) => (
-            <div key={key} className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-3 text-sm text-slate-200">
-              <span>{t(label)}</span>
+        <section key={group.label} data-tour={group.label === 'Practice' ? 'settings-preferences' : undefined} className="section">
+          <h2 className="section-title">{t(group.label)}</h2>
+          <div className="list mt-3">
+            {group.items.map(({ key, label }) => (
               <button
+                key={key}
                 type="button"
                 role="switch"
                 aria-checked={preferences[key]}
-                aria-label={t(label)}
                 disabled={loading || savingKey === key}
                 onClick={() => void togglePreference(key)}
-                className={[
-                  'relative h-6 w-11 shrink-0 rounded-full border transition',
-                  preferences[key] ? 'border-sky-400 bg-sky-500/70' : 'border-slate-600 bg-slate-800',
-                  'disabled:cursor-not-allowed disabled:opacity-50',
-                ].join(' ')}
+                className="list-row justify-between text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
+                <span>{t(label)}</span>
                 <span
                   aria-hidden="true"
                   className={[
-                    'absolute left-0.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow transition-transform',
-                    preferences[key] ? 'translate-x-5' : 'translate-x-0',
+                    'relative h-6 w-11 shrink-0 rounded-full border transition',
+                    preferences[key] ? 'border-sky-400 bg-sky-500/70' : 'border-slate-600 bg-slate-800',
                   ].join(' ')}
-                />
+                >
+                  <span
+                    className={[
+                      'absolute left-0.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow transition-transform',
+                      preferences[key] ? 'translate-x-5' : 'translate-x-0',
+                    ].join(' ')}
+                  />
+                </span>
               </button>
-            </div>
-          ))}
+            ))}
+          </div>
         </section>
       ))}
-      {error && <p className="text-sm text-red-300">{error}</p>}
     </div>
   )
 }

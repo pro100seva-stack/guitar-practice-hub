@@ -28,3 +28,8 @@ supabase/.temp
 *.njsproj
 *.sln
 *.sw?
+
+# Synced copies of root migrations for local DB tests
+supabase/local-test/supabase/migrations/2026091[4-9]*
+supabase/local-test/supabase/migrations/202609[23]*
+supabase/local-test/supabase/migrations/20261*

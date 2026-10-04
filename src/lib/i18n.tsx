@@ -62,6 +62,34 @@ Object.assign(pageTranslations.en, { 'ToDo': 'ToDo', '+ Add ToDo': '+ Add ToDo',
 Object.assign(pageTranslations.ru, { 'ToDo': 'Задачи', '+ Add ToDo': '+ Добавить задачу', 'No ToDo items yet for this week.': 'На этой неделе пока нет задач.', 'ToDo name': 'Название задачи' })
 Object.assign(pageTranslations.it, { 'ToDo': 'Attività', '+ Add ToDo': '+ Aggiungi attività', 'No ToDo items yet for this week.': 'Nessuna attività per questa settimana.', 'ToDo name': 'Nome dell’attività' })
 Object.assign(pageTranslations.fr, { 'ToDo': 'À faire', '+ Add ToDo': '+ Ajouter une tâche', 'No ToDo items yet for this week.': 'Aucune tâche pour cette semaine.', 'ToDo name': 'Nom de la tâche' })
+Object.assign(pageTranslations.en, {
+  'No blocks yet': 'No blocks yet', 'Choose what to practice first.': 'Choose what to practice first.', 'No practice was logged for this day.': 'No practice was logged for this day.',
+  'Add a block': 'Add a block', 'Add another block': 'Add another block', '{minutes} min': '{minutes} min', 'Add a block to save a session.': 'Add a block to save a session.',
+  'Save changes': 'Save changes', 'Block removed': 'Block removed', 'Undo': 'Undo', '{label} added': '{label} added',
+  'Discard changes?': 'Discard changes?', 'Unsaved changes will be lost.': 'Unsaved changes will be lost.', 'Discard': 'Discard', 'Keep editing': 'Keep editing',
+  'Select a day, then choose your first block.': 'Select a day, then choose your first block.',
+})
+Object.assign(pageTranslations.ru, {
+  'No blocks yet': 'Блоков пока нет', 'Choose what to practice first.': 'Выберите, с чего начать практику.', 'No practice was logged for this day.': 'В этот день практика не записана.',
+  'Add a block': 'Добавить блок', 'Add another block': 'Добавить ещё блок', '{minutes} min': '{minutes} мин', 'Add a block to save a session.': 'Добавьте блок, чтобы сохранить занятие.',
+  'Save changes': 'Сохранить изменения', 'Block removed': 'Блок удалён', 'Undo': 'Отменить', '{label} added': 'Добавлен блок: {label}',
+  'Discard changes?': 'Отменить изменения?', 'Unsaved changes will be lost.': 'Несохранённые изменения будут потеряны.', 'Discard': 'Отменить', 'Keep editing': 'Продолжить редактирование',
+  'Select a day, then choose your first block.': 'Выберите день, затем первый блок.',
+})
+Object.assign(pageTranslations.it, {
+  'No blocks yet': 'Ancora nessun blocco', 'Choose what to practice first.': 'Scegli da cosa iniziare.', 'No practice was logged for this day.': 'Nessuna pratica registrata per questo giorno.',
+  'Add a block': 'Aggiungi un blocco', 'Add another block': 'Aggiungi un altro blocco', '{minutes} min': '{minutes} min', 'Add a block to save a session.': 'Aggiungi un blocco per salvare la sessione.',
+  'Save changes': 'Salva modifiche', 'Block removed': 'Blocco rimosso', 'Undo': 'Annulla', '{label} added': '{label} aggiunto',
+  'Discard changes?': 'Scartare le modifiche?', 'Unsaved changes will be lost.': 'Le modifiche non salvate andranno perse.', 'Discard': 'Scarta', 'Keep editing': 'Continua a modificare',
+  'Select a day, then choose your first block.': 'Seleziona un giorno, poi scegli il primo blocco.',
+})
+Object.assign(pageTranslations.fr, {
+  'No blocks yet': 'Aucun bloc pour l’instant', 'Choose what to practice first.': 'Choisissez par quoi commencer.', 'No practice was logged for this day.': 'Aucune pratique enregistrée pour ce jour.',
+  'Add a block': 'Ajouter un bloc', 'Add another block': 'Ajouter un autre bloc', '{minutes} min': '{minutes} min', 'Add a block to save a session.': 'Ajoutez un bloc pour enregistrer une séance.',
+  'Save changes': 'Enregistrer les modifications', 'Block removed': 'Bloc supprimé', 'Undo': 'Annuler', '{label} added': '{label} ajouté',
+  'Discard changes?': 'Abandonner les modifications ?', 'Unsaved changes will be lost.': 'Les modifications non enregistrées seront perdues.', 'Discard': 'Abandonner', 'Keep editing': 'Continuer à modifier',
+  'Select a day, then choose your first block.': 'Sélectionnez un jour, puis choisissez votre premier bloc.',
+})
 Object.assign(pageTranslations.en, { 'ToDo checklist': 'ToDo checklist', 'No ToDo items for this week.': 'No ToDo items for this week.' })
 Object.assign(pageTranslations.ru, { 'ToDo checklist': 'Список задач', 'No ToDo items for this week.': 'На этой неделе нет задач.' })
 Object.assign(pageTranslations.it, { 'ToDo checklist': 'Elenco attività', 'No ToDo items for this week.': 'Nessuna attività per questa settimana.' })
@@ -74,10 +102,18 @@ Object.assign(pageTranslations.en, { 'Could not save the ToDo.': 'Could not save
 Object.assign(pageTranslations.ru, { 'Could not save the ToDo.': 'Не удалось сохранить задачу.' })
 Object.assign(pageTranslations.it, { 'Could not save the ToDo.': 'Impossibile salvare l’attività.' })
 Object.assign(pageTranslations.fr, { 'Could not save the ToDo.': 'Impossible d’enregistrer la tâche.' })
+Object.assign(pageTranslations.en, { 'Imported': 'Imported', 'App': 'App', 'Metronome settings': 'Metronome settings' })
+Object.assign(pageTranslations.ru, { 'Imported': 'Импорт', 'App': 'Приложение', 'Metronome settings': 'Настройки метронома' })
+Object.assign(pageTranslations.it, { 'Imported': 'Importata', 'App': 'App', 'Metronome settings': 'Impostazioni del metronomo' })
+Object.assign(pageTranslations.fr, { 'Imported': 'Importée', 'App': 'App', 'Metronome settings': 'Réglages du métronome' })
 Object.assign(pageTranslations.en, { 'Default references': 'Default references' })
 Object.assign(pageTranslations.ru, { 'Default references': 'Материалы по умолчанию' })
 Object.assign(pageTranslations.it, { 'Default references': 'Riferimenti predefiniti' })
 Object.assign(pageTranslations.fr, { 'Default references': 'Références par défaut' })
+Object.assign(pageTranslations.en, { 'Details': 'Details' })
+Object.assign(pageTranslations.ru, { 'Details': 'Подробнее' })
+Object.assign(pageTranslations.it, { 'Details': 'Dettagli' })
+Object.assign(pageTranslations.fr, { 'Details': 'Détails' })
 Object.assign(pageTranslations.en, { 'Bookmarks': 'Bookmarks', 'Save position': 'Save position', 'Remove bookmark': 'Remove bookmark', 'No bookmarks yet': 'No bookmarks yet' })
 Object.assign(pageTranslations.ru, { 'Bookmarks': 'Закладки', 'Save position': 'Сохранить позицию', 'Remove bookmark': 'Удалить закладку', 'No bookmarks yet': 'Закладок пока нет' })
 Object.assign(pageTranslations.it, { 'Bookmarks': 'Segnalibri', 'Save position': 'Salva posizione', 'Remove bookmark': 'Rimuovi segnalibro', 'No bookmarks yet': 'Nessun segnalibro' })
@@ -94,14 +130,26 @@ Object.assign(pageTranslations.en, { 'Default exercise': 'Default exercise' })
 Object.assign(pageTranslations.ru, { 'Default exercise': 'Стандартное упражнение' })
 Object.assign(pageTranslations.it, { 'Default exercise': 'Esercizio predefinito' })
 Object.assign(pageTranslations.fr, { 'Default exercise': 'Exercice par défaut' })
+Object.assign(pageTranslations.en, { 'Open in new tab': 'Open in new tab', 'If the PDF does not appear, your browser cannot show it inline.': 'If the PDF does not appear, your browser cannot show it inline.' })
+Object.assign(pageTranslations.ru, { 'Open in new tab': 'Открыть в новой вкладке', 'If the PDF does not appear, your browser cannot show it inline.': 'Если PDF не отображается, ваш браузер не может показать его на странице.' })
+Object.assign(pageTranslations.it, { 'Open in new tab': 'Apri in una nuova scheda', 'If the PDF does not appear, your browser cannot show it inline.': 'Se il PDF non appare, il browser non può mostrarlo nella pagina.' })
+Object.assign(pageTranslations.fr, { 'Open in new tab': 'Ouvrir dans un nouvel onglet', 'If the PDF does not appear, your browser cannot show it inline.': 'Si le PDF n’apparaît pas, votre navigateur ne peut pas l’afficher dans la page.' })
 Object.assign(pageTranslations.en, { 'Could not load the local material.': 'Could not load the local material.' })
 Object.assign(pageTranslations.ru, { 'Could not load the local material.': 'Не удалось загрузить локальный материал.' })
 Object.assign(pageTranslations.it, { 'Could not load the local material.': 'Impossibile caricare il materiale locale.' })
 Object.assign(pageTranslations.fr, { 'Could not load the local material.': 'Impossible de charger le matériel local.' })
+Object.assign(pageTranslations.en, { 'This YouTube link is not valid.': 'This YouTube link is not valid.', 'Could not remove the local material.': 'Could not remove the local material.' })
+Object.assign(pageTranslations.ru, { 'This YouTube link is not valid.': 'Эта ссылка YouTube недействительна.', 'Could not remove the local material.': 'Не удалось удалить локальный материал.' })
+Object.assign(pageTranslations.it, { 'This YouTube link is not valid.': 'Questo link YouTube non è valido.', 'Could not remove the local material.': 'Impossibile rimuovere il materiale locale.' })
+Object.assign(pageTranslations.fr, { 'This YouTube link is not valid.': 'Ce lien YouTube n’est pas valide.', 'Could not remove the local material.': 'Impossible de supprimer le matériel local.' })
 Object.assign(pageTranslations.en, { 'Include default exercises': 'Include default exercises' })
 Object.assign(pageTranslations.ru, { 'Include default exercises': 'Включать стандартные упражнения' })
 Object.assign(pageTranslations.it, { 'Include default exercises': 'Includi esercizi predefiniti' })
 Object.assign(pageTranslations.fr, { 'Include default exercises': 'Inclure les exercices par défaut' })
+Object.assign(pageTranslations.en, { '{block} timer minutes': '{block} timer minutes', '{block} timer seconds': '{block} timer seconds', 'Timeline': 'Timeline' })
+Object.assign(pageTranslations.ru, { '{block} timer minutes': '{block}: минуты таймера', '{block} timer seconds': '{block}: секунды таймера', 'Timeline': 'Хронология' })
+Object.assign(pageTranslations.it, { '{block} timer minutes': '{block}: minuti del timer', '{block} timer seconds': '{block}: secondi del timer', 'Timeline': 'Cronologia' })
+Object.assign(pageTranslations.fr, { '{block} timer minutes': '{block} : minutes du minuteur', '{block} timer seconds': '{block} : secondes du minuteur', 'Timeline': 'Chronologie' })
 Object.assign(pageTranslations.en, { 'Your navigation menu': 'Your navigation menu', 'Open this menu to move between Home, Progress, Plan, Practice, Stats, and Settings.': 'Open this menu to move between Home, Progress, Plan, Practice, Stats, and Settings.', 'Track your progress': 'Track your progress', 'Review completed practice, upcoming weeks, and your progress timeline here.': 'Review completed practice, upcoming weeks, and your progress timeline here.', 'Plan your week': 'Plan your week', 'Open the current week to edit focus, tasks, ToDos, and songs.': 'Open the current week to edit focus, tasks, ToDos, and songs.', 'Practice and log work': 'Practice and log work', 'Use Practice for timers, blocks, ToDos, the metronome, tuner, and learning materials.': 'Use Practice for timers, blocks, ToDos, the metronome, tuner, and learning materials.', 'Skip': 'Skip', 'Back': 'Back', 'Tour next': 'Next', 'Tour done': 'Done' })
 Object.assign(pageTranslations.ru, { 'Your navigation menu': 'Меню навигации', 'Open this menu to move between Home, Progress, Plan, Practice, Stats, and Settings.': 'Открывайте это меню для перехода между главной, прогрессом, планом, практикой, статистикой и настройками.', 'Track your progress': 'Отслеживайте прогресс', 'Review completed practice, upcoming weeks, and your progress timeline here.': 'Здесь можно посмотреть завершённую практику, будущие недели и временную шкалу прогресса.', 'Plan your week': 'Планируйте неделю', 'Open the current week to edit focus, tasks, ToDos, and songs.': 'Откройте текущую неделю, чтобы изменить фокус, задачи, список «Задачи» и песни.', 'Practice and log work': 'Практикуйтесь и записывайте работу', 'Use Practice for timers, blocks, ToDos, the metronome, tuner, and learning materials.': 'В разделе практики доступны таймеры, блоки, «Задачи», метроном, тюнер и материалы.', 'Skip': 'Пропустить', 'Back': 'Назад', 'Tour next': 'Далее', 'Tour done': 'Готово' })
 Object.assign(pageTranslations.it, { 'Your navigation menu': 'Menu di navigazione', 'Open this menu to move between Home, Progress, Plan, Practice, Stats, and Settings.': 'Apri questo menu per passare tra Home, Progressi, Piano, Pratica, Statistiche e Impostazioni.', 'Track your progress': 'Segui i tuoi progressi', 'Review completed practice, upcoming weeks, and your progress timeline here.': 'Qui puoi rivedere la pratica completata, le prossime settimane e la timeline dei progressi.', 'Plan your week': 'Pianifica la settimana', 'Open the current week to edit focus, tasks, ToDos, and songs.': 'Apri la settimana attuale per modificare obiettivo, attività, elenco «Attività» e brani.', 'Practice and log work': 'Pratica e registra il lavoro', 'Use Practice for timers, blocks, ToDos, the metronome, tuner, and learning materials.': 'In Pratica trovi timer, blocchi, «Attività», metronomo, accordatore e materiali.', 'Skip': 'Salta', 'Back': 'Indietro', 'Tour next': 'Avanti', 'Tour done': 'Fine' })
@@ -115,7 +163,7 @@ Object.assign(pageTranslations.en, {
   'Stats shortcut': 'Stats shortcut', 'Jump from here to Stats for your totals, streaks, and practice charts.': 'Jump from here to Stats for your totals, streaks, and practice charts.',
   'This week\'s plan': 'This week\'s plan', 'Pick a week, set its focus and tasks, then press Save plan to keep your changes.': 'Pick a week, set its focus and tasks, then press Save plan to keep your changes.',
   'Songs and ToDos': 'Songs and ToDos', 'Keep a ToDo list for the week and add the songs you are learning, one per line.': 'Keep a ToDo list for the week and add the songs you are learning, one per line.',
-  'Choose a day and blocks': 'Choose a day and blocks', 'Select a day of the week, then add the practice blocks you want to work on.': 'Select a day of the week, then add the practice blocks you want to work on.',
+  'Choose a day and blocks': 'Choose a day and blocks',
   'Timer, metronome and tuner': 'Timer, metronome and tuner', 'Keep time with the metronome, tune your guitar, and time each block while you play.': 'Keep time with the metronome, tune your guitar, and time each block while you play.',
   'Save your session': 'Save your session', 'Add a few notes and save the session so it counts toward your progress and stats.': 'Add a few notes and save the session so it counts toward your progress and stats.',
   'Filter your stats': 'Filter your stats', 'Switch between the current week, month, year, a custom range, or your full history.': 'Switch between the current week, month, year, a custom range, or your full history.',
@@ -131,7 +179,7 @@ Object.assign(pageTranslations.ru, {
   'Stats shortcut': 'Быстрый переход к статистике', 'Jump from here to Stats for your totals, streaks, and practice charts.': 'Отсюда можно перейти в «Статистику»: итоги, серии и графики практики.',
   'This week\'s plan': 'План этой недели', 'Pick a week, set its focus and tasks, then press Save plan to keep your changes.': 'Выберите неделю, задайте фокус и задачи, затем нажмите «Сохранить план», чтобы сохранить изменения.',
   'Songs and ToDos': 'Песни и задачи', 'Keep a ToDo list for the week and add the songs you are learning, one per line.': 'Ведите список «Задачи» на неделю и добавляйте песни, которые разучиваете, по одной в строке.',
-  'Choose a day and blocks': 'Выберите день и блоки', 'Select a day of the week, then add the practice blocks you want to work on.': 'Выберите день недели и добавьте блоки практики, над которыми хотите работать.',
+  'Choose a day and blocks': 'Выберите день и блоки',
   'Timer, metronome and tuner': 'Таймер, метроном и тюнер', 'Keep time with the metronome, tune your guitar, and time each block while you play.': 'Играйте под метроном, настраивайте гитару и засекайте время каждого блока.',
   'Save your session': 'Сохраните занятие', 'Add a few notes and save the session so it counts toward your progress and stats.': 'Добавьте заметки и сохраните занятие, чтобы оно учитывалось в прогрессе и статистике.',
   'Filter your stats': 'Фильтры статистики', 'Switch between the current week, month, year, a custom range, or your full history.': 'Переключайтесь между текущей неделей, месяцем, годом, своим диапазоном или всей историей.',
@@ -147,7 +195,7 @@ Object.assign(pageTranslations.it, {
   'Stats shortcut': 'Scorciatoia alle statistiche', 'Jump from here to Stats for your totals, streaks, and practice charts.': 'Da qui puoi passare a Statistiche per totali, serie e grafici della pratica.',
   'This week\'s plan': 'Il piano di questa settimana', 'Pick a week, set its focus and tasks, then press Save plan to keep your changes.': 'Scegli una settimana, imposta obiettivo e attività, poi premi Salva piano per conservare le modifiche.',
   'Songs and ToDos': 'Brani e attività', 'Keep a ToDo list for the week and add the songs you are learning, one per line.': 'Tieni un elenco «Attività» per la settimana e aggiungi i brani che stai imparando, uno per riga.',
-  'Choose a day and blocks': 'Scegli un giorno e i blocchi', 'Select a day of the week, then add the practice blocks you want to work on.': 'Seleziona un giorno della settimana, poi aggiungi i blocchi di pratica su cui vuoi lavorare.',
+  'Choose a day and blocks': 'Scegli un giorno e i blocchi',
   'Timer, metronome and tuner': 'Timer, metronomo e accordatore', 'Keep time with the metronome, tune your guitar, and time each block while you play.': 'Suona a tempo con il metronomo, accorda la chitarra e cronometra ogni blocco mentre studi.',
   'Save your session': 'Salva la sessione', 'Add a few notes and save the session so it counts toward your progress and stats.': 'Aggiungi qualche nota e salva la sessione: verrà contata nei progressi e nelle statistiche.',
   'Filter your stats': 'Filtra le statistiche', 'Switch between the current week, month, year, a custom range, or your full history.': 'Passa tra settimana, mese e anno attuali, un intervallo personalizzato o tutta la cronologia.',
@@ -163,7 +211,7 @@ Object.assign(pageTranslations.fr, {
   'Stats shortcut': 'Raccourci vers les statistiques', 'Jump from here to Stats for your totals, streaks, and practice charts.': 'Passez d’ici aux Statistiques pour vos totaux, séries et graphiques de pratique.',
   'This week\'s plan': 'Le plan de cette semaine', 'Pick a week, set its focus and tasks, then press Save plan to keep your changes.': 'Choisissez une semaine, définissez son objectif et ses tâches, puis appuyez sur Enregistrer le plan pour conserver vos modifications.',
   'Songs and ToDos': 'Morceaux et à faire', 'Keep a ToDo list for the week and add the songs you are learning, one per line.': 'Tenez une liste « À faire » pour la semaine et ajoutez les morceaux que vous apprenez, un par ligne.',
-  'Choose a day and blocks': 'Choisissez un jour et des blocs', 'Select a day of the week, then add the practice blocks you want to work on.': 'Sélectionnez un jour de la semaine, puis ajoutez les blocs de pratique à travailler.',
+  'Choose a day and blocks': 'Choisissez un jour et des blocs',
   'Timer, metronome and tuner': 'Minuteur, métronome et accordeur', 'Keep time with the metronome, tune your guitar, and time each block while you play.': 'Jouez en rythme avec le métronome, accordez votre guitare et chronométrez chaque bloc.',
   'Save your session': 'Enregistrez votre séance', 'Add a few notes and save the session so it counts toward your progress and stats.': 'Ajoutez quelques notes et enregistrez la séance pour qu’elle compte dans vos progrès et statistiques.',
   'Filter your stats': 'Filtrez vos statistiques', 'Switch between the current week, month, year, a custom range, or your full history.': 'Passez de la semaine, du mois ou de l’année en cours à une période personnalisée ou à tout l’historique.',

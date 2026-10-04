@@ -73,7 +73,8 @@ export default function Landing() {
   ]
 
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden px-4 py-4 lg:py-8">
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden py-4 lg:py-8">
+      <h1 className="sr-only">{t('Guitar Practice Hub')}</h1>
       <div className="relative z-10 flex w-full max-w-5xl items-center justify-center">
         <nav className="flex w-full max-w-md flex-col items-center gap-3 pb-14 pt-4 lg:pb-8">
           {navItems.map((item) => (
@@ -83,13 +84,13 @@ export default function Landing() {
               data-tour={item.path === '/progress' ? 'progress' : item.path === '/plan' ? 'current-week' : 'practice'}
               onClick={() => navigate(item.path)}
               className={[
-                'relative z-10 border p-4 text-center backdrop-blur-[2px] transition lg:backdrop-blur-none hover:-translate-y-0.5 hover:border-slate-500',
-                item.variant === 'default' && 'w-full max-w-xs rounded-xl border-sky-700/60 bg-sky-950/85 text-sky-100 lg:bg-sky-500/10',
-                item.variant === 'snippet' && 'w-full max-w-sm rounded-xl border-violet-700/60 bg-violet-950/85 px-5 lg:bg-violet-500/10 py-3 text-violet-100',
-                item.variant === 'ellipse' && 'mt-4 lg:mt-8 w-full max-w-[16rem] rounded-full border-emerald-700/60 bg-emerald-950/85 px-5 py-4 text-emerald-100 lg:bg-emerald-500/10 [@media(min-height:700px)]:mt-8',
+                'relative z-10 w-full max-w-md rounded-xl border p-4 text-center backdrop-blur-[2px] transition lg:backdrop-blur-none hover:-translate-y-0.5 hover:border-slate-500',
+                item.variant === 'default' && 'border-sky-700/60 bg-sky-950/85 text-sky-100 lg:bg-sky-500/10',
+                item.variant === 'snippet' && 'border-violet-700/60 bg-violet-950/85 py-3 text-violet-100 lg:bg-violet-500/10',
+                item.variant === 'ellipse' && 'mt-4 border-emerald-700/60 bg-emerald-950/85 py-5 text-emerald-100 lg:mt-8 lg:bg-emerald-500/10 [@media(min-height:700px)]:mt-8',
               ].join(' ')}
             >
-              <h2 className="text-xl font-semibold">{item.label}</h2>
+              <span className={`block font-semibold ${item.variant === 'ellipse' ? 'text-2xl' : 'text-xl'}`}>{item.label}</span>
               {item.variant === 'snippet' && item.description ? (
                 <p className="mt-2 line-clamp-2 text-sm text-current/80">{item.description}</p>
               ) : null}
@@ -100,7 +101,7 @@ export default function Landing() {
 
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute right-[-14%] top-0 z-0 flex h-full w-[52vw] min-w-[200px] max-w-[260px] items-center justify-end overflow-hidden opacity-40 [-webkit-mask-image:linear-gradient(to_right,transparent_0%,#000_55%)] [mask-image:linear-gradient(to_right,transparent_0%,#000_55%)] sm:right-[-8%] sm:w-[40vw] sm:min-w-[230px] sm:max-w-[430px] lg:opacity-100 lg:[-webkit-mask-image:none] lg:[mask-image:none]"
+        className="pointer-events-none absolute bottom-16 right-[-14%] top-0 z-0 flex w-[52vw] min-w-[200px] max-w-[260px] items-center justify-end overflow-hidden opacity-40 [-webkit-mask-image:linear-gradient(to_right,transparent_0%,#000_55%)] [mask-image:linear-gradient(to_right,transparent_0%,#000_55%)] sm:right-[-8%] sm:w-[40vw] sm:min-w-[230px] sm:max-w-[430px] lg:opacity-100 lg:[-webkit-mask-image:none] lg:[mask-image:none]"
       >
         <img
           src={evhImage}
@@ -115,9 +116,11 @@ export default function Landing() {
         />
       </div>
 
-      <footer className="absolute bottom-4 left-1/2 z-20 max-h-[60dvh] w-[min(92vw,44rem)] -translate-x-1/2 overflow-y-auto rounded-xl border border-slate-700/80 bg-slate-950/90 text-left backdrop-blur-sm">
+      <aside
+        className={`absolute bottom-4 right-4 z-20 max-h-[60dvh] max-w-[min(92vw,20rem)] overflow-y-auto rounded-xl border border-slate-700/80 bg-slate-950 text-left lg:right-8 ${guitarExpanded ? 'w-[min(92vw,20rem)]' : 'w-auto'}`}
+      >
         <div id={guitarRegionId} hidden={!guitarExpanded} className="px-4 pt-3">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400">{t('Featured guitar')}</p>
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-400">{t('Featured guitar')}</p>
           <p className="mt-2 text-sm text-slate-200">
             <span className="font-semibold text-white">{t('Frankenstrat')}</span> {t('Frankenstrat became famous because Eddie Van Halen used it to popularize the two-handed tapping technique, turning a familiar guitar into a new voice for rock.')}
           </p>
@@ -137,7 +140,7 @@ export default function Landing() {
             ▾
           </span>
         </button>
-      </footer>
+      </aside>
     </div>
   )
 }

@@ -337,6 +337,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      continue_default_program: {
+        Args: { p_focuses: string[]; p_language: string; p_tasks: string | null }
+        Returns: {
+          end_date: string | null
+          result: string
+          start_date: string | null
+          week_id: string | null
+        }[]
+      }
       assign_plan_week_program: {
         Args: { p_program_id: string; p_week_id: string }
         Returns: undefined

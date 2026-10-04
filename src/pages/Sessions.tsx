@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { useHeaderSlots } from '../components/headerSlots'
 import { supabase } from '../lib/supabase'
 import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, loadLocalMaterialBlob, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
-import { formatDate, formatDateRange, localeForLanguage } from '../lib/dateFormat'
+import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { getDefaultMaterials } from '../lib/defaultMaterials'
+import { planSessionBlockSave } from '../lib/sessionBlockSavePlan'
+import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
+import { createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
+import MetronomeIcon from '../components/icons/MetronomeIcon'
+import TuningForkIcon from '../components/icons/TuningForkIcon'
+import { isYouTubeEmbedUrl, isYouTubeHostLink, toYouTubeEmbedUrl, toYouTubeIframeSrc, toYouTubeWatchUrl } from '../lib/youtube'
+
+type MaterialFeedback = { error: string | null; notice: string | null; saveState: 'idle' | 'saving' | 'saved' }
+const emptyMaterialFeedback: MaterialFeedback = { error: null, notice: null, saveState: 'idle' }
 
 type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
@@ -24,18 +35,10 @@ function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
   return week.week_number !== null && week.start_date !== null && week.end_date !== null
 }
 
-type SelectedBlock = {
-  id: string
-  key: string
-  label: string
-  done: boolean
-  actualMinutes: string
-  targetMinutes: number | null
-}
-
-type BlockTimerState = {
-  isRunning: boolean
-  elapsedSeconds: number
+type RemovedBlock = {
+  block: SelectedBlock
+  timer: BlockTimerState | undefined
+  index: number
 }
 
 type TuningKey = 'standard' | 'drop-d' | 'dadgad' | 'half-step-down'
@@ -98,44 +101,9 @@ function formatLocalDate(date: Date) {
   return `${year}-${month}-${day}`
 }
 
-function getSessionEditorState(date: string, templates: BlockTemplate[], sessions: SessionWithBlocks[]) {
-  const savedSession = sessions.find((session) => session.session_date === date)
-  const savedBlocks = new Map(savedSession?.session_blocks.map((block) => [block.block_key, block]) ?? [])
-  const isPastDate = date < new Date().toISOString().slice(0, 10)
-  const sessionTemplates = isPastDate
-    ? templates.filter((template) => (savedBlocks.get(template.key)?.actual_minutes ?? 0) > 0)
-    : savedSession
-      ? templates.filter((template) => savedBlocks.has(template.key))
-      : templates
-  const timers = Object.fromEntries(
-    sessionTemplates.flatMap((template) => {
-      const actualMinutes = savedBlocks.get(template.key)?.actual_minutes
-      return actualMinutes == null
-        ? []
-        : [[template.id, { isRunning: false, elapsedSeconds: actualMinutes * 60 } satisfies BlockTimerState]]
-    })
-  )
-
-  return {
-    totalMinutes: savedSession ? String(savedSession.total_minutes) : '45',
-    comment: savedSession?.comment ?? '',
-    timers,
-    selectedBlocks: sessionTemplates.map((template) => {
-      const savedBlock = savedBlocks.get(template.key)
-      return {
-        id: template.id,
-        key: template.key,
-        label: template.label,
-        done: savedBlock?.done ?? false,
-        actualMinutes: savedBlock?.actual_minutes != null ? String(savedBlock.actual_minutes) : '',
-        targetMinutes: template.target_minutes,
-      }
-    }),
-  }
-}
-
 export default function Sessions() {
   const { language, t } = useI18n()
+  const headerSlots = useHeaderSlots()
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
   const [planWeek, setPlanWeek] = useState<ScheduledPlanWeek | null>(null)
   const [programName, setProgramName] = useState<string | null>(null)
@@ -147,12 +115,18 @@ export default function Sessions() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [totalMinutes, setTotalMinutes] = useState('45')
+  const [date, setDate] = useState(toLocalIsoDate())
   const [comment, setComment] = useState('')
   const [selectedBlocks, setSelectedBlocks] = useState<SelectedBlock[]>([])
-  const [blockToAddId, setBlockToAddId] = useState('')
   const [expandedBlockIds, setExpandedBlockIds] = useState<Set<string>>(new Set())
+  const [isBlockPickerOpen, setIsBlockPickerOpen] = useState(false)
+  const [announcement, setAnnouncement] = useState('')
+  const [removedBlock, setRemovedBlock] = useState<RemovedBlock | null>(null)
+  const [pendingDiscardAction, setPendingDiscardAction] = useState<{ run: () => void } | null>(null)
+  const [isWeekStripOpen, setIsWeekStripOpen] = useState(false)
+  const [isWeekDetailsOpen, setIsWeekDetailsOpen] = useState(false)
+  const [isTodoOpen, setIsTodoOpen] = useState(false)
+  const [todoError, setTodoError] = useState<string | null>(null)
   const [timers, setTimers] = useState<Record<string, BlockTimerState>>({})
   const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
   const [showTargetPracticeTime, setShowTargetPracticeTime] = useState(true)
@@ -168,23 +142,19 @@ export default function Sessions() {
   const [customMeasureCount, setCustomMeasureCount] = useState('4')
   const [tuningKey, setTuningKey] = useState<TuningKey>('standard')
   const [activeReferenceTone, setActiveReferenceTone] = useState<string | null>(null)
-  const [learningMaterials, setLearningMaterials] = useState<LocalMaterial[]>([])
-  const [materialBlockKey, setMaterialBlockKey] = useState('learning')
-  const [materialUrlInput, setMaterialUrlInput] = useState('')
-  const [materialError, setMaterialError] = useState<string | null>(null)
-  const [materialNotice, setMaterialNotice] = useState<string | null>(null)
-  const [materialSaveState, setMaterialSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [materialsByBlock, setMaterialsByBlock] = useState<MaterialsByBlock>({})
+  const [materialUrlInputs, setMaterialUrlInputs] = useState<Record<string, string>>({})
+  const [materialFeedback, setMaterialFeedback] = useState<Record<string, MaterialFeedback>>({})
   const [localStorageEstimate, setLocalStorageEstimate] = useState<LocalStorageEstimate>({ usage: null, quota: null })
-  const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null)
-  const [activeDefaultMaterialUrl, setActiveDefaultMaterialUrl] = useState<string | null>(null)
-  const [activeDefaultMaterialTitle, setActiveDefaultMaterialTitle] = useState<string | null>(null)
+  const [activeMaterial, setActiveMaterialState] = useState<ActiveMaterial | null>(null)
+  const [activeDefaultMaterial, setActiveDefaultMaterial] = useState<{ blockKey: string; title: string; url: string } | null>(null)
   const [activeMaterialUrl, setActiveMaterialUrl] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [loopStart, setLoopStart] = useState<number | null>(null)
   const [loopEnd, setLoopEnd] = useState<number | null>(null)
   const [isLooping, setIsLooping] = useState(false)
   const [bookmarks, setBookmarks] = useState<number[]>([])
-  const materialFileInputRef = useRef<HTMLInputElement | null>(null)
+  const materialFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -194,10 +164,23 @@ export default function Sessions() {
   const beatCounterRef = useRef(0)
   const lastTapTimeRef = useRef<number | null>(null)
   const metronomeHoldTimerRef = useRef<number | null>(null)
+  const metronomePointerDownRef = useRef(false)
   const metronomeHoldTriggeredRef = useRef(false)
   const tunerHoldTimerRef = useRef<number | null>(null)
   const tunerHoldTriggeredRef = useRef(false)
-  const materialsLoadRequestRef = useRef(0)
+  const toolPanelRef = useRef<HTMLDivElement | null>(null)
+  const metronomeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const tunerButtonRef = useRef<HTMLButtonElement | null>(null)
+  const lastToolButtonRef = useRef<HTMLButtonElement | null>(null)
+  const materialsRequestTrackerRef = useRef(createRequestTracker())
+  const dayStripRef = useRef<HTMLDivElement | null>(null)
+  const blocksSectionRef = useRef<HTMLElement | null>(null)
+  const addBlockButtonRef = useRef<HTMLButtonElement | null>(null)
+  const blockSheetRef = useRef<HTMLDivElement | null>(null)
+  const discardPromptRef = useRef<HTMLDivElement | null>(null)
+  const messageRef = useRef<HTMLParagraphElement | null>(null)
+  const pendingFocusBlockIdRef = useRef<string | null>(null)
+  const removedBlockTimeoutRef = useRef<number | null>(null)
   const bpmRef = useRef(bpm)
   const beatsPerMeasureRef = useRef(beatsPerMeasure)
   const lookaheadRef = useRef(0.12)
@@ -206,28 +189,46 @@ export default function Sessions() {
   useEffect(() => {
     void loadData()
     void loadAppSettings()
-    void loadLearningMaterials('learning')
   }, [])
 
-  async function loadLearningMaterials(blockKey = materialBlockKey) {
-    const requestId = materialsLoadRequestRef.current + 1
-    materialsLoadRequestRef.current = requestId
+  function patchMaterialFeedback(blockKey: string, patch: Partial<MaterialFeedback>) {
+    setMaterialFeedback((current) => ({ ...current, [blockKey]: { ...emptyMaterialFeedback, ...current[blockKey], ...patch } }))
+  }
+
+  function setActiveMaterial(blockKey: string, id: string | null) {
+    if (activeMaterial?.id !== id) setActiveMaterialUrl(null)
+    setActiveMaterialState(id ? { blockKey, id } : null)
+    if (id) setActiveDefaultMaterial(null)
+  }
+
+  async function loadBlockMaterials(blockKey: string) {
+    const requestId = materialsRequestTrackerRef.current.begin(blockKey)
     try {
       const materials = await listLocalMaterials(blockKey)
-      if (requestId !== materialsLoadRequestRef.current) return
-      setMaterialBlockKey(blockKey)
-      setLearningMaterials(materials)
-      setActiveDefaultMaterialUrl(null)
-      setActiveDefaultMaterialTitle(null)
+      if (!materialsRequestTrackerRef.current.isCurrent(blockKey, requestId)) return
+      setMaterialsByBlock((current) => setBlockMaterials(current, blockKey, materials))
       setLocalStorageEstimate(await estimateLocalStorage())
     } catch (loadError) {
-      setMaterialError(loadError instanceof Error ? loadError.message : t('Could not load local materials.'))
+      patchMaterialFeedback(blockKey, { error: loadError instanceof Error ? loadError.message : t('Could not load local materials.') })
     }
   }
 
+  const activeMaterialRecord = findActiveMaterial(materialsByBlock, activeMaterial)
+  const activeMaterialRecordRef = useRef<LocalMaterial | null>(null)
+  const activeMaterialId = activeMaterialRecord?.id ?? null
+  const activeMaterialSource = activeMaterialRecord?.source ?? null
+  const activeMaterialStorage = activeMaterialRecord?.storage ?? null
+  const activeMaterialSourceUrl = activeMaterialRecord?.url ?? null
+  const activeMaterialHasBlob = Boolean(activeMaterialRecord?.blob)
+
   useEffect(() => {
-    const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
-    if (!activeMaterial) {
+    activeMaterialRecordRef.current = activeMaterialRecord
+  })
+
+  // Depends only on stable primitives so bookmark saves and list reloads keep the blob URL and A-B loop.
+  useEffect(() => {
+    const record = activeMaterialRecordRef.current
+    if (!record) {
       setActiveMaterialUrl(null)
       setMediaError(null)
       setLoopStart(null)
@@ -237,10 +238,10 @@ export default function Sessions() {
       return
     }
 
-    setBookmarks(activeMaterial.bookmarks ?? [])
+    setBookmarks(record.bookmarks ?? [])
 
-    if (activeMaterial.source === 'url') {
-      setActiveMaterialUrl(activeMaterial.url ?? null)
+    if (record.source === 'url') {
+      setActiveMaterialUrl(record.url ?? null)
       setMediaError(null)
       setLoopStart(null)
       setLoopEnd(null)
@@ -248,7 +249,7 @@ export default function Sessions() {
       return
     }
 
-    if (!activeMaterial.blob && activeMaterial.storage !== 'cache') {
+    if (!record.blob && record.storage !== 'cache') {
       setActiveMaterialUrl(null)
       setMediaError(null)
       setLoopStart(null)
@@ -259,7 +260,7 @@ export default function Sessions() {
 
     let cancelled = false
     let objectUrl: string | null = null
-    void loadLocalMaterialBlob(activeMaterial).then((blob) => {
+    void loadLocalMaterialBlob(record).then((blob) => {
       if (cancelled || !blob) return
       const nextObjectUrl = URL.createObjectURL(blob)
       objectUrl = nextObjectUrl
@@ -277,29 +278,25 @@ export default function Sessions() {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [activeMaterialId, learningMaterials])
+  }, [activeMaterialId, activeMaterialSource, activeMaterialStorage, activeMaterialSourceUrl, activeMaterialHasBlob])
 
-  async function handleLocalMaterialUpload(file: File | undefined) {
+  async function handleLocalMaterialUpload(blockKey: string, file: File | undefined) {
     if (!file) return
-    setMaterialError(null)
-    setMaterialNotice(null)
-    setMaterialSaveState('saving')
+    patchMaterialFeedback(blockKey, { error: null, notice: null, saveState: 'saving' })
     const extension = file.name.split('.').pop()?.toLowerCase()
     const extensionType = extension === 'mp4' ? 'video/mp4' : extension === 'webm' ? 'video/webm' : extension === 'mov' ? 'video/quicktime' : ''
     const detectedType = extensionType || file.type
     const allowedTypes = ['application/pdf', 'image/', 'text/plain', 'video/']
     const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? detectedType.startsWith(type) : detectedType === type)
     if (!isAllowed) {
-      setMaterialError(t('Use a PDF, image, text, or video file.'))
-      setMaterialSaveState('idle')
+      patchMaterialFeedback(blockKey, { error: t('Use a PDF, image, text, or video file.'), saveState: 'idle' })
       return
     }
     const storageEstimate = await estimateLocalStorage()
     if (storageEstimate.quota != null && storageEstimate.usage != null) {
       const availableBytes = storageEstimate.quota - storageEstimate.usage
       if (file.size > availableBytes) {
-        setMaterialError(t('This file is larger than the browser storage currently available on this device.'))
-        setMaterialSaveState('idle')
+        patchMaterialFeedback(blockKey, { error: t('This file is larger than the browser storage currently available on this device.'), saveState: 'idle' })
         return
       }
     }
@@ -308,7 +305,7 @@ export default function Sessions() {
       const probe = document.createElement('video')
       const support = probe.canPlayType(detectedType)
       if (!support) {
-        setMaterialNotice(t('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.'))
+        patchMaterialFeedback(blockKey, { notice: t('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.') })
       }
     }
 
@@ -316,7 +313,7 @@ export default function Sessions() {
       const materialId = crypto.randomUUID()
       await saveLocalMaterial({
         id: materialId,
-        blockKey: materialBlockKey,
+        blockKey,
         name: file.name,
         type: detectedType,
         size: file.size,
@@ -324,54 +321,67 @@ export default function Sessions() {
         blob: file,
         createdAt: new Date().toISOString(),
       })
-      await loadLearningMaterials(materialBlockKey)
-      setActiveMaterialId(materialId)
-      setMaterialSaveState('saved')
-      window.setTimeout(() => setMaterialSaveState('idle'), 2500)
+      await loadBlockMaterials(blockKey)
+      setActiveMaterial(blockKey, materialId)
+      patchMaterialFeedback(blockKey, { saveState: 'saved' })
+      window.setTimeout(() => patchMaterialFeedback(blockKey, { saveState: 'idle' }), 2500)
     } catch (uploadError) {
       const isQuotaError = uploadError instanceof DOMException && uploadError.name === 'QuotaExceededError'
-      setMaterialError(isQuotaError ? t('The browser storage quota was reached. Remove local materials or use another device.') : uploadError instanceof Error ? uploadError.message : t('Could not save the local material.'))
-      setMaterialSaveState('idle')
+      patchMaterialFeedback(blockKey, {
+        error: isQuotaError ? t('The browser storage quota was reached. Remove local materials or use another device.') : uploadError instanceof Error ? uploadError.message : t('Could not save the local material.'),
+        saveState: 'idle',
+      })
     }
   }
 
-  async function addMaterialUrl() {
-    const value = materialUrlInput.trim()
+  async function addMaterialUrl(blockKey: string) {
+    const value = (materialUrlInputs[blockKey] ?? '').trim()
     if (!value) return
     try {
+      const youTubeEmbedUrl = toYouTubeEmbedUrl(value)
+      if (!youTubeEmbedUrl && isYouTubeHostLink(value)) throw new Error(t('This YouTube link is not valid.'))
       const iframeSource = value.match(/src=["']([^"']+)["']/i)?.[1]
-      const url = new URL(iframeSource ?? value)
+      let url: URL
+      try {
+        url = new URL(youTubeEmbedUrl ?? iframeSource ?? value)
+      } catch {
+        throw new Error(t('Enter a valid web URL.'))
+      }
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error(t('Only HTTP and HTTPS URLs are supported.'))
       const materialId = crypto.randomUUID()
       await saveLocalMaterial({
         id: materialId,
-        blockKey: materialBlockKey,
-        name: url.hostname,
+        blockKey,
+        name: youTubeEmbedUrl ? 'YouTube' : url.hostname,
         type: 'text/uri-list',
         size: 0,
         source: 'url',
         url: url.toString(),
         createdAt: new Date().toISOString(),
       })
-      setMaterialUrlInput('')
-      setMaterialError(null)
-      setMaterialNotice(null)
-      await loadLearningMaterials(materialBlockKey)
-      setActiveMaterialId(materialId)
+      setMaterialUrlInputs((current) => ({ ...current, [blockKey]: '' }))
+      patchMaterialFeedback(blockKey, { error: null, notice: null })
+      await loadBlockMaterials(blockKey)
+      setActiveMaterial(blockKey, materialId)
     } catch (urlError) {
-      setMaterialError(urlError instanceof Error ? urlError.message : t('Enter a valid web URL.'))
+      patchMaterialFeedback(blockKey, { error: urlError instanceof Error ? urlError.message : t('Enter a valid web URL.') })
     }
   }
 
-  async function removeLearningMaterial(id: string) {
-    await deleteLocalMaterial(id)
-    setLearningMaterials((current) => current.filter((material) => material.id !== id))
-    if (activeMaterialId === id) setActiveMaterialId(null)
-    setLocalStorageEstimate(await estimateLocalStorage())
+  async function removeLearningMaterial(blockKey: string, id: string) {
+    materialsRequestTrackerRef.current.begin(blockKey)
+    try {
+      await deleteLocalMaterial(id)
+      setMaterialsByBlock((current) => removeBlockMaterial(current, blockKey, id))
+      if (activeMaterial?.id === id) setActiveMaterialState(null)
+      setLocalStorageEstimate(await estimateLocalStorage())
+    } catch (removeError) {
+      patchMaterialFeedback(blockKey, { error: removeError instanceof Error ? removeError.message : t('Could not remove the local material.') })
+    }
   }
 
   function formatStorageSize(bytes: number | null) {
-    if (bytes == null) return 'Storage estimate unavailable'
+    if (bytes == null) return t('Storage estimate unavailable')
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
@@ -390,24 +400,22 @@ export default function Sessions() {
   }
 
   async function saveBookmark() {
-    const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
     const currentTime = videoRef.current?.currentTime
-    if (!activeMaterial || currentTime == null) return
+    if (!activeMaterial || !activeMaterialRecord || currentTime == null) return
 
     const nextBookmarks = [...new Set([...bookmarks, Number(currentTime.toFixed(1))])].sort((left, right) => left - right)
-    await saveLocalMaterial({ ...activeMaterial, bookmarks: nextBookmarks })
+    await saveLocalMaterial({ ...activeMaterialRecord, blockKey: activeMaterial.blockKey, bookmarks: nextBookmarks })
     setBookmarks(nextBookmarks)
-    setLearningMaterials((current) => current.map((material) => material.id === activeMaterial.id ? { ...material, bookmarks: nextBookmarks } : material))
+    setMaterialsByBlock((current) => updateBlockMaterial(current, activeMaterial.blockKey, activeMaterial.id, { bookmarks: nextBookmarks }))
   }
 
   async function removeBookmark(bookmark: number) {
-    const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
-    if (!activeMaterial) return
+    if (!activeMaterial || !activeMaterialRecord) return
 
     const nextBookmarks = bookmarks.filter((value) => value !== bookmark)
-    await saveLocalMaterial({ ...activeMaterial, bookmarks: nextBookmarks })
+    await saveLocalMaterial({ ...activeMaterialRecord, blockKey: activeMaterial.blockKey, bookmarks: nextBookmarks })
     setBookmarks(nextBookmarks)
-    setLearningMaterials((current) => current.map((material) => material.id === activeMaterial.id ? { ...material, bookmarks: nextBookmarks } : material))
+    setMaterialsByBlock((current) => updateBlockMaterial(current, activeMaterial.blockKey, activeMaterial.id, { bookmarks: nextBookmarks }))
   }
 
   function formatBookmarkTime(value: number) {
@@ -419,8 +427,7 @@ export default function Sessions() {
   function getExternalMediaKind(material: LocalMaterial) {
     if (material.source !== 'url' || !material.url) return null
     const pathname = new URL(material.url).pathname.toLowerCase()
-    const hostname = new URL(material.url).hostname.toLowerCase()
-    if ((hostname === 'www.youtube.com' || hostname === 'youtube.com' || hostname === 'www.youtube-nocookie.com') && pathname.startsWith('/embed/')) return 'embed'
+    if (isYouTubeEmbedUrl(new URL(material.url))) return 'embed'
     if (/\.(mp4|webm|ogg|mov)$/.test(pathname)) return 'video'
     if (/\.(png|jpe?g|gif|webp|avif)$/.test(pathname)) return 'image'
     if (/\.pdf$/.test(pathname)) return 'pdf'
@@ -431,15 +438,9 @@ export default function Sessions() {
     if (material.source !== 'url' || !material.url) return activeMaterialUrl
 
     const parsedUrl = new URL(material.url)
-    const isYouTubeEmbed = (parsedUrl.hostname === 'www.youtube.com' || parsedUrl.hostname === 'youtube.com' || parsedUrl.hostname === 'www.youtube-nocookie.com') && parsedUrl.pathname.startsWith('/embed/')
-    if (!isYouTubeEmbed) return material.url
+    if (!isYouTubeEmbedUrl(parsedUrl)) return material.url
 
-    parsedUrl.hostname = 'www.youtube-nocookie.com'
-    parsedUrl.searchParams.delete('si')
-    parsedUrl.searchParams.set('playsinline', '1')
-    parsedUrl.searchParams.set('enablejsapi', '1')
-    parsedUrl.searchParams.set('origin', window.location.origin)
-    return parsedUrl.toString()
+    return toYouTubeIframeSrc(material.url)
   }
 
   useEffect(() => {
@@ -517,11 +518,11 @@ export default function Sessions() {
     setIncludeDefaultExercises(data.include_default_exercises ?? true)
   }
 
-  async function loadData() {
-    setLoading(true)
+  async function loadData(keep?: { date: string; weekId: string | null }) {
+    if (!keep) setLoading(true)
     setError(null)
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = toLocalIsoDate()
 
     const [weeksResult, planResult, templatesResult, sessionsResult, programsResult, todosResult] = await Promise.all([
       supabase
@@ -583,7 +584,8 @@ export default function Sessions() {
     }
 
     const allWeeks = ((weeksResult.data ?? []) as PlanWeek[]).filter(isScheduledWeek)
-    const currentWeek = allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
+    const keptWeek = keep?.weekId ? allWeeks.find((entry) => entry.id === keep.weekId) : undefined
+    const currentWeek = keptWeek ?? allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
     const currentWeekIndex = currentWeek ? allWeeks.findIndex((item) => item.id === currentWeek.id) : 0
     const allTemplates = (templatesResult.data ?? []) as BlockTemplate[]
 
@@ -591,7 +593,7 @@ export default function Sessions() {
       return index === array.findIndex((candidate) => candidate.key === template.key)
     })
 
-    const defaultDate = getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
+    const defaultDate = keep?.date ?? getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
     const loadedSessions = (sessionsResult.data as SessionWithBlocks[]) ?? []
     const editorState = getSessionEditorState(defaultDate, dedupedTemplates, loadedSessions)
 
@@ -602,10 +604,10 @@ export default function Sessions() {
     setSelectedWeekIndex(currentWeekIndex >= 0 ? currentWeekIndex : 0)
     setDate(defaultDate)
     setTemplates(dedupedTemplates)
-    setTotalMinutes(editorState.totalMinutes)
     setComment(editorState.comment)
     setSelectedBlocks(editorState.selectedBlocks)
-    setBlockToAddId('')
+    setExpandedBlockIds(new Set())
+    setRemovedBlock(null)
     setTimers(editorState.timers)
     setSessions(loadedSessions)
     setLoading(false)
@@ -630,11 +632,11 @@ export default function Sessions() {
   }
 
   function isTodayDate(value: string) {
-    return value === new Date().toISOString().slice(0, 10)
+    return value === toLocalIsoDate()
   }
 
   function getDefaultDateForWeek(week: PlanWeek | null) {
-    if (!week) return new Date().toISOString().slice(0, 10)
+    if (!week) return toLocalIsoDate()
 
     const weekDates = getWeekDates(week)
     return weekDates.find((value) => isTodayDate(value)) ?? weekDates[0]
@@ -666,23 +668,21 @@ export default function Sessions() {
     const nextDate = getDefaultDateForWeek(week)
     const editorState = getSessionEditorState(nextDate, templates, sessions)
     setDate(nextDate)
-    setTotalMinutes(editorState.totalMinutes)
     setComment(editorState.comment)
     setSelectedBlocks(editorState.selectedBlocks)
     setTimers(editorState.timers)
-    setBlockToAddId('')
     setExpandedBlockIds(new Set())
+    setRemovedBlock(null)
     setSelectedWeekIndex(weeks.findIndex((item) => item.id === week.id))
   }
 
   function handleSelectDay(nextDate: string) {
     setDate(nextDate)
     const editorState = getSessionEditorState(nextDate, templates, sessions)
-    setTotalMinutes(editorState.totalMinutes)
     setComment(editorState.comment)
     setSelectedBlocks(editorState.selectedBlocks)
-    setBlockToAddId('')
     setExpandedBlockIds(new Set())
+    setRemovedBlock(null)
     setTimers(editorState.timers)
   }
 
@@ -699,12 +699,11 @@ export default function Sessions() {
       setSelectedWeekIndex(sessionWeekIndex)
     }
     setDate(session.session_date)
-    setTotalMinutes(editorState.totalMinutes)
     setComment(editorState.comment)
     setSelectedBlocks(editorState.selectedBlocks)
     setTimers(editorState.timers)
-    setBlockToAddId('')
     setExpandedBlockIds(new Set())
+    setRemovedBlock(null)
   }
 
   function toggleBlock(templateId: string) {
@@ -717,14 +716,12 @@ export default function Sessions() {
 
   function toggleBlockDetails(templateId: string, blockKey: string) {
     const isOpening = !expandedBlockIds.has(templateId)
-    setExpandedBlockIds((current) => {
-      const next = new Set(current)
-      if (next.has(templateId)) next.delete(templateId)
-      else next.add(templateId)
-      return next
-    })
-    if (isOpening) void loadLearningMaterials(blockKey)
-    if (isOpening) setActiveMaterialId(null)
+    setExpandedBlockIds(isOpening ? new Set([templateId]) : new Set())
+    if (isOpening) {
+      if (activeMaterial && activeMaterial.blockKey !== blockKey) setActiveMaterialState(null)
+      if (activeDefaultMaterial && activeDefaultMaterial.blockKey !== blockKey) setActiveDefaultMaterial(null)
+      void loadBlockMaterials(blockKey)
+    }
   }
 
   function addTodo() {
@@ -745,11 +742,29 @@ export default function Sessions() {
     setTodos((current) => current.map((todo, todoIndex) => todoIndex === index ? { ...todo, ...updates } : todo))
   }
 
+  async function toggleTodoDone(index: number, done: boolean) {
+    const todo = todos[index]
+    if (!todo) return
+
+    updateTodo(index, { done })
+    if (todo.id.startsWith('draft-')) {
+      if (todo.name.trim()) await saveTodo({ ...todo, done })
+      return
+    }
+
+    setTodoError(null)
+    const { error: todoUpdateError } = await supabase.from('todos').update({ done }).eq('id', todo.id)
+    if (todoUpdateError) {
+      setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done: todo.done } : item))
+      setTodoError(t('Could not save the ToDo.'))
+    }
+  }
+
   async function saveTodo(todo: Todo) {
     const name = todo.name.trim()
     if (!name || !planWeek) return
 
-    setError(null)
+    setTodoError(null)
     const payload = {
       week_id: planWeek.id,
       name,
@@ -761,7 +776,7 @@ export default function Sessions() {
     if (todo.id.startsWith('draft-')) {
       const { data, error: todoError } = await supabase.from('todos').insert(payload).select('*').single()
       if (todoError || !data) {
-        setError(todoError?.message ?? t('Could not save the ToDo.'))
+        setTodoError(t('Could not save the ToDo.'))
         return
       }
       setTodos((current) => current.map((item) => item.id === todo.id ? data as Todo : item))
@@ -770,19 +785,29 @@ export default function Sessions() {
 
     const { data, error: todoError } = await supabase.from('todos').update(payload).eq('id', todo.id).select('*').single()
     if (todoError || !data) {
-      setError(todoError?.message ?? t('Could not save the ToDo.'))
+      setTodoError(t('Could not save the ToDo.'))
       return
     }
     setTodos((current) => current.map((item) => item.id === todo.id ? data as Todo : item))
   }
 
-  function removeTodo(index: number) {
-    setTodos((current) => current.filter((_, todoIndex) => todoIndex !== index))
+  async function removeTodo(index: number) {
+    const todo = todos[index]
+    if (!todo) return
+
+    setTodos((current) => current.filter((item) => item.id !== todo.id))
+    if (todo.id.startsWith('draft-')) return
+
+    setTodoError(null)
+    const { error: todoDeleteError } = await supabase.from('todos').delete().eq('id', todo.id)
+    if (todoDeleteError) {
+      setTodos((current) => [...current, todo].sort((a, b) => a.sort_order - b.sort_order))
+      setTodoError(t('Could not save the ToDo.'))
+    }
   }
 
-  function addBlock() {
-    const template = templates.find((item) => item.id === blockToAddId)
-    if (!template || selectedBlocks.some((block) => block.id === template.id)) return
+  function addBlock(template: BlockTemplate) {
+    if (selectedBlocks.some((block) => block.id === template.id)) return
 
     setSelectedBlocks((current) => [
       ...current,
@@ -795,16 +820,57 @@ export default function Sessions() {
         targetMinutes: template.target_minutes,
       },
     ])
-    setBlockToAddId('')
+    setIsBlockPickerOpen(false)
+    setAnnouncement(t('{label} added', { label: template.label }))
+    pendingFocusBlockIdRef.current = template.id
+  }
+
+  function clearRemovedBlockTimeout() {
+    if (removedBlockTimeoutRef.current !== null) {
+      window.clearTimeout(removedBlockTimeoutRef.current)
+      removedBlockTimeoutRef.current = null
+    }
   }
 
   function removeBlock(templateId: string) {
-    setSelectedBlocks((current) => current.filter((block) => block.id !== templateId))
+    const index = selectedBlocks.findIndex((block) => block.id === templateId)
+    if (index < 0) return
+    const block = selectedBlocks[index]
+    const timer = timers[templateId]
+
+    setSelectedBlocks((current) => current.filter((item) => item.id !== templateId))
+    setExpandedBlockIds((current) => {
+      const next = new Set(current)
+      next.delete(templateId)
+      return next
+    })
     setTimers((current) => {
       const next = { ...current }
       delete next[templateId]
       return next
     })
+
+    clearRemovedBlockTimeout()
+    setRemovedBlock({ block, timer, index })
+    removedBlockTimeoutRef.current = window.setTimeout(() => {
+      setRemovedBlock(null)
+      removedBlockTimeoutRef.current = null
+    }, 5000)
+    blocksSectionRef.current?.focus({ preventScroll: true })
+  }
+
+  function undoRemoveBlock() {
+    if (!removedBlock) return
+    const { block, timer, index } = removedBlock
+    clearRemovedBlockTimeout()
+    setRemovedBlock(null)
+    setSelectedBlocks((current) => {
+      if (current.some((item) => item.id === block.id)) return current
+      const next = [...current]
+      next.splice(Math.min(index, next.length), 0, block)
+      return next
+    })
+    if (timer) setTimers((current) => ({ ...current, [block.id]: { ...timer, isRunning: false } }))
   }
 
   function clampBpm(value: number) {
@@ -879,13 +945,16 @@ export default function Sessions() {
 
   function handleMetronomePointerDown() {
     metronomeHoldTriggeredRef.current = false
+    metronomePointerDownRef.current = true
     metronomeHoldTimerRef.current = window.setTimeout(() => {
+      metronomeHoldTimerRef.current = null
       metronomeHoldTriggeredRef.current = true
-      setIsMetronomeSettingsOpen((current) => !current)
+      openMetronomeSettings()
     }, 550)
   }
 
   function handleMetronomePointerUp() {
+    metronomePointerDownRef.current = false
     if (metronomeHoldTimerRef.current !== null) {
       window.clearTimeout(metronomeHoldTimerRef.current)
       metronomeHoldTimerRef.current = null
@@ -908,14 +977,27 @@ export default function Sessions() {
 
   function handleMetronomeContextMenu(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault()
-    setIsMetronomeSettingsOpen((current) => !current)
+    if (metronomeHoldTimerRef.current !== null) {
+      window.clearTimeout(metronomeHoldTimerRef.current)
+      metronomeHoldTimerRef.current = null
+    }
+    // A press-initiated contextmenu must not also start/stop on release.
+    if (metronomePointerDownRef.current) metronomeHoldTriggeredRef.current = true
+    openMetronomeSettings()
+  }
+
+  function handleMetronomeKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    metronomeHoldTriggeredRef.current = false
+    if (event.key !== 'Enter' || !event.shiftKey) return
+    event.preventDefault()
+    toggleMetronomeSettings()
   }
 
   function handleTunerPointerDown() {
     tunerHoldTriggeredRef.current = false
     tunerHoldTimerRef.current = window.setTimeout(() => {
       tunerHoldTriggeredRef.current = true
-      setIsTunerOpen(true)
+      openTuner()
     }, 550)
   }
 
@@ -931,13 +1013,67 @@ export default function Sessions() {
       tunerHoldTriggeredRef.current = false
       return
     }
-    setIsTunerOpen((current) => !current)
+    if (isTunerOpen) {
+      setIsTunerOpen(false)
+      return
+    }
+    openTuner()
   }
 
   function handleTunerContextMenu(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault()
+    openTuner()
+  }
+
+  function openMetronomeSettings() {
+    lastToolButtonRef.current = metronomeButtonRef.current
+    setIsTunerOpen(false)
+    setIsMetronomeSettingsOpen(true)
+  }
+
+  function toggleMetronomeSettings() {
+    lastToolButtonRef.current = metronomeButtonRef.current
+    setIsTunerOpen(false)
+    setIsMetronomeSettingsOpen((current) => !current)
+  }
+
+  function openTuner() {
+    lastToolButtonRef.current = tunerButtonRef.current
+    setIsMetronomeSettingsOpen(false)
     setIsTunerOpen(true)
   }
+
+  const isToolPanelOpen = isMetronomeSettingsOpen || isTunerOpen
+
+  useEffect(() => {
+    if (!isToolPanelOpen) return
+
+    toolPanelRef.current?.focus({ preventScroll: true })
+
+    function closePanels() {
+      setIsMetronomeSettingsOpen(false)
+      setIsTunerOpen(false)
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node
+      if (metronomeButtonRef.current?.contains(target) || tunerButtonRef.current?.contains(target) || toolPanelRef.current?.contains(target)) return
+      closePanels()
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      closePanels()
+      lastToolButtonRef.current?.focus()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isToolPanelOpen])
 
   function scheduleMetronomeClick(time: number) {
     const context = audioContextRef.current
@@ -1136,6 +1272,7 @@ export default function Sessions() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
+    if (!canSave) return
     setSaving(true)
     setMessage(null)
     setError(null)
@@ -1155,7 +1292,7 @@ export default function Sessions() {
         {
           user_id: user.id,
           session_date: date,
-          total_minutes: totalBlockMinutes || Number(totalMinutes),
+          total_minutes: totalBlockMinutes,
           comment: comment.trim() ? comment.trim() : null,
           week_id: planWeek?.id ?? null,
           source: 'app',
@@ -1171,25 +1308,21 @@ export default function Sessions() {
       return
     }
 
-    const blocksToInsert = selectedBlocks.map((block) => ({
-        session_id: sessionData.id,
-        block_key: block.key,
-        label: block.label,
-        done: block.done,
-        target_minutes: block.targetMinutes,
-        actual_minutes: timers[block.id]?.elapsedSeconds
-          ? Math.max(1, Math.ceil(timers[block.id].elapsedSeconds / 60))
-          : block.actualMinutes ? Number(block.actualMinutes) : null,
-      }))
-
-    const selectedBlockKeys = selectedBlocks.map((block) => block.key)
+    const blockSavePlan = planSessionBlockSave(sessionData.id, selectedBlocks.map((block) => ({
+      key: block.key,
+      label: block.label,
+      done: block.done,
+      targetMinutes: block.targetMinutes,
+      actualMinutes: block.actualMinutes,
+      elapsedSeconds: timers[block.id]?.elapsedSeconds,
+    })))
     const blocksRemovalQuery = supabase
       .from('session_blocks')
       .delete()
       .eq('session_id', sessionData.id)
 
-    const { error: blocksRemovalError } = selectedBlockKeys.length > 0
-      ? await blocksRemovalQuery.not('block_key', 'in', `(${selectedBlockKeys.join(',')})`)
+    const { error: blocksRemovalError } = blockSavePlan.blockKeysToKeep.length > 0
+      ? await blocksRemovalQuery.not('block_key', 'in', `(${blockSavePlan.blockKeysToKeep.join(',')})`)
       : await blocksRemovalQuery
 
     if (blocksRemovalError) {
@@ -1198,10 +1331,10 @@ export default function Sessions() {
       return
     }
 
-    if (blocksToInsert.length > 0) {
+    if (blockSavePlan.upserts.length > 0) {
       const { error: blocksError } = await supabase
         .from('session_blocks')
-        .upsert(blocksToInsert, { onConflict: 'session_id,block_key' })
+        .upsert(blockSavePlan.upserts, { onConflict: 'session_id,block_key' })
 
       if (blocksError) {
         setError(blocksError.message)
@@ -1210,49 +1343,7 @@ export default function Sessions() {
       }
     }
 
-    if (planWeek) {
-      const { error: todoDeleteError } = await supabase.from('todos').delete().eq('week_id', planWeek.id)
-      if (todoDeleteError) {
-        setError(todoDeleteError.message)
-        setSaving(false)
-        return
-      }
-
-      if (todos.length > 0) {
-        const { error: todoInsertError } = await supabase.from('todos').insert(
-          todos
-            .filter((todo) => todo.name.trim())
-            .map((todo, index) => ({
-              week_id: planWeek.id,
-              name: todo.name.trim(),
-              done: todo.done,
-              sort_order: index + 1,
-              source: todo.source ?? 'app',
-            }))
-        )
-
-        if (todoInsertError) {
-          setError(todoInsertError.message)
-          setSaving(false)
-          return
-        }
-      }
-    }
-
-    setDate(new Date().toISOString().slice(0, 10))
-    setTotalMinutes('45')
-    setComment('')
-    setSelectedBlocks(
-      templates.map((template) => ({
-        id: template.id,
-        key: template.key,
-        label: template.label,
-        done: false,
-        actualMinutes: '',
-        targetMinutes: template.target_minutes,
-      }))
-    )
-    await loadData()
+    await loadData({ date, weekId: planWeek?.id ?? null })
     setMessage(t('Session saved successfully.'))
     setSaving(false)
   }
@@ -1272,61 +1363,177 @@ export default function Sessions() {
 
   const selectedWeekDates = getWeekDates(planWeek ?? weeks[selectedWeekIndex] ?? null)
   const visibleWeeks = weeks.slice(Math.max(0, selectedWeekIndex - 2), Math.min(weeks.length, selectedWeekIndex + 3))
+  const todayDate = toLocalIsoDate()
+  const isPastDay = date < todayDate
+  const savedForDate = hasSavedSession(date, sessions)
+  const isDirty = isSessionEditorDirty(getSessionEditorState(date, templates, sessions), { comment, timers, selectedBlocks })
+  const canSave = selectedBlocks.length > 0 || savedForDate
+  const availableTemplates = templates.filter((template) => !selectedBlocks.some((block) => block.id === template.id))
+  const todosDone = todos.filter((todo) => todo.done).length
+
+  function confirmDiscard(action: () => void) {
+    if (isDirty) setPendingDiscardAction({ run: action })
+    else action()
+  }
+
+  function renderBlockPicker(options: BlockTemplate[]) {
+    return (
+      <ul aria-label={t('Practice blocks')} className="mt-3 space-y-2">
+        {options.map((template) => (
+          <li key={template.id}>
+            <button
+              type="button"
+              onClick={() => addBlock(template)}
+              className="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950 px-4 text-left text-base text-slate-100 transition hover:border-sky-500"
+            >
+              <span className="min-w-0">{template.label}</span>
+              {template.target_minutes != null && (
+                <span className="shrink-0 text-sm text-slate-400">{t('{minutes} min', { minutes: template.target_minutes })}</span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  function closeBlockPicker() {
+    setIsBlockPickerOpen(false)
+    addBlockButtonRef.current?.focus()
+  }
+
+  useEffect(() => {
+    if (!isDirty) return
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeUnload)
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+  }, [isDirty])
+
+  useEffect(() => {
+    const blockId = pendingFocusBlockIdRef.current
+    if (!blockId) return
+    const header = document.getElementById(`block-header-${blockId}`)
+    if (!header) return
+    pendingFocusBlockIdRef.current = null
+    header.focus({ preventScroll: true })
+    header.scrollIntoView({ block: 'nearest' })
+  }, [selectedBlocks])
+
+  useEffect(() => {
+    if (!isBlockPickerOpen) return
+    const sheet = blockSheetRef.current
+    const getFocusable = () => Array.from(sheet?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])
+    getFocusable()[0]?.focus()
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setIsBlockPickerOpen(false)
+        addBlockButtonRef.current?.focus()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = getFocusable()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (!sheet?.contains(active)) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isBlockPickerOpen])
+
+  useEffect(() => {
+    if (pendingDiscardAction) discardPromptRef.current?.focus()
+  }, [pendingDiscardAction])
+
+  useEffect(() => {
+    if (message) messageRef.current?.focus()
+  }, [message])
+
+  useEffect(() => {
+    const strip = dayStripRef.current
+    const selectedDay = strip?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    if (!strip || !selectedDay) return
+    strip.scrollLeft = selectedDay.offsetLeft - (strip.clientWidth - selectedDay.offsetWidth) / 2
+  }, [loading, date, planWeek?.id])
+
+  useEffect(() => () => {
+    if (removedBlockTimeoutRef.current !== null) window.clearTimeout(removedBlockTimeoutRef.current)
+  }, [])
 
   if (loading) {
     return <p className="text-sm text-slate-400">{t('Loading…')}</p>
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+    <div className="mx-auto min-w-0 max-w-3xl [&_input]:scroll-mt-[calc(var(--app-header-h)+4rem)] [&_select]:scroll-mt-[calc(var(--app-header-h)+4rem)] [&_textarea]:scroll-mt-[calc(var(--app-header-h)+4rem)]">
+      {headerSlots.actions && createPortal(
         <>
-          <div>
-            <h1 className="text-2xl font-semibold">{t('Session {date}', { date: formatHeadingDate(date, language) })}</h1>
-            <p className="mt-1 text-sm text-slate-400">
-              {t('Practice week navigator for the current cycle.')}
-            </p>
-          </div>
+            <button
+              type="button"
+              ref={metronomeButtonRef}
+              onPointerDown={handleMetronomePointerDown}
+              onPointerUp={handleMetronomePointerUp}
+              onPointerCancel={handleMetronomePointerUp}
+              onContextMenu={handleMetronomeContextMenu}
+              onKeyDown={handleMetronomeKeyDown}
+              onClick={handleMetronomeButtonClick}
+              aria-label={t(isMetronomePlaying ? 'Playing' : 'Metronome')}
+              aria-haspopup="true"
+              aria-expanded={isMetronomeSettingsOpen}
+              aria-keyshortcuts="Shift+Enter Shift+F10"
+              title={t('Metronome')}
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-200"
+              style={{
+                background: `conic-gradient(from -90deg, ${Array.from({ length: beatsPerMeasure }, (_, index) => {
+                  const segment = 360 / beatsPerMeasure
+                  const start = index * segment + 3
+                  const end = (index + 1) * segment - 3
+                  const color = isMetronomePlaying && index === currentBeat ? '#38bdf8' : 'rgba(71, 85, 105, 0.85)'
+                  return `${color} ${start}deg ${end}deg, transparent ${end}deg ${(index + 1) * segment}deg`
+                }).join(', ')})`,
+              }}
+            >
+              <span className="absolute inset-[3px] flex items-center justify-center rounded-full bg-slate-950">
+                <MetronomeIcon className="h-6 w-auto" />
+              </span>
+            </button>
+          <button
+            type="button"
+            ref={tunerButtonRef}
+            aria-expanded={isTunerOpen}
+            aria-label={t('Tuner')}
+            onPointerDown={handleTunerPointerDown}
+            onPointerUp={handleTunerPointerUp}
+            onPointerCancel={handleTunerPointerUp}
+            onContextMenu={handleTunerContextMenu}
+            onClick={handleTunerButtonClick}
+            title={t('Tuner')}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-slate-200"
+          >
+            <TuningForkIcon className="h-6 w-auto" />
+          </button>
+        </>,
+        headerSlots.actions,
+      )}
 
-          <>
-            <div data-tour="practice-tools" className={[
-              'fixed top-1 z-40',
-              isMetronomeSettingsOpen
-                ? 'right-4 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-800 bg-slate-900/95 p-3 shadow-lg shadow-slate-950/30 backdrop-blur-sm'
-                : 'right-20',
-            ].join(' ')}>
-              <div className="flex justify-center">
-                <div className="relative h-14 w-14">
-                  <div
-                    className="absolute inset-0 rounded-full p-[3px]"
-                    style={{
-                      background: `conic-gradient(from -90deg, ${Array.from({ length: beatsPerMeasure }, (_, index) => {
-                        const segment = 360 / beatsPerMeasure
-                        const start = index * segment + 3
-                        const end = (index + 1) * segment - 3
-                        const color = isMetronomePlaying && index === currentBeat ? '#38bdf8' : 'rgba(71, 85, 105, 0.85)'
-                        return `${color} ${start}deg ${end}deg, transparent ${end}deg ${(index + 1) * segment}deg`
-                      }).join(', ')})`,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onPointerDown={handleMetronomePointerDown}
-                      onPointerUp={handleMetronomePointerUp}
-                      onPointerCancel={handleMetronomePointerUp}
-                      onContextMenu={handleMetronomeContextMenu}
-                      onClick={handleMetronomeButtonClick}
-                      aria-label={t(isMetronomePlaying ? 'Playing' : 'Metronome')}
-                      title={t('Metronome')}
-                      className="flex h-full w-full items-center justify-center rounded-full bg-slate-950 text-slate-200"
-                    >
-                      <MetronomeIcon />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {isMetronomeSettingsOpen && <div className="mt-3 flex flex-wrap items-end justify-center gap-2">
+        {headerSlots.panel && isToolPanelOpen && createPortal(<div ref={toolPanelRef} tabIndex={-1} role="group" aria-label={t(isTunerOpen ? 'Tuner' : 'Metronome settings')} className="mx-auto max-h-[60dvh] max-w-6xl overflow-x-auto overflow-y-auto border-b border-slate-800 bg-slate-900 p-3 shadow-lg shadow-slate-950/30 focus:outline-none">
+              {isMetronomeSettingsOpen && <div className="flex flex-wrap items-end justify-center gap-2">
                 <label className="text-xs text-slate-400">
                   BPM
                   <input
@@ -1336,7 +1543,7 @@ export default function Sessions() {
                     value={bpmInput}
                     onChange={(event) => handleBpmChange(event.target.value)}
                     onBlur={handleBpmBlur}
-                    className="mt-1 w-20 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+                    className="mt-1 h-11 w-20 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
                   />
                 </label>
 
@@ -1345,7 +1552,7 @@ export default function Sessions() {
                   <select
                     value={timeSignatureMode}
                     onChange={(event) => handleTimeSignatureChange(event.target.value as '3/4' | '4/4' | '5/4' | 'custom')}
-                    className="mt-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+                    className="mt-1 h-11 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
                   >
                     <option value="3/4">3/4</option>
                     <option value="4/4">4/4</option>
@@ -1364,7 +1571,7 @@ export default function Sessions() {
                         max="12"
                         value={customBeatCount}
                         onChange={(event) => handleCustomBeatChange(event.target.value)}
-                        className="mt-1 w-14 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+                        className="mt-1 h-11 w-16 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
                       />
                     </label>
 
@@ -1376,7 +1583,7 @@ export default function Sessions() {
                         max="12"
                         value={customMeasureCount}
                         onChange={(event) => handleCustomMeasureChange(event.target.value)}
-                        className="mt-1 w-14 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+                        className="mt-1 h-11 w-16 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
                       />
                     </label>
                   </div>
@@ -1385,52 +1592,27 @@ export default function Sessions() {
                 <button
                   type="button"
                   onClick={handleTapTempo}
-                  className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                  className="h-11 rounded border border-slate-700 px-4 text-sm text-slate-300"
                 >
                   {t('Tap')}
                 </button>
                 <button
                   type="button"
                   onClick={() => { void toggleMetronome() }}
-                  className="rounded bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-900"
+                  className="h-11 rounded bg-slate-100 px-4 text-sm font-medium text-slate-900"
                 >
                   {isMetronomePlaying ? t('Stop') : t('Start')}
                 </button>
               </div>}
-            </div>
-
-            <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
-            <div className={isTunerOpen
-              ? 'fixed right-4 top-1 z-40 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-slate-800 bg-slate-900/95 p-2 shadow-lg shadow-slate-950/30 backdrop-blur-sm'
-              : 'fixed right-4 top-1 z-40 p-0'}>
-              <button
-                type="button"
-                aria-expanded={isTunerOpen}
-                aria-label={t('Tuner')}
-                onPointerDown={handleTunerPointerDown}
-                onPointerUp={handleTunerPointerUp}
-                onPointerCancel={handleTunerPointerUp}
-                onContextMenu={handleTunerContextMenu}
-                onClick={handleTunerButtonClick}
-                title={t('Tuner')}
-                className={isTunerOpen
-                  ? 'flex w-full items-center justify-between gap-3 text-left'
-                  : 'flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-slate-200'}
-              >
-                {isTunerOpen ? <>
-                  <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{t('Tuner')}</span>
-                  <span className="text-xs text-slate-500">{t('Hide')}</span>
-                </> : <TunerIcon />}
-              </button>
               {isTunerOpen && (
-                <div className="mt-2">
+                <div>
                   <select
                     value={tuningKey}
                     onChange={(event) => {
                       stopReferenceTone()
                       setTuningKey(event.target.value as TuningKey)
                     }}
-                    className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200"
+                    className="h-11 w-full rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
                     aria-label={t('Guitar tuning')}
                   >
                     {Object.entries(tuningPresets).map(([key, tuning]) => (
@@ -1449,7 +1631,7 @@ export default function Sessions() {
                         type="button"
                         title={t('Play {note} reference tone', { note: displayNote })}
                         onClick={() => { void playReferenceTone(note.stringName, note.frequency) }}
-                        className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:border-sky-500 hover:text-sky-200"
+                        className="min-h-11 min-w-0 break-words rounded border border-slate-700 px-2 text-sm text-slate-300 transition hover:border-sky-500 hover:text-sky-200"
                       >
                         {activeReferenceTone === note.stringName ? t('Playing') : displayNote}
                       </button>
@@ -1461,70 +1643,94 @@ export default function Sessions() {
                     type="button"
                     onClick={stopReferenceTone}
                     disabled={!activeReferenceTone}
-                    className="mt-2 w-full rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="mt-2 min-h-11 w-full rounded border border-slate-700 px-2 text-sm text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {t('Stop tone')}
                   </button>
                 </div>
               )}
-            </div>
+            </div>, headerSlots.panel)}
 
-            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 lg:min-w-[240px]">
-              <p className="text-xs uppercase tracking-wide text-slate-400">{t('Practice time')}</p>
-              <p className="mt-1 text-2xl font-semibold text-slate-100">{totalBlockMinutes} min</p>
-              <p className="text-sm text-slate-400">{t('Total across selected blocks')}</p>
-            </div>
-            </div>
-        </>
-        </>
+      <p aria-live="polite" className="sr-only">{announcement}</p>
 
-        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t('Practice weeks')}</p>
-            </div>
-
-            <label className="flex items-center gap-2 text-xs text-slate-300">
-              <span>{t('Jump to')}</span>
-              <select
-                value={planWeek?.id ?? ''}
-                onChange={(event) => {
-                  const targetWeek = weeks.find((weekItem) => weekItem.id === event.target.value)
-                  if (targetWeek) {
-                    handleSelectWeek(targetWeek)
-                  }
-                }}
-                className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-200 focus:border-slate-500"
-              >
-                {weeks.map((weekItem) => (
-                  <option key={weekItem.id} value={weekItem.id}>
-                    {t('Week {week}', { week: weekItem.week_number })} · {formatDateRange(weekItem.start_date, weekItem.end_date, language)}
-                  </option>
-                ))}
-              </select>
-            </label>
+      {pendingDiscardAction && (
+        <div ref={discardPromptRef} tabIndex={-1} role="alert" className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 focus:outline-none">
+          <p className="text-sm font-medium text-amber-100">{t('Discard changes?')}</p>
+          <p className="mt-1 text-sm text-slate-300">{t('Unsaved changes will be lost.')}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => { const action = pendingDiscardAction; setPendingDiscardAction(null); action.run() }}
+              className="min-h-11 rounded bg-slate-100 px-4 text-sm font-medium text-slate-900"
+            >
+              {t('Discard')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingDiscardAction(null)}
+              className="min-h-11 rounded border border-slate-600 px-4 text-sm text-slate-200"
+            >
+              {t('Keep editing')}
+            </button>
           </div>
+        </div>
+      )}
 
-          <div className="mt-3 flex flex-wrap gap-3">
+      <section className="py-4">
+        <h1 className="text-xl font-semibold">{t('Session {date}', { date: formatHeadingDate(date, language) })}</h1>
+
+        <div className="mt-3">
+          <label htmlFor="practice-week-select" className="block text-xs text-slate-400">{t('Jump to')}</label>
+          <select
+            id="practice-week-select"
+            value={planWeek?.id ?? ''}
+            onChange={(event) => {
+              const targetWeek = weeks.find((weekItem) => weekItem.id === event.target.value)
+              if (targetWeek) confirmDiscard(() => handleSelectWeek(targetWeek))
+            }}
+            className="mt-1 h-11 w-full rounded border border-slate-700 bg-slate-950 px-3 text-base text-slate-200 focus:border-slate-500"
+          >
+            {weeks.map((weekItem) => (
+              <option key={weekItem.id} value={weekItem.id}>
+                {t('Week {week}', { week: weekItem.week_number })} · {formatDateRange(weekItem.start_date, weekItem.end_date, language)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsWeekStripOpen((current) => !current)}
+          aria-expanded={isWeekStripOpen}
+          aria-controls="practice-week-strip"
+          className="mt-1 flex min-h-11 w-full items-center justify-between gap-2 text-left text-sm text-slate-300"
+        >
+          <span>{t('Practice weeks')}</span>
+          <span className="text-sm text-slate-400">{t(isWeekStripOpen ? 'Hide' : 'Show')}</span>
+        </button>
+
+        {isWeekStripOpen && (
+          <div id="practice-week-strip" className="mb-2 flex flex-wrap gap-3">
             {visibleWeeks.map((weekItem) => {
-              const isCurrentWeek = weekItem.start_date <= new Date().toISOString().slice(0, 10) && weekItem.end_date >= new Date().toISOString().slice(0, 10)
+              const isCurrentWeek = weekItem.start_date <= todayDate && weekItem.end_date >= todayDate
               const isSelected = weekItem.id === (planWeek?.id ?? weeks[selectedWeekIndex]?.id)
 
               return (
                 <button
                   key={weekItem.id}
                   type="button"
-                  onClick={() => handleSelectWeek(weekItem)}
-                  className={`min-w-[150px] flex-1 rounded-lg border p-3 text-left transition ${
+                  onClick={() => confirmDiscard(() => handleSelectWeek(weekItem))}
+                  aria-pressed={isSelected}
+                  className={`min-h-11 min-w-[150px] flex-1 rounded-lg border p-3 text-left transition ${
                     isSelected
                       ? 'border-sky-500 bg-sky-500/10 text-sky-100'
                       : 'border-slate-700 bg-slate-950/80 text-slate-200 hover:border-slate-500'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week {week}', { week: weekItem.week_number })}</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t('Week {week}', { week: weekItem.week_number })}</p>
                     {isCurrentWeek && (
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
+                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">
                         {t('Today')}
                       </span>
                     )}
@@ -1535,294 +1741,305 @@ export default function Sessions() {
               )
             })}
           </div>
+        )}
+
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <h2 className="min-w-0 truncate text-base font-semibold text-slate-100">{planWeek?.focus ?? t('No week selected')}</h2>
+          {planWeek && planWeek.start_date <= todayDate && planWeek.end_date >= todayDate && (
+            <span className="shrink-0 rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.18em] text-sky-300">
+              {t('Current week')}
+            </span>
+          )}
         </div>
+        <p className="text-sm text-slate-400">
+          {programName ?? '—'} · {planWeek ? formatDateRange(planWeek.start_date, planWeek.end_date, language) : '—'}
+        </p>
+        <button
+          type="button"
+          onClick={() => setIsWeekDetailsOpen((current) => !current)}
+          aria-expanded={isWeekDetailsOpen}
+          aria-controls="practice-week-details"
+          className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-sm text-slate-300"
+        >
+          <span>{t('Week description')}</span>
+          <span className="text-sm text-slate-400">{t(isWeekDetailsOpen ? 'Hide' : 'Show')}</span>
+        </button>
+        {isWeekDetailsOpen && (
+          <p id="practice-week-details" className="whitespace-pre-wrap pb-2 text-sm text-slate-300">
+            {planWeek?.tasks?.trim() || t('No description recorded for this week yet.')}
+          </p>
+        )}
 
-        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Selected week')}</p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-100">{planWeek?.focus ?? t('No week selected')}</h2>
-            </div>
-
-            {planWeek && planWeek.start_date <= new Date().toISOString().slice(0, 10) && planWeek.end_date >= new Date().toISOString().slice(0, 10) && (
-              <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-sky-300">
-                {t('Current week')}
-              </span>
-            )}
-          </div>
-
-          <div className="mt-3 grid gap-2 text-sm text-slate-300 md:grid-cols-2">
-            <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Program')}</p>
-              <p className="mt-1">{programName ?? '—'}</p>
-            </div>
-            <div className="rounded border border-slate-800 bg-slate-950/70 p-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Dates')}</p>
-              <p className="mt-1">{planWeek ? formatDateRange(planWeek.start_date, planWeek.end_date, language) : '—'}</p>
-            </div>
-          </div>
-
-          <div className="mt-3 rounded border border-slate-800 bg-slate-950/70 p-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Week description')}</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">
-              {planWeek?.tasks?.trim() || t('No description recorded for this week yet.')}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-200">{t('ToDo')}</p>
-            <button
-              type="button"
-              onClick={addTodo}
-              className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-            >
-              {t('+ Add ToDo')}
-            </button>
-          </div>
-          <div className="mt-3 space-y-2">
-            {todos.length === 0 && <p className="text-sm text-slate-400">{t('No ToDo items yet for this week.')}</p>}
-
-            {todos.map((todo, index) => (
-              <div key={`${todo.id}-${index}`} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={todo.done}
-                  onChange={(event) => updateTodo(index, { done: event.target.checked })}
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-950"
-                />
-                <input
-                  value={todo.name}
-                  onChange={(event) => updateTodo(index, { name: event.target.value })}
-                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveTodo({ ...todo, name: event.currentTarget.value }) } }}
-                  className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none transition focus:border-slate-500"
-                  placeholder={t('ToDo name')}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeTodo(index)}
-                  className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400"
-                >
-                  {t('Remove')}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div data-tour="practice-day-blocks" className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Days in selected week')}</p>
-          </div>
-
-          <div className="mt-3 grid gap-2 sm:grid-cols-7">
+        <div data-tour="practice-day-blocks" role="group" aria-label={t('Days in selected week')} className="mt-2">
+          <div ref={dayStripRef} className="relative flex snap-x gap-2 overflow-x-auto pb-1">
             {selectedWeekDates.map((day) => {
               const isSelectedDay = day === date
-              const isToday = isTodayDate(day)
-              const isCompleted = day < new Date().toISOString().slice(0, 10)
-                && sessions.some((session) => session.session_date === day)
+              const isToday = day === todayDate
+              const isCompleted = day < todayDate && sessions.some((session) => session.session_date === day)
+              const dayDate = new Date(`${day}T00:00:00`)
+              const fullDate = dayDate.toLocaleDateString(localeForLanguage(language), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
               return (
                 <button
                   key={day}
                   type="button"
-                  onClick={() => handleSelectDay(day)}
-                  className={`relative rounded-lg border px-2 py-3 text-center transition ${
+                  onClick={() => confirmDiscard(() => handleSelectDay(day))}
+                  aria-pressed={isSelectedDay}
+                  aria-current={isToday ? 'date' : undefined}
+                  aria-label={[fullDate, isToday ? t('Today') : null, isCompleted ? t('Done') : null].filter(Boolean).join(', ')}
+                  className={`relative min-h-14 min-w-[5.5rem] flex-1 shrink-0 snap-center rounded-lg border px-1.5 py-1.5 text-center transition ${
                     isSelectedDay
                       ? 'border-sky-500 bg-sky-500/10 text-sky-100'
                       : isCompleted
-                          ? 'border-emerald-500/50 bg-emerald-500/5 text-emerald-100'
+                        ? 'border-emerald-500/50 bg-emerald-500/5 text-emerald-100'
                         : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-slate-500'
                   }`}
                 >
-                  {isToday && (
-                    <span
-                      aria-label={t('Current day')}
-                      title={t('Current day')}
-                      className="absolute right-2 top-2 h-3 w-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.75)]"
-                    />
-                  )}
-                  <div className="flex items-center justify-center gap-1">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                      {new Date(`${day}T00:00:00`).toLocaleDateString(localeForLanguage(language), { weekday: 'short' })}
-                    </p>
-                    {isCompleted && (
-                      <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-emerald-200">
-                        ✓ {t('Done')}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm font-medium">{new Date(`${day}T00:00:00`).toLocaleDateString(localeForLanguage(language), { month: 'short', day: 'numeric' })}</p>
+                  {isToday && <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-slate-950" />}
+                  <span className="block text-xs uppercase tracking-wide text-slate-400">
+                    {dayDate.toLocaleDateString(localeForLanguage(language), { weekday: 'short' })}
+                  </span>
+                  <span className="block text-base font-medium">{dayDate.getDate()}</span>
+                  <span className="block whitespace-nowrap text-xs leading-4 text-slate-400">
+                    {isToday ? t('Today') : isCompleted ? '✓' : '\u00a0'}
+                  </span>
                 </button>
               )
             })}
           </div>
         </div>
+      </section>
 
-        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t('Selected day')}</p>
-              <h3 className="mt-1 text-lg font-semibold text-slate-100">{formatHeadingDate(date, language)}</h3>
-            </div>
-            {isTodayDate(date) && (
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-300">
-                {t('Today')}
-              </span>
-            )}
+      <section
+        ref={blocksSectionRef}
+        tabIndex={-1}
+        aria-labelledby="practice-blocks-heading"
+        className="border-t border-slate-800 py-4 focus:outline-none"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="practice-blocks-heading" className="text-lg font-semibold text-slate-100">{formatHeadingDate(date, language)}</h2>
+          {isTodayDate(date) && (
+            <span className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">
+              {t('Today')}
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-slate-400">{t('Practice time')}: {t('{minutes} min', { minutes: totalBlockMinutes })}</p>
+
+        {selectedBlocks.length === 0 && (
+          <div data-tour="practice-block-picker" className="mt-3">
+            <p className="text-base font-medium text-slate-100">{t('No blocks yet')}</p>
+            <p className="mt-1 text-sm text-slate-400">
+              {isPastDay && !savedForDate ? t('No practice was logged for this day.') : t('Choose what to practice first.')}
+            </p>
+            {renderBlockPicker(templates)}
           </div>
+        )}
 
-          <div className="mt-4 flex flex-col gap-2 rounded border border-slate-800 bg-slate-950/60 p-3 sm:flex-row sm:items-end">
-            <label className="flex-1 text-xs text-slate-400">
-              {t('Add practice block')}
-              <select
-                value={blockToAddId}
-                onChange={(event) => setBlockToAddId(event.target.value)}
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm text-slate-200"
-              >
-                <option value="">{t('Choose a block')}</option>
-                {templates
-                  .filter((template) => !selectedBlocks.some((block) => block.id === template.id))
-                  .map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.label}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={addBlock}
-              disabled={!blockToAddId}
-              className="rounded bg-slate-100 px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
-            >
-              {t('Add block')}
-            </button>
-          </div>
+        <div className="mt-3">
+            {selectedBlocks.map((selected) => {
+              const template = templates.find((item) => item.id === selected.id)
 
-          <div className="mt-4 space-y-3">
-            {selectedBlocks.length === 0 && (
-              <p className="text-sm text-slate-400">{t('No practice blocks selected for this day.')}</p>
-            )}
-
-            {templates.map((template) => {
-              const selected = selectedBlocks.find((block) => block.id === template.id)
-
-              if (!selected) return null
+              if (!template) return null
 
               const elapsedSeconds = timers[template.id]?.elapsedSeconds ?? 0
               const timerMinutes = Math.floor(elapsedSeconds / 60)
               const timerSeconds = elapsedSeconds % 60
               const isExpanded = expandedBlockIds.has(template.id)
               const defaultMaterials = getDefaultMaterials(language, template.key)
+              const blockMaterials = materialsByBlock[template.key] ?? []
+              const blockFeedback = materialFeedback[template.key] ?? emptyMaterialFeedback
 
               return (
-                <div key={template.id} className="flex flex-col gap-3 rounded border border-slate-800 bg-slate-950/60 p-3 md:flex-row md:items-start md:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selected.done}
-                        onChange={() => toggleBlock(template.id)}
-                        className="h-4 w-4 rounded border-slate-700 bg-slate-950"
-                      />
+                <div key={template.id} className="border-b border-slate-800 py-1">
+                  <div className="min-w-0">
+                    <div className="flex min-h-14 items-center">
+                      <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={selected.done}
+                          onChange={() => toggleBlock(template.id)}
+                          aria-label={template.label}
+                          className="h-5 w-5 rounded border-slate-700 bg-slate-950"
+                        />
+                      </label>
+                      <h3 className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          id={`block-header-${template.id}`}
+                          aria-expanded={isExpanded}
+                          onClick={() => toggleBlockDetails(template.id, template.key)}
+                          className="flex min-h-14 w-full min-w-0 scroll-mt-32 items-center justify-between gap-2 rounded-lg px-2 text-left transition hover:bg-slate-800/60 active:bg-slate-800"
+                        >
+                          <span className="min-w-0 break-words text-base font-semibold text-slate-100">{template.label}</span>
+                          <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
+                            {t('Details')}
+                            <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-5 w-5 shrink-0 text-slate-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M5 8l5 5 5-5" />
+                            </svg>
+                          </span>
+                        </button>
+                      </h3>
                       <button
                         type="button"
-                        aria-expanded={isExpanded}
-                        onClick={() => toggleBlockDetails(template.id, template.key)}
-                        className="min-w-0 text-left"
+                        onClick={() => removeBlock(template.id)}
+                        aria-label={t('Remove block')}
+                        title={t('Remove block')}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
                       >
-                        <p className="text-sm font-semibold text-slate-100">{template.label}</p>
-                        {showTargetPracticeTime && <p className="text-xs text-slate-400">{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</p>}
+                        <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 transition hover:bg-rose-400">
+                          <span className="relative block h-2.5 w-2.5">
+                            <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-slate-950" />
+                            <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-slate-950" />
+                          </span>
+                        </span>
                       </button>
                     </div>
+                    {!isExpanded && <div className="flex min-h-11 flex-wrap items-center gap-x-3 pl-11 text-sm text-slate-300">
+                      {showTargetPracticeTime && <span>{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</span>}
+                      <span className="font-mono" aria-label={t('Timer')}>{String(timerMinutes).padStart(2, '0')}:{String(timerSeconds).padStart(2, '0')}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleTimer(template.id)}
+                        className="min-h-11 min-w-11 rounded px-3 text-sm font-medium text-sky-300 hover:text-sky-100"
+                      >
+                        {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
+                      </button>
+                    </div>}
 
                     {isExpanded && (
-                      <>
-                        <p className="mt-2 text-sm text-slate-300">
+                      <div className="ml-3 min-w-0 pb-3">
+                        <p className="text-sm text-slate-300">
                           {template.description?.trim() || t('No description available for this practice block.')}
                         </p>
+                        {showTargetPracticeTime && <p className="mt-1 text-sm text-slate-400">{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</p>}
+                        <fieldset className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-300">
+                          <legend className="sr-only">{t('Timer')}</legend>
+                          <button
+                            type="button"
+                            onClick={() => toggleTimer(template.id)}
+                            className="min-h-11 rounded bg-slate-800 px-4 text-sm font-medium text-slate-200"
+                          >
+                            {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => resetTimer(template.id)}
+                            className="min-h-11 rounded border border-slate-700 px-4 text-sm text-slate-300"
+                          >
+                            {t('Reset')}
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            inputMode="numeric"
+                            aria-label={t('{block} timer minutes', { block: template.label })}
+                            value={timerMinutes}
+                            onChange={(event) => updateTimerPart(template.id, 'minutes', event.target.value)}
+                            className="h-11 w-16 rounded border border-slate-700 bg-slate-950 px-2 text-center font-mono text-base text-slate-200"
+                          />
+                          <span className="font-mono text-base text-slate-300">:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            inputMode="numeric"
+                            aria-label={t('{block} timer seconds', { block: template.label })}
+                            value={timerSeconds.toString().padStart(2, '0')}
+                            onChange={(event) => updateTimerPart(template.id, 'seconds', event.target.value)}
+                            className="h-11 w-16 rounded border border-slate-700 bg-slate-950 px-2 text-center font-mono text-base text-slate-200"
+                          />
+                        </fieldset>
                         {includeDefaultExercises && defaultMaterials.length > 0 && (
-                          <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/50 p-3">
-                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{t('Default references')}</p>
+                          <div className="mt-3 space-y-1 border-t border-slate-800 pt-3">
+                            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{t('Default references')}</p>
                             {defaultMaterials.map((material) => (
-                              <div key={material.title} className="rounded border border-slate-800 bg-slate-950/60 px-3 py-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-xs font-medium text-slate-200">{material.title}</p>
+                              <div key={material.title} className="min-w-0 py-1">
+                                <div className="flex min-h-11 items-center justify-between gap-2">
+                                  <p className="min-w-0 break-words text-sm font-medium text-slate-200">{material.title}</p>
                                   {material.filePath && (
-                                    <button type="button" onClick={() => { setActiveMaterialId(null); setActiveDefaultMaterialUrl(material.filePath ?? null); setActiveDefaultMaterialTitle(material.title) }} className="shrink-0 text-xs text-sky-300 hover:text-sky-100">
-                                      {t('Open PDF')}
+                                    <button type="button" onClick={() => { setActiveMaterialState(null); setActiveDefaultMaterial(activeDefaultMaterial?.blockKey === template.key && activeDefaultMaterial.url === material.filePath ? null : { blockKey: template.key, title: material.title, url: material.filePath ?? '' }) }} className="min-h-11 min-w-11 shrink-0 px-2 text-sm text-sky-300 hover:text-sky-100">
+                                      {activeDefaultMaterial?.blockKey === template.key && activeDefaultMaterial.url === material.filePath ? t('Close') : t('Open PDF')}
                                     </button>
                                   )}
                                 </div>
-                                <p className="mt-1 text-xs leading-relaxed text-slate-400">{material.detail}</p>
+                                <p className="break-words text-sm leading-relaxed text-slate-400">{material.detail}</p>
+                                {material.filePath && activeDefaultMaterial?.blockKey === template.key && activeDefaultMaterial.url === material.filePath && (
+                                  <div className="mt-2 overflow-hidden bg-slate-950">
+                                    <object data={encodeURI(material.filePath)} type="application/pdf" aria-label={material.title} className="h-[420px] w-full bg-white">
+                                      <p className="p-3 text-sm text-slate-700">{t('If the PDF does not appear, your browser cannot show it inline.')}</p>
+                                    </object>
+                                    <a href={encodeURI(material.filePath)} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">
+                                      {t('Open in new tab')}
+                                    </a>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
                         )}
                         {(
-                          <div className="mt-3 space-y-2 rounded border border-slate-800 bg-slate-900/60 p-3">
-                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                          <div className="mt-3 min-w-0 space-y-2 border-t border-slate-800 pt-3">
+                            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
                               {t('Materials stay on this device')}
                             </p>
-                            <p className="text-[11px] text-slate-500">
+                            <p className="text-xs text-slate-400">
                               {t('Local storage: {used} used', { used: formatStorageSize(localStorageEstimate.usage) })}
                               {localStorageEstimate.quota != null ? ` ${t('of {quota}', { quota: formatStorageSize(localStorageEstimate.quota) })}` : ''}
                             </p>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                               <button
                                 type="button"
-                                onClick={() => materialFileInputRef.current?.click()}
-                                className="inline-flex cursor-pointer items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100 hover:border-slate-500"
+                                onClick={() => materialFileInputRefs.current[template.key]?.click()}
+                                className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500"
                               >
                                 {t('Choose file')}
                               </button>
                               <input
-                                ref={materialFileInputRef}
-                                id="learning-material-file"
+                                ref={(element) => { materialFileInputRefs.current[template.key] = element }}
+                                id={`learning-material-file-${template.key}`}
                                 type="file"
                                 accept="application/pdf,image/*,text/plain,video/*"
-                                onChange={(event) => { void handleLocalMaterialUpload(event.target.files?.[0]); event.currentTarget.value = '' }}
+                                onChange={(event) => { void handleLocalMaterialUpload(template.key, event.target.files?.[0]); event.currentTarget.value = '' }}
                                 className="sr-only"
                               />
-                              {materialSaveState !== 'idle' && (
-                                <span className={`text-xs ${materialSaveState === 'saved' ? 'text-emerald-300' : 'text-slate-400'}`}>
-                                  {materialSaveState === 'saving' ? t('Saving locally…') : t('Saved on this device')}
+                              {blockFeedback.saveState !== 'idle' && (
+                                <span className={`text-sm ${blockFeedback.saveState === 'saved' ? 'text-emerald-300' : 'text-slate-400'}`}>
+                                  {blockFeedback.saveState === 'saving' ? t('Saving locally…') : t('Saved on this device')}
                                 </span>
                               )}
                             </div>
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <input
                                 type="url"
-                                value={materialUrlInput}
-                                onChange={(event) => setMaterialUrlInput(event.target.value)}
+                                value={materialUrlInputs[template.key] ?? ''}
+                                onChange={(event) => setMaterialUrlInputs((current) => ({ ...current, [template.key]: event.target.value }))}
                                 placeholder={t('Material URL')}
-                                className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+                                className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
                               />
                               <button
                                 type="button"
-                                onClick={() => { void addMaterialUrl() }}
-                                className="rounded border border-slate-700 px-2 py-1.5 text-xs text-slate-300"
+                                onClick={() => { void addMaterialUrl(template.key) }}
+                                className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
                               >
                                 {t('Add URL')}
                               </button>
                             </div>
-                            {learningMaterials.length > 0 && (
-                              <div className="space-y-1">
-                                {learningMaterials.map((material) => (
-                                  <div key={material.id} className="flex items-center justify-between gap-2 text-xs">
+                            {blockMaterials.length > 0 && (
+                              <div>
+                                {blockMaterials.map((material) => (
+                                  <div key={material.id} className="flex min-h-11 items-center justify-between gap-2 text-sm">
                                     <button
                                       type="button"
-                                      onClick={() => { setActiveDefaultMaterialUrl(null); setActiveDefaultMaterialTitle(null); setActiveMaterialId(material.id) }}
-                                      className={`min-w-0 truncate text-left hover:text-sky-200 ${activeMaterialId === material.id ? 'text-sky-200' : 'text-sky-300'}`}
+                                      onClick={() => setActiveMaterial(template.key, material.id)}
+                                      className={`min-h-11 min-w-0 flex-1 truncate text-left hover:text-sky-200 ${activeMaterial?.blockKey === template.key && activeMaterial.id === material.id ? 'text-sky-200' : 'text-sky-300'}`}
                                     >
                                       {material.name}
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => { void removeLearningMaterial(material.id) }}
-                                      className="shrink-0 text-rose-300"
+                                      onClick={() => { void removeLearningMaterial(template.key, material.id) }}
+                                      className="min-h-11 min-w-11 shrink-0 px-2 text-rose-300"
                                     >
                                       {t('Remove')}
                                     </button>
@@ -1830,19 +2047,8 @@ export default function Sessions() {
                                 ))}
                               </div>
                             )}
-                            {activeDefaultMaterialUrl && (
-                              <div className="mt-3 overflow-hidden rounded border border-slate-700 bg-slate-950">
-                                <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-2 py-1.5">
-                                  <span className="min-w-0 truncate text-xs text-slate-300">{activeDefaultMaterialTitle}</span>
-                                  <button type="button" onClick={() => { setActiveDefaultMaterialUrl(null); setActiveDefaultMaterialTitle(null) }} className="shrink-0 text-xs text-slate-400 hover:text-slate-200">
-                                    {t('Close')}
-                                  </button>
-                                </div>
-                                <iframe src={activeDefaultMaterialUrl} title={activeDefaultMaterialTitle ?? t('Default exercise')} className="h-[420px] w-full bg-white" />
-                              </div>
-                            )}
-                            {activeMaterialId && activeMaterialUrl && (() => {
-                              const activeMaterial = learningMaterials.find((material) => material.id === activeMaterialId)
+                            {activeMaterial?.blockKey === template.key && activeMaterialUrl && (() => {
+                              const activeMaterial = activeMaterialRecord
                               if (!activeMaterial) return null
                               const isVideo = activeMaterial.type.startsWith('video/')
                               const isImage = activeMaterial.type.startsWith('image/')
@@ -1851,13 +2057,13 @@ export default function Sessions() {
                               const inlineMaterialUrl = getInlineMaterialUrl(activeMaterial)
 
                               return (
-                                <div className="mt-3 overflow-hidden rounded border border-slate-700 bg-slate-950">
-                                  <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-2 py-1.5">
-                                    <span className="min-w-0 truncate text-xs text-slate-300">{activeMaterial.name}</span>
+                                <div className="mt-3 overflow-hidden bg-slate-950">
+                                  <div className="flex items-center justify-between gap-2 px-2">
+                                    <span className="min-w-0 truncate text-sm text-slate-300">{activeMaterial.name}</span>
                                     <button
                                       type="button"
-                                      onClick={() => setActiveMaterialId(null)}
-                                      className="shrink-0 text-xs text-slate-400 hover:text-slate-200"
+                                      onClick={() => setActiveMaterialState(null)}
+                                      className="min-h-11 min-w-11 shrink-0 px-2 text-sm text-slate-300 hover:text-slate-100"
                                     >
                                       {t('Close')}
                                     </button>
@@ -1868,6 +2074,7 @@ export default function Sessions() {
                                       title={activeMaterial.name}
                                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                                       allowFullScreen
+                                      loading="lazy"
                                       referrerPolicy="strict-origin-when-cross-origin"
                                       className="aspect-video w-full bg-black"
                                     />
@@ -1902,46 +2109,46 @@ export default function Sessions() {
                                         onError={() => setMediaError(t('This video codec or container is not fully supported by this browser.'))}
                                         className="max-h-[420px] w-full"
                                       />
-                                      <div className="space-y-2 rounded border border-slate-800 bg-slate-900/70 p-2">
+                                      <div className="space-y-2 py-2">
                                         <div className="flex items-center justify-between gap-2">
-                                          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{t('Bookmarks')}</p>
+                                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{t('Bookmarks')}</p>
                                           <button
                                             type="button"
                                             onClick={() => { void saveBookmark() }}
-                                            className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                                            className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
                                           >
                                             {t('Save position')}
                                           </button>
                                         </div>
                                         {bookmarks.length > 0 ? (
-                                          <div className="flex flex-wrap gap-1">
+                                          <div className="flex flex-wrap gap-2">
                                             {bookmarks.map((bookmark) => (
-                                              <span key={bookmark} className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300">
-                                                <button type="button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = bookmark }} className="text-sky-300 hover:text-sky-100">
+                                              <span key={bookmark} className="inline-flex items-center rounded border border-slate-700 bg-slate-950 text-sm text-slate-300">
+                                                <button type="button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = bookmark }} className="min-h-11 px-3 text-sky-300 hover:text-sky-100">
                                                   {formatBookmarkTime(bookmark)}
                                                 </button>
-                                                <button type="button" onClick={() => { void removeBookmark(bookmark) }} aria-label={t('Remove bookmark')} className="text-slate-500 hover:text-rose-300">
+                                                <button type="button" onClick={() => { void removeBookmark(bookmark) }} aria-label={t('Remove bookmark')} className="min-h-11 min-w-11 text-slate-300 hover:text-rose-300">
                                                   ×
                                                 </button>
                                               </span>
                                             ))}
                                           </div>
                                         ) : (
-                                          <p className="text-xs text-slate-500">{t('No bookmarks yet')}</p>
+                                          <p className="text-sm text-slate-400">{t('No bookmarks yet')}</p>
                                         )}
                                       </div>
-                                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                                      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
                                         <button
                                           type="button"
                                           onClick={() => setLoopPoint('start')}
-                                          className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500"
+                                          className="min-h-11 rounded border border-slate-700 px-3 hover:border-sky-500"
                                         >
                                           {t('Set A')} {loopStart == null ? '' : `(${loopStart.toFixed(1)}s)`}
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => setLoopPoint('end')}
-                                          className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500"
+                                          className="min-h-11 rounded border border-slate-700 px-3 hover:border-sky-500"
                                         >
                                           {t('Set B')} {loopEnd == null ? '' : `(${loopEnd.toFixed(1)}s)`}
                                         </button>
@@ -1949,21 +2156,21 @@ export default function Sessions() {
                                           type="button"
                                           disabled={loopStart == null || loopEnd == null || loopEnd <= loopStart}
                                           onClick={() => setIsLooping((current) => !current)}
-                                          className="rounded border border-slate-700 px-2 py-1 hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                          className="min-h-11 rounded border border-slate-700 px-3 hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                           {isLooping ? t('Looping') : t('Loop A-B')}
                                         </button>
                                         <button
                                           type="button"
                                           onClick={clearLoop}
-                                          className="rounded border border-slate-700 px-2 py-1 text-slate-400 hover:text-slate-200"
+                                          className="min-h-11 rounded border border-slate-700 px-3 text-slate-300 hover:text-slate-100"
                                         >
                                           {t('Clear')}
                                         </button>
                                       </div>
                                       {activeMaterial.source === 'file' && (
                                         <div>
-                                          <p className="mb-1 text-[11px] text-slate-400">{t('Audio track fallback')}</p>
+                                          <p className="mb-1 text-xs text-slate-400">{t('Audio track fallback')}</p>
                                           <audio
                                             src={activeMaterialUrl}
                                             controls
@@ -1976,6 +2183,15 @@ export default function Sessions() {
                                     </div>
                                   ) : isImage || externalMediaKind === 'image' ? (
                                     <img src={activeMaterialUrl} alt={activeMaterial.name} className="max-h-[420px] w-full object-contain" />
+                                  ) : activeMaterial.type === 'application/pdf' || externalMediaKind === 'pdf' ? (
+                                    <div>
+                                      <object data={activeMaterialUrl} type="application/pdf" aria-label={activeMaterial.name} className="h-[420px] w-full bg-white">
+                                        <p className="p-3 text-xs text-slate-700">{t('If the PDF does not appear, your browser cannot show it inline.')}</p>
+                                      </object>
+                                      <a href={activeMaterialUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">
+                                        {t('Open in new tab')}
+                                      </a>
+                                    </div>
                                   ) : (
                                     <iframe
                                       src={activeMaterialUrl}
@@ -1985,127 +2201,183 @@ export default function Sessions() {
                                   )}
                                   {externalMediaKind === 'embed' && activeMaterial.url && (
                                     <a
-                                      href={activeMaterial.url}
+                                      href={toYouTubeWatchUrl(activeMaterial.url) ?? activeMaterial.url}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="block border-t border-slate-800 px-3 py-2 text-xs text-sky-300 hover:text-sky-200"
+                                      className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200"
                                     >
                                       {t('Playback trouble? Open on YouTube')}
                                     </a>
                                   )}
-                                  {mediaError && <p className="px-3 py-2 text-xs text-rose-300">{mediaError}</p>}
+                                  {mediaError && <p className="py-2 text-sm text-rose-300">{mediaError}</p>}
                                 </div>
                               )
                             })()}
-                            {materialError && <p className="text-xs text-rose-300">{materialError}</p>}
-                            {materialNotice && <p className="text-xs text-amber-300">{materialNotice}</p>}
+                            {blockFeedback.error && <p className="break-words text-sm text-rose-300">{blockFeedback.error}</p>}
+                            {blockFeedback.notice && <p className="break-words text-sm text-amber-300">{blockFeedback.notice}</p>}
                           </div>
                         )}
-                      </>
+                      </div>
                     )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleTimer(template.id)}
-                        className="rounded bg-slate-800 px-2 py-1 text-xs font-medium text-slate-200"
-                      >
-                        {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => resetTimer(template.id)}
-                        className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                      >
-                        {t('Reset')}
-                      </button>
-                    </div>
-
-                    <fieldset className="flex shrink-0 items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">
-                      <legend>{t('Timer')}</legend>
-                      <input
-                        type="number"
-                        min="0"
-                        inputMode="numeric"
-                        aria-label={`${template.label} timer minutes`}
-                        value={timerMinutes}
-                        onChange={(event) => updateTimerPart(template.id, 'minutes', event.target.value)}
-                        className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm font-mono text-slate-200"
-                      />
-                      <span className="font-mono text-sm text-slate-300">:</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="59"
-                        inputMode="numeric"
-                        aria-label={`${template.label} timer seconds`}
-                        value={timerSeconds.toString().padStart(2, '0')}
-                        onChange={(event) => updateTimerPart(template.id, 'seconds', event.target.value)}
-                        className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm font-mono text-slate-200"
-                      />
-                    </fieldset>
-
-                    <button
-                      type="button"
-                      onClick={() => removeBlock(template.id)}
-                      aria-label={t('Remove block')}
-                      title={t('Remove block')}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-sm font-black leading-[0] text-slate-950 transition hover:bg-rose-400"
-                    >
-                      <span aria-hidden="true" className="relative block h-2.5 w-2.5">
-                        <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-slate-950" />
-                        <span className="absolute left-1/2 top-1/2 h-0.5 w-2.5 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-slate-950" />
-                      </span>
-                    </button>
                   </div>
                 </div>
               )
             })}
           </div>
+        <div aria-live="polite">
+          {removedBlock && (
+            <div className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded border border-slate-700 bg-slate-900 pl-3">
+              <span className="text-sm text-slate-200">{t('Block removed')}</span>
+              <button type="button" onClick={undoRemoveBlock} className="min-h-11 px-4 text-sm font-medium text-sky-300 hover:text-sky-100">
+                {t('Undo')}
+              </button>
+            </div>
+          )}
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <label className="block space-y-1 text-sm">
-            <span className="block text-slate-300">{t('Notes')}</span>
-            <textarea
-              rows={3}
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2"
-              placeholder={t('What did you work on?')}
-            />
-          </label>
+        {selectedBlocks.length > 0 && (
+          <div data-tour="practice-block-picker" className="mt-3">
+            {availableTemplates.length > 0 && (
+              <button
+                ref={addBlockButtonRef}
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() => setIsBlockPickerOpen(true)}
+                className="flex h-12 w-full items-center justify-center rounded-lg border border-dashed border-slate-600 text-sm font-medium text-slate-200 hover:border-sky-500"
+              >
+                + {t('Add another block')}
+              </button>
+            )}
+          </div>
+        )}
 
-          
-
-          {message && <p className="text-sm text-emerald-400">{message}</p>}
-          {error && <p className="text-sm text-red-400">{error}</p>}
-
-          <button
-            type="submit"
-            data-tour="practice-save"
-            disabled={saving}
-            className="rounded bg-slate-100 px-3 py-2 font-medium text-slate-900 disabled:opacity-50"
+        {isBlockPickerOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70"
+            onClick={(event) => { if (event.target === event.currentTarget) closeBlockPicker() }}
           >
-            {saving ? t('Saving…') : t('Save session')}
-          </button>
-        </form>
+            <div
+              ref={blockSheetRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="practice-block-sheet-title"
+              className="max-h-[80dvh] w-full max-w-3xl overflow-y-auto rounded-t-xl border-t border-slate-700 bg-slate-900 p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h2 id="practice-block-sheet-title" className="text-lg font-semibold text-slate-100">{t('Add a block')}</h2>
+                <button type="button" onClick={closeBlockPicker} className="min-h-11 min-w-11 rounded px-3 text-sm text-slate-300 hover:text-white">
+                  {t('Close')}
+                </button>
+              </div>
+              {renderBlockPicker(availableTemplates)}
+            </div>
+          </div>
+        )}
       </section>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+      <form onSubmit={handleSubmit} className="space-y-4 border-t border-slate-800 py-4">
+        <label className="block space-y-1 text-sm">
+          <span className="block text-slate-300">{t('Notes')}</span>
+          <textarea
+            rows={3}
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base"
+            placeholder={t('What did you work on?')}
+          />
+        </label>
+
+        {message && <p ref={messageRef} tabIndex={-1} role="status" className="msg-success focus:outline-none">{message}</p>}
+        {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+
         <button
-          type="button"
-          onClick={() => setIsRecentSessionsOpen((current) => !current)}
-          aria-expanded={isRecentSessionsOpen}
-          className="flex w-full items-center justify-between gap-2 text-left"
+          type="submit"
+          data-tour="practice-save"
+          disabled={saving}
+          aria-disabled={!canSave || saving}
+          aria-describedby={canSave ? undefined : 'practice-save-hint'}
+          className={`min-h-11 w-full rounded bg-slate-100 px-4 font-medium text-slate-900 disabled:opacity-50 sm:w-auto ${canSave ? '' : 'cursor-not-allowed opacity-50'}`}
         >
-          <h2 className="text-lg font-semibold">{t('Recent sessions')}</h2>
-          <span className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300">
-            {t(isRecentSessionsOpen ? 'Hide' : 'Show')}
-          </span>
+          {saving ? t('Saving…') : t(selectedBlocks.length === 0 && savedForDate ? 'Save changes' : 'Save session')}
         </button>
+        {!canSave && <p id="practice-save-hint" className="text-sm text-slate-400">{t('Add a block to save a session.')}</p>}
+      </form>
+
+      <section className="border-t border-slate-800 py-4">
+        <h2>
+          <button
+            type="button"
+            onClick={() => setIsTodoOpen((current) => !current)}
+            aria-expanded={isTodoOpen}
+            aria-controls="practice-todo-panel"
+            className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-base font-semibold"
+          >
+            <span>{t('ToDo')} · {todosDone}/{todos.length}</span>
+            <span className="text-sm font-normal text-slate-400">{t(isTodoOpen ? 'Hide' : 'Show')}</span>
+          </button>
+        </h2>
+
+        {isTodoOpen && (
+          <div id="practice-todo-panel" className="mt-2 space-y-2">
+            {todos.length === 0 && <p className="text-sm text-slate-400">{t('No ToDo items yet for this week.')}</p>}
+            {todoError && <p role="alert" className="text-sm text-red-400">{todoError}</p>}
+
+            {todos.map((todo, index) => (
+              <div key={`${todo.id}-${index}`} className="flex min-h-11 items-center gap-1">
+                <label className="flex h-11 w-11 shrink-0 items-center justify-center">
+                  <input
+                    type="checkbox"
+                    checked={todo.done}
+                    aria-label={todo.name || t('ToDo name')}
+                    onChange={(event) => { void toggleTodoDone(index, event.target.checked) }}
+                    className="h-5 w-5 rounded border-slate-700 bg-slate-950"
+                  />
+                </label>
+                <input
+                  value={todo.name}
+                  onChange={(event) => updateTodo(index, { name: event.target.value })}
+                  onBlur={(event) => { void saveTodo({ ...todo, name: event.currentTarget.value }) }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() } }}
+                  className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 text-base outline-none transition focus:border-slate-500"
+                  placeholder={t('ToDo name')}
+                />
+                <button
+                  type="button"
+                  onClick={() => { void removeTodo(index) }}
+                  aria-label={t('Remove')}
+                  title={t('Remove')}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-lg text-slate-400 hover:text-rose-300"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={addTodo}
+              className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
+            >
+              {t('+ Add ToDo')}
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="border-t border-slate-800 py-4">
+        <h2>
+          <button
+            type="button"
+            onClick={() => setIsRecentSessionsOpen((current) => !current)}
+            aria-expanded={isRecentSessionsOpen}
+            className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-lg font-semibold"
+          >
+            <span>{t('Recent sessions')}</span>
+            <span className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-normal text-slate-300">
+              {t(isRecentSessionsOpen ? 'Hide' : 'Show')}
+            </span>
+          </button>
+        </h2>
 
         {isRecentSessionsOpen && (
           <div className="mt-3 space-y-3">
@@ -2115,8 +2387,8 @@ export default function Sessions() {
               <button
                 key={session.id}
                 type="button"
-                onClick={() => handleOpenRecentSession(session)}
-                className="w-full rounded border border-slate-800 bg-slate-900/70 p-3 text-left transition hover:border-slate-600"
+                onClick={() => confirmDiscard(() => handleOpenRecentSession(session))}
+                className="min-h-11 w-full rounded border border-slate-800 bg-slate-900/70 p-3 text-left transition hover:border-slate-600"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div>
@@ -2145,29 +2417,5 @@ export default function Sessions() {
         )}
       </section>
     </div>
-  )
-}
-
-function MetronomeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7.5 20h9l-1.7-11h-5.6L7.5 20Z" />
-      <path d="M9.2 9 7.6 5.8 9.8 4l2.2 5" />
-      <path d="M14.2 9 16 5.4" />
-      <path d="M16 5.4h2.4" />
-      <path d="M12 10.5v7" />
-      <path d="M5.8 20h12.4" />
-    </svg>
-  )
-}
-
-function TunerIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 4v7.5a4 4 0 0 0 8 0V4" />
-      <path d="M6 4h4M14 4h4" />
-      <path d="M12 15.5V20M8 20h8" />
-      <path d="M12 7v2" />
-    </svg>
   )
 }

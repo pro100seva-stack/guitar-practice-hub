@@ -76,22 +76,120 @@ No blocking items.
    - no Settings replay action (replaced by per-screen Help)
 
 14. **Completed — 2026-10-03 (owner manual test passed):** QA pass on the guided tour and multilingual coverage
-   - all findings below were fixed in code and pass lint/build; the metronome-only highlight on the Practice tools step is deferred as cosmetic
-   - findings: Plan tour silently lost when no week covers today; 1.5 s anchor timeout short on slow loads; flag-clear write unchecked; tour copy inconsistent with app labels in RU/IT/FR; shared `Next`/`Done` keys changed existing labels; possible Home page overflow with the Help footer
-   - runs after item 13 and verifies new account, repeat login, second device, per-screen Help replay, and all four languages
+   - code review findings were fixed and passed lint/build; the metronome-only highlight on the Practice tools step is deferred as cosmetic
+   - owner verified onboarding, per-screen Help, phone layouts, and desktop Home
 
-16. **In progress — 2026-10-03:** Collapsible featured-guitar note on Home
+16. **Completed — 2026-10-03 (owner device check passed):** Collapsible featured-guitar note on Home
    - the Home footer shows only the guitar name as a collapsed, tappable control (default state)
    - activating it expands the existing description text; activating it again collapses it
    - expanded state is not persisted; every visit to Home starts collapsed
    - keyboard and screen-reader accessible (button with `aria-expanded`); localized EN/RU/IT/FR via existing keys
    - assumed: the name is shown with a leading asterisk as a footnote marker ("*Frankenstrat") and the "Featured guitar" label is hidden while collapsed
-   - 2026-10-03: also fixed Home on mobile (guitar image dimmed and faded, nav buttons near-opaque below lg, tighter spacing, 2-line clamp on the Current Week text); QA passed from code, owner device check pending
+   - 2026-10-03: mobile Home image contrast, button readability, layout spacing, and Current Week text clamp were verified by the owner on phone; desktop was verified at 1280px
 
-15. **Open — 2026-10-03:** Harden data integrity and add a safety net
-   - add database `CHECK` constraints (or enums) for `songs.status`, `sessions.source`, and `block_templates.key` after verifying existing data conforms
-   - add automated tests for the highest-risk logic (session block save, program continuation, week insertion/renumbering)
-   - scope of the first test slice to be confirmed with the Solution Architect
+15. **Completed — 2026-10-03 (constraints and continuation RPC applied; local reset and 35 pgTAP tests pass; follow-ups deferred):** Harden data integrity and add a safety net
+   - add named PostgreSQL `CHECK` constraints, retaining `NOT NULL`: `songs.status` in (`planned`, `learning`, `maintained`, `retired`); `sessions.source` in (`app`, `notion_import`); `block_templates.key` in (`warmup`, `technique`, `rhythm`, `harmony`, `repertoire`, `evening`, `learning`)
+   - before migration, run read-only live preflight queries for null and unknown values; stop and review any results rather than silently rewriting existing data
+   - use a new timestamped migration with `CHECK ... NOT VALID`, then validate each constraint; sync `supabase/schema.sql`; preserve free-text `session_blocks.block_key`
+   - begin automated coverage with Vitest Node unit tests for pure session-block save planning and default-program continuation decisions
+   - use Vitest for pure Node unit tests; declare supported Node versions as `^22.12.0 || ^24.0.0 || >=26.0.0` to match Vitest 5, with Node 22.12 as the local default
+   - add pgTAP tests for plan-week RPC date/number shifts, transactional rollback, removal, and owner isolation; run only against local Supabase, never live data
+   - before pgTAP, establish a reproducible local Supabase config and baseline for legacy `01`-`09` migrations without editing or rewriting those existing migration files
+   - keep session-block persistence at the current pure planner unit-test boundary for this slice; testing the actual Supabase delete/upsert request sequence is deferred
+   - no broad React/DOM harness; validate Node version support, pure tests, and local DB tests independently
+   - read-only live preflight returned zero null or unknown values for all three fields
+   - migration `20261003110000_add_practice_field_domain_constraints.sql` was applied alone and recorded as applied; verification confirmed all three constraints are validated and all domains still have zero offending rows
+   - linked migration history now shows 21 applied and zero pending; audit details are documented in `docs/project-handoff.md`
+   - Vitest unit-test slice passes (2 files, 8 tests); the compatible Node engine range is declared in `package.json`; session deletion is not exercised against Supabase
+   - scope was approved by the Solution Architect; local Supabase RPC integration coverage for week insertion/renumbering remains deferred, as does testing the actual Supabase deletion consumer
+   - local Supabase bootstrap is verified: the analytics container (Logflare) was unhealthy on Windows Docker and the CLI was ignoring the config because it sat outside `<workdir>/supabase/`; config moved, analytics/studio/inbucket/edge runtime disabled, a fresh `db reset --local` replays all 32 migrations, and 35 pgTAP tests pass (plan-week RPCs and `continue_default_program`)
+   - QA found and verified a continuation mismatch; fixed it so an overdue active Default program schedules the current UTC Monday-Sunday week, then does not continue again during that week
+   - approved overlap policy: if any scheduled user week overlaps the current UTC Monday-Sunday target, skip/defer continuation without modifying existing weeks; insert only when no overlap exists
+   - migration `20261003120000_serialize_default_program_continuation.sql` was applied alone and recorded after owner approval; catalog verification confirmed the RPC, lock helper, triggers, and rewritten RPCs. The frontend caller is in the worktree and must be released for the live app to use it
+   - QA reviewed the implementation: pass with issues; multi-user bulk writes could deadlock on per-user row-trigger locks, with one transaction aborted. Confirm whether any supported bulk path needs retry handling before calling the database path fully verified
+   - Sunday and year-boundary UTC inputs are covered by unit tests; UTC-midnight boundary behaviour in SQL is not covered because tests compute the current Monday at run time
+   - deferred follow-ups: testing the real Supabase session-block delete/upsert sequence; retry handling if a multi-user service-role bulk write is ever added (possible lock deadlock); `add_plan_week` and `insert_plan_week` do not check date overlap, so callers must supply non-overlapping dates; `add_plan_week` pauses the active program while `insert_plan_week` does not
+   - final pending migration `20260925150000_remove_unused_preferences.sql` was applied after owner approval; its three unused preference columns were dropped (two contained non-default values)
+   - local-only migration snapshots are isolated under `supabase/local-test/` and do not appear in the linked migration list
+
+17. **Implemented — 2026-10-03 (code QA pass; owner browser check pending):** Fix learning-materials cross-block duplication and test the whole feature
+   - QA follow-ups fixed: saving a bookmark no longer restarts the video or clears the A-B loop, stale blob flash on switching, delete error handling and stale-load protection, localized errors
+   - root cause found: one shared materials list and one shared current-block key for all blocks (so every expanded block showed the same list and saves could land in the wrong block), a single shared file-input ref, a global load counter, and an unconditional mount-time load of the `learning` block; IndexedDB keying was correct
+   - fixed with per-block state, explicit owning block key on every load/save/delete/bookmark, per-block stale-response protection, and a per-block file input; new `src/lib/materialScope.ts` with unit tests
+   - a material uploaded or opened in one practice block must never appear in another block; materials stay scoped to the owning block key
+   - suspected cause to verify: Sessions.tsx loads materials into one shared state (`loadLearningMaterials`, including an unconditional `loadLearningMaterials('learning')` on mount) so late or stale async loads overwrite the visible list
+   - QA covers upload, link, bookmark, delete, switching blocks quickly, reload, and default vs user materials across all seven blocks
+
+18. **Implemented — 2026-10-03 (browser check pending):** Default-material PDFs open reliably and in place
+   - likely cause of the blank viewer: the PWA service worker answered the iframe's navigation to the PDF with `index.html` (no navigation denylist) and the 19 MB PDF exceeds the precache limit; `vite.config.ts` now denies `/default-exercises/` and excludes PDFs from precache; the blank frame itself was not reproduced
+   - the viewer opens inside the material's own row with an always-visible "Open in new tab" fallback
+   - "Open PDF" shows the viewer inside the same container as its button (not below the list)
+   - PDFs actually render; the current blank white viewer is investigated (path, content type, service worker/PWA caching, iframe/embed headers) and fixed
+   - applies to default PDFs under `public/default-exercises/` and still respects the default-exercise Settings toggle
+
+19. **Implemented — 2026-10-03 (code QA pass):** YouTube links work as plain links
+   - scheme-less links (`youtube.com/watch?v=...`) are accepted; invalid YouTube-host links show a localized error instead of being saved as page links; the fallback link opens a real watch URL
+   - `src/lib/youtube.ts` converts watch, youtu.be, shorts, live, embed, m. and music. URLs and pasted iframe snippets to a nocookie embed with `start=` seconds; only exact hosts and 11-character IDs are accepted; unit tests cover lookalike hosts and `javascript:`/`data:` input
+   - pasting a normal YouTube URL (`watch?v=`, `youtu.be/`, `shorts/`, `live/`, with or without extra query parameters or a timestamp) is converted automatically to the embed form
+   - pasting the `<iframe>` snippet keeps working; invalid or non-YouTube URLs keep the current handling
+   - add unit tests for the URL conversion
+
+20. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone check pending):** Practice screen header on mobile
+   - the screen title is no longer offset to the right or covered by the metronome icon
+   - verified at 320, 360, 390, and 430 px widths and with all four languages
+
+21. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone check pending):** Practice screen mobile layout
+   - UX design recorded: grid header with a centered title, one sticky in-flow tools bar replacing the two fixed icons, flat full-bleed sections instead of nested cards, 44px controls, single-column desktop; implementation split into steps (header and tools bar, section flattening, empty-blocks flow, block-row flattening)
+   - UX Designer reviews the Practice screen on mobile: too many nested containers each with their own margins make the content narrow
+   - apply best practices (reduce nested cards and horizontal padding, use full-width sections and dividers, consistent spacing scale) and hand a concrete spec to the Frontend Developer
+
+22. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone check pending):** No practice blocks shown by default
+   - also fixed after QA: ToDo changes now persist immediately and independently of Save (they no longer depend on a saved session)
+   - decisions adopted from UX defaults: today/future/past days without a saved session start empty; saved sessions still show their saved blocks; inline picker when empty and a bottom sheet to add more; blocks shown in the order added; newly added block opens and the others collapse; undo toast on remove; Save is disabled with zero blocks unless clearing an already saved session (this also removes the phantom 45-minute default); the week-card strip is collapsed behind a week select; dirty-state prompt before discarding edits
+   - assumed behaviour (to confirm with UX and owner): a new or empty day starts with no blocks; the user chooses which block to start with from a block picker and adds others as needed
+   - UX Designer specifies the flow, including how it interacts with the existing add/remove-block and expand/collapse behaviour, saved sessions, and the guided tour
+
+23. **Audit complete — 2026-10-03 (awaiting owner approval to implement):** Guided tour coverage audit
+   - UX recommends Plan 7 steps, Practice 6, Stats 3, Home 5 (adds a Help step), Progress 2, Settings 2; about 33 new keys across four languages; fix scoped anchors, reorder Stats steps, and avoid anchoring conditional elements; Plan first, Practice after its layout lands
+   - UX Designer assesses which steps are worth adding on every screen (Plan is busy but the tour covers few aspects; new users can get lost)
+   - output is a prioritized step list per screen with anchors and copy keys; implementation follows after owner approval
+
+24. **Implemented — 2026-10-03 (owner phone check pending):** Home featured-guitar note placement
+   - move the collapsible "*Frankenstrat" container underneath the guitar image, aligned to the right
+   - keep collapsed-by-default behaviour, readability on mobile, and the guided-tour anchors
+
+25. **Implemented — 2026-10-03 (owner visual check pending):** Metronome and tuning-fork icons from references
+   - `docs/references/metronome.png` and `docs/references/tuning_fork.png` are shape references only (no backgrounds)
+   - recreate the shapes as vector icons (preferred) or use the shapes without their background; keep the metronome button's tap, hold, and beat-ring behaviour
+
+30. **Requested — 2026-10-04 (after YouTube playback QA):** Restore a prominent Practice total-time counter
+   - the current total exists as a subdued "Practice time: N min" line beneath the selected-date heading; promote it so it is easy to find
+   - UX recommendation: keep the total directly beneath that heading, above the blocks or empty picker; use a semibold, high-contrast value with tabular numerals and normal body-size label
+   - preserve the header (metronome/tuner only), existing spacing, and current total calculation; no new card, sticky bar, or duplicate total near Save
+   - reuse `Practice time` and `{minutes} min` in EN/RU/IT/FR; display 0 min when empty, and verify active, paused, saved, and cleared-block states
+   - verify wrapping at 320px and 200% text scaling; do not resolve rounding item 26 as part of this visual fix
+
+26. **Open — 2026-10-03 (needs owner decision):** Practice minute accounting consistency
+   - the session total uses floor plus a half-minute round-up while the saved block minutes use at least 1 and ceiling, so a 61 s block shows 1 min but saves 2 min; recommended: one shared rounding helper used by both
+
+27. **Open — 2026-10-03 (needs owner decision):** Clearing a saved session
+   - removing every block of a saved session and pressing "Save changes" currently leaves a 0-minute session row that Stats, streak and day markers may still count; recommended: delete the session row when no blocks remain
+
+28. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone check pending):** Practice screen refinements
+   - remove the metronome settings gear; settings open by long press on touch and right click on desktop (as before)
+   - the metronome and tuner icons return to the same container as the Practice page header, made smaller if needed, without changing the header's size or structure; the sticky tools bar is removed
+   - the red marker for the current day returns on the day strip
+   - one timer control per block: the minimal control (elapsed time with play/pause) when collapsed, the full control with manual minutes and seconds entry when expanded, never both
+   - delivered: metronome and tuner buttons are 40px in the header's right slot on `/practice` via a portal slot (below the 44px guideline, accepted); the gear is removed (long press, right click, Shift+Enter and Shift+F10 open settings); current-day red dot restored; one timer control per block; blocks added collapsed with chevron and "Details" label
+
+29. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone and desktop check pending):** Uniform design across all screens
+   - apply the Practice layout principles (full-bleed sections with dividers instead of nested cards, removal of unneeded container margins and padding, 44px controls, consistent spacing scale and headings) to Home, Progress, Plan, Stats and Settings
+   - the UX Designer produces one shared spec first, then the Frontend Developer applies it screen by screen
+
+23. **Re-run complete — 2026-10-03 (awaiting owner approval to implement):** guided tour plan against the new layout
+   - proposed cards: Home 4 (Menu and Help, Plan your week, Practice and log, Track progress), Plan 5 (Your weeks, Selected week, Weekly tasks, ToDo list, Save your plan), Practice 4 (Pick a day, Add a block, Metronome and tuner, Save your session), Progress 2, Stats 2, Settings 2: 19 cards in total, about 29 new keys in four languages
+   - mechanics to add first: start the tour sooner than the current 6 s anchor wait, an "n of N" counter, better card placement on mobile, close tool panels when a tour starts, "Skip tour" label
+   - open decisions: Plan 5 cards instead of 7; fold the Help button into the menu card (it is hidden while a tour runs, so it cannot be spotlighted); a recovery action when a user has no week covering today (Plan and Progress currently point at each other)
 
 9. **Completed — 2026-09-25:** Start the default program on account creation
    - week 1 starts on the account-creation date rather than the next Monday
@@ -150,9 +248,9 @@ No blocking items.
 
 5. **Completed — 2026-09-22:** Default program continuation
    - default program rows are created with program metadata for new users
-   - logged-in continuation appends one logical default-program week after the last scheduled Default week
-   - missed time does not create catch-up weeks
-   - continuation is idempotent and safe for re-entry
+   - continuation applies only to an active Default program; custom programs are not auto-extended
+   - if its last week ended before the current UTC date, login creates exactly one week for the current UTC Monday-Sunday
+   - missed calendar weeks are not backfilled, and later logins in that same UTC week do not add another week
 
 6. **Completed — 2026-09-22:** Program start, pause, and resume actions
    - `start_default_program`, `start_custom_program`, `pause_current_program`, and `resume_program` exist and are wired into Plan actions
@@ -288,12 +386,13 @@ Context: the app now has a working program model that separates scheduled calend
 - 2026-10-03 — Owner confirmed: Skip ends the whole tour; replay is a per-screen bottom Help button instead of a Settings action.
 - 2026-10-03 — Backlog review found no open items. Owner chose a QA/hardening focus (items 14, 15) before the next feature, and asked to rework the guided tour to be per-screen, one-time after registration, and replayable per screen (item 13). The current tour stores completion in browser `localStorage` per user, so it restarts on a new device and only covers the Home screen.
 
+- 2026-10-03 — Owner confirmed the Home fixes on phone and desktop; item 16 closed. A Cloudflare Pages build failure ("Build failed to initialize") was a Cloudflare-side incident, not a code issue, and builds work again.
+
 ## Recommended next steps
 
 1. Keep the current Flexible Programs and localization models as the baseline.
-2. Deliver item 13 (per-screen, once-per-account guided tour with per-screen Help replay), then verify it with item 14.
-3. Deliver item 15 (data-integrity constraints and tests).
-4. Choose the next feature afterwards (candidates: practice streaks/goals, song repertoire tracking).
+2. Deliver item 15 (data-integrity constraints and tests).
+3. Choose the next feature afterwards (candidates: practice streaks/goals, song repertoire tracking).
 
 ## Delivery pipeline
 

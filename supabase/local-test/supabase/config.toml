@@ -1,0 +1,18 @@
+# Local disposable database configuration for item-15 backend tests.
+project_id = "guitar-practice-hub-local"
+
+[db.seed]
+# Existing fixture SQL targets a real account email; local DB tests start empty.
+enabled = false
+# Logflare is unhealthy on Windows Docker and is not needed for DB tests.
+[analytics]
+enabled = false
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[edge_runtime]
+enabled = false

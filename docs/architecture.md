@@ -78,10 +78,15 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 4. Current and future weeks expose inline insertion forms backed by `insert_plan_week`, which shifts later scheduled weeks without pausing the active program.
 
 ### Continuing the Default program
-1. Auth restoration triggers `ensureDefaultProgramContinuation()` from the auth gate.
-2. The app loads the active default program, its stored content language, and its last scheduled week.
-3. If the final week is in the past, it inserts the next logical week using the program's stored language.
-4. The app keeps the continuation idempotent and avoids creating catch-up weeks for missed time.
+1. Auth restoration asks the client to load the active Default program's immutable content language and matching focus/task copy, then calls one database RPC. The client does not decide whether continuation is due or calculate dates.
+2. The RPC authenticates with `auth.uid()`, takes the user's transaction-scoped schedule lock, and checks that an owned Default program is active.
+3. The database calculates today's date in UTC and the current UTC Monday-Sunday interval. It continues only when the last scheduled Default week ended before UTC today.
+4. Before inserting, the RPC checks every scheduled week owned by the user for an inclusive date overlap with that interval. An overlap returns a conflict without inserting, shifting, or otherwise mutating any week. Unscheduled weeks have all three scheduling fields null and do not overlap.
+5. On success, the RPC inserts one week in the current UTC interval. A retry in the same week is a no-op because the inserted week is now the latest scheduled Default week. Missed weeks are never backfilled; custom programs are not auto-extended.
+
+Continuation and competing schedule mutations share one per-user transaction lock. RPCs take it before reading or changing schedule state; database triggers take it for direct schedule-field writes and program lifecycle changes, including service-role writes. This serialization makes the overlap check and insertion atomic with manual rescheduling and other schedule changes.
+
+Migration `20261003120000_serialize_default_program_continuation.sql` was applied alone to the linked database and catalog-verified on 2026-10-03. The frontend caller is in the worktree and must be released separately. A fresh local reset and pgTAP tests (overlap, not-due, inactive, language mismatch, same-week repeat) pass against it. QA noted that a service-role bulk transaction touching multiple users in opposite row order can deadlock on per-user trigger locks; PostgreSQL aborts one transaction, and any supported bulk caller should have retry handling.
 
 ### Language selection and content ownership
 1. A new user selects a language only in Create account mode.
@@ -101,7 +106,8 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 - `session_blocks` uses unique `(session_id, block_key)` and the Sessions write path performs targeted delete plus upsert.
 - Flexible Programs intentionally uses nullable week dates for unscheduled branch rows; all read paths must filter them before showing visible plan/calendar state.
 - New scheduled weeks are program-owned and carry a required `program_sequence`; the unused `plan_weeks.phase` field is no longer part of the model.
-- Enum-like fields such as `songs.status`, `sessions.source`, and `block_templates.key` are open `text` fields without database `CHECK` constraints. This is an explicit v1 trade-off; the application and seed data currently enforce the expected values by convention.
+- `songs.status`, `sessions.source`, and `block_templates.key` are `text` fields with existing `NOT NULL` declarations. The item-15 preflight returned zero null or unknown values on 2026-10-03. Migration `20261003110000_add_practice_field_domain_constraints.sql` adds named PostgreSQL `CHECK` constraints using songs (`planned`, `learning`, `maintained`, `retired`), session sources (`app`, `notion_import`), and template keys (`warmup`, `technique`, `rhythm`, `harmony`, `repertoire`, `evening`, `learning`) via `NOT VALID` then validation. It was applied alone and verified validated on 2026-10-03. `session_blocks.block_key` remains free text for imported categories and is not covered by the template-key constraint.
+- Pure logic tests use Vitest in Node; its supported runtime range is `^22.12.0 || ^24.0.0 || >=26.0.0`, with Node 22.12 as the proposed local default. Plan-week RPC integration tests should use pgTAP against a disposable local Supabase instance only. The isolated local config and historical migration baseline live under `supabase/local-test/supabase/`; run with `npx supabase --workdir supabase/local-test`. A fresh local reset and 35 pgTAP tests pass; see `supabase/LOCAL_TESTING.md`. Never point DB tests at the linked production project or treat the local baseline as remote migration history.
 - Microphone pitch detection is deferred. The tuner reference-tone slice and the local learning-materials viewer are live.
 - Mobile pinch zoom is intentionally disabled through the viewport configuration.
 - The language preference and UI string catalog support English, Russian, Italian, and French. User-owned content remains in its stored language by design.

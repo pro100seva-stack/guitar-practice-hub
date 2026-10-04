@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { useI18n } from '../lib/i18n'
@@ -123,11 +123,9 @@ function getWeekKey(dateValue: string) {
   return formatDateForInput(start)
 }
 
-function shouldShowChartLabel(index: number, total: number) {
-  if (total <= 8) return true
-  if (total <= 16) return index === 0 || index === total - 1 || index % 2 === 0
-  if (total <= 28) return index === 0 || index === total - 1 || index % 3 === 0
-  return index === 0 || index === total - 1 || index % 4 === 0
+function chartLabelStep(total: number, chartWidth: number) {
+  const maxLabels = Math.max(2, Math.floor((chartWidth - 72) / 80))
+  return Math.max(1, Math.ceil(total / maxLabels))
 }
 
 export default function Stats() {
@@ -144,10 +142,23 @@ export default function Stats() {
   const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const chartBoxRef = useRef<HTMLDivElement | null>(null)
+  const [chartBoxWidth, setChartBoxWidth] = useState(0)
 
   useEffect(() => {
     void loadStats()
   }, [])
+
+  useEffect(() => {
+    const box = chartBoxRef.current
+    if (!box) return
+    setChartBoxWidth(box.clientWidth)
+    const observer = new ResizeObserver((entries) => {
+      setChartBoxWidth(Math.round(entries[0].contentRect.width))
+    })
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [loading])
 
   async function loadStats() {
     setLoading(true)
@@ -299,11 +310,9 @@ export default function Stats() {
     setHoveredPointIndex(null)
   }, [sessions, rangeStart, rangeEnd, chartScale])
 
-  if (loading) return <p className="text-sm text-slate-400">{t('Loading…')}</p>
-  if (error) return <p className="text-red-400">{t('Error: {error}', { error })}</p>
-
-  const chartWidth = 720
-  const chartHeight = 320
+  const chartWidth = chartBoxWidth > 0 ? Math.max(chartBoxWidth, 280) : 720
+  const chartHeight = Math.min(288, Math.max(200, Math.round(chartWidth * 0.6)))
+  const labelStep = chartLabelStep(chartPoints.length, chartWidth)
   const chartPadding = 36
   const maxValue = Math.max(...chartPoints.map((point) => point.value), 1)
   const chartPointsWithCoords = chartPoints.map((point, index) => {
@@ -425,256 +434,267 @@ export default function Stats() {
   })()
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <h1 className="text-xl font-semibold">{t('Stats')}</h1>
-        <p className="mt-1 text-sm text-slate-400">{t('A simple overview of your practice history.')}</p>
-      </section>
-
-      <div data-tour="stats-summary" className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">{t('Practice time')}</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.totalMinutes ?? 0} {t('min')}</p>
-        </div>
-
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">{t('Sessions logged')}</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.totalSessions ?? 0}</p>
-        </div>
-
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">{t('Current streak')}</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.streakDays ?? 0} {t('days')}</p>
-        </div>
-
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm text-slate-400">{t('Selected period')}</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">{summary?.selectedPeriodMinutes ?? 0} {t('min')}</p>
-        </div>
+    <div className="page-wide">
+      <div className="pb-4">
+        <h1 className="page-title">{t('Stats')}</h1>
+        <p className="meta mt-1">{t('A simple overview of your practice history.')}</p>
+        {error && <p role="alert" className="msg-error mt-2">{t('Error: {error}', { error })}</p>}
+        {loading && <p role="status" className="state pb-0">{t('Loading…')}</p>}
       </div>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm text-slate-400">{t('Last session')}</p>
-            <p className="mt-1 text-lg font-medium text-slate-200">
-              {summary?.lastSessionDate ? formatDate(summary.lastSessionDate, locale) : t('No sessions yet')}
-            </p>
-          </div>
-          <div className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-300">
-            {summary?.lastSessionMinutes ?? 0} {t('min')}
-          </div>
-        </div>
+      {(
+        <>
+          <section data-tour="stats-filters" className="section">
+            <div className="flex flex-wrap gap-2">
+              {(['current-week', 'current-month', 'this-year', 'custom'] as FilterPreset[]).map((preset) => {
+                const label = preset === 'current-week'
+                  ? t('Current week')
+                  : preset === 'current-month'
+                    ? t('Current Month')
+                    : preset === 'this-year'
+                      ? t('This year')
+                      : t('Custom range')
 
-        <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-slate-400">{t('Cumulative practice time')}</p>
-              <div className="flex flex-wrap gap-2">
-                {(['daily', 'weekly', 'monthly', 'yearly'] as ChartScale[]).map((scale) => (
+                return (
                   <button
-                    key={scale}
+                    key={preset}
                     type="button"
-                    onClick={() => setChartScale(scale)}
-                    className={`rounded border px-2.5 py-1 text-xs uppercase tracking-wide ${chartScale === scale ? 'border-slate-200 bg-slate-100 text-slate-900' : 'border-slate-700 bg-slate-900 text-slate-300'}`}
+                    aria-pressed={filterPreset === preset}
+                    onClick={() => setFilterPreset(preset)}
+                    className="chip"
                   >
-                    {t(scale)}
+                    {label}
                   </button>
-                ))}
-              </div>
-            </div>
-            <div className="relative">
-              <svg
-                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                className="h-72 w-full"
-                role="img"
-                aria-label={t('Cumulative practice timeline')}
-                onMouseMove={(event) => {
-                  if (chartPointsWithCoords.length === 0) return
-                  const bounds = event.currentTarget.getBoundingClientRect()
-                  const scaleX = chartWidth / bounds.width
-                  const relativeX = Math.min(chartWidth - chartPadding, Math.max(chartPadding, (event.clientX - bounds.left) * scaleX))
-                  const closestPoint = chartPointsWithCoords.reduce((closestIndex, point, index) => {
-                    const currentDistance = Math.abs(point.x - relativeX)
-                    const closestDistance = Math.abs(chartPointsWithCoords[closestIndex].x - relativeX)
-                    return currentDistance < closestDistance ? index : closestIndex
-                  }, 0)
-                  setHoveredPointIndex(closestPoint)
-                }}
-                onMouseLeave={() => setHoveredPointIndex(null)}
-              >
-                {yTicks.map((tick) => {
-                  const y = chartHeight - chartPadding - (tick / Math.max(1, maxValue)) * (chartHeight - chartPadding * 2)
-                  return (
-                    <g key={tick}>
-                      <line x1={chartPadding} y1={y} x2={chartWidth - chartPadding} y2={y} stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-                      <text x={6} y={y + 4} fontSize="11" fill="#94a3b8">{tick}</text>
-                    </g>
-                  )
-                })}
-                <line x1={chartPadding} y1={chartHeight - chartPadding} x2={chartWidth - chartPadding} y2={chartHeight - chartPadding} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
-                <line x1={chartPadding} y1={chartPadding} x2={chartPadding} y2={chartHeight - chartPadding} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
-                <polyline points={polylinePoints} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                {chartPointsWithCoords.map((point, index) => {
-                  const isActive = hoveredPointIndex === index
-                  const showLabel = shouldShowChartLabel(index, chartPointsWithCoords.length)
-                  return (
-                    <g key={`${point.label}-${index}`}>
-                      <circle
-                        cx={point.x}
-                        cy={point.y}
-                        r={isActive ? 5.5 : 3.5}
-                        fill={isActive ? '#f8fafc' : '#38bdf8'}
-                        stroke="#38bdf8"
-                        strokeWidth="1.5"
-                      />
-                      {showLabel && (
-                        <text x={point.x} y={chartHeight - chartPadding + 18} textAnchor="middle" fontSize="11" fill="#64748b">
-                          {formatChartLabel(point.label, chartScale, (date) => t('Week of {date}', { date }), locale)}
-                        </text>
-                      )}
-                    </g>
-                  )
-                })}
-              </svg>
-              {activePoint && (
-                <div
-                  className="pointer-events-none absolute rounded border border-slate-700 bg-slate-900/95 px-3 py-2 text-xs text-slate-200 shadow-lg"
-                  style={{
-                    left: `${(activePoint.x / chartWidth) * 100}%`,
-                    top: `${(activePoint.y / chartHeight) * 100}%`,
-                    transform: 'translate(-50%, -120%)',
-                  }}
-                >
-                  <p className="font-medium text-slate-100">{formatChartLabel(activePoint.label, chartScale, (date) => t('Week of {date}', { date }), locale)}</p>
-                  <p className="mt-1 text-slate-400">{t('{value} min total', { value: activePoint.value })}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm text-slate-400">{t('Practice blocks')}</p>
-              <p className="text-xs text-slate-500">{t('Selected period')}</p>
-            </div>
-            {pieSlices.length > 0 ? (
-              <>
-                  <svg viewBox={`0 0 ${pieWidth} ${pieHeight}`} className="mx-auto h-64 w-full max-w-[260px]" role="img" aria-label={t('Practice block distribution')}>
-                  {pieSegments.map((slice) => (
-                    <path key={slice.label} d={slice.d} fill={slice.color} />
-                  ))}
-                  <circle cx={pieCenter} cy={pieCenter} r={pieRadius * 0.55} fill="#0f172a" />
-                  {pieSegments.map((slice) => (
-                    <g key={`${slice.label}-label`}>
-                      <line x1={slice.startPointX} y1={slice.startPointY} x2={slice.connectorEndX} y2={slice.connectorEndY} stroke={connectorColor} strokeWidth="1.5" />
-                      <line x1={slice.connectorEndX} y1={slice.connectorEndY} x2={slice.labelX} y2={slice.labelY} stroke={connectorColor} strokeWidth="1.5" />
-                      <line x1={slice.labelX - (slice.textAnchor === 'start' ? 0 : 12)} y1={slice.labelY} x2={slice.labelX + (slice.textAnchor === 'start' ? 12 : 0)} y2={slice.labelY} stroke={connectorColor} strokeWidth="1.5" />
-                      <text x={slice.labelX + (slice.textAnchor === 'start' ? 8 : -8)} y={slice.labelY - 6} textAnchor={slice.textAnchor} fontSize="11" fill="#e2e8f0">
-                        {slice.percent}
-                      </text>
-                    </g>
-                  ))}
-                </svg>
-                <div className="mt-3 space-y-2">
-                  {pieSlices.map((slice) => (
-                    <div key={slice.label} className="flex items-center justify-between text-sm text-slate-300">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: slice.color }} />
-                        <span>{slice.label}</span>
-                      </div>
-                      <span>{Math.floor(slice.value)} {t('min')}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-slate-400">{t('No block data for this period.')}</p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section data-tour="stats-filters" className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-        <div className="flex flex-wrap gap-2">
-          {(['current-week', 'current-month', 'this-year', 'custom', 'all'] as FilterPreset[]).map((preset) => {
-            const label = preset === 'current-week'
-                    ? t('Current week')
-              : preset === 'current-month'
-                ? t('Current Month')
-                : preset === 'this-year'
-                  ? t('This year')
-                  : preset === 'custom'
-                    ? t('Custom range')
-                    : t('Reset')
-
-            return (
+                )
+              })}
               <button
-                key={preset}
                 type="button"
                 onClick={() => {
-                  if (preset === 'all') {
+                  setFilterPreset('all')
+                  setCustomStart('')
+                  setCustomEnd('')
+                }}
+                className="btn btn-ghost"
+              >
+                {t('Reset')}
+              </button>
+            </div>
+
+            {filterPreset === 'custom' && (
+              <div className="mt-4 space-y-3">
+                <div className="grid gap-3 min-[420px]:grid-cols-2">
+                  <label className="text-sm text-slate-300">
+                    <span className="label">{t('From')}</span>
+                    <input
+                      type="date"
+                      value={toInputDate(customStart || null)}
+                      onChange={(event) => setCustomStart(event.target.value)}
+                      className="field"
+                    />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    <span className="label">{t('To')}</span>
+                    <input
+                      type="date"
+                      value={toInputDate(customEnd || null)}
+                      onChange={(event) => setCustomEnd(event.target.value)}
+                      className="field"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
                     setFilterPreset('all')
                     setCustomStart('')
                     setCustomEnd('')
-                    return
-                  }
-                  setFilterPreset(preset)
-                }}
-                className={`rounded border px-3 py-2 text-sm ${filterPreset === preset ? 'border-slate-200 bg-slate-100 text-slate-900' : 'border-slate-700 bg-slate-900 text-slate-300'}`}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
+                  }}
+                  className="btn btn-secondary"
+                >
+                  {t('Reset to full history')}
+                </button>
+              </div>
+            )}
+          </section>
+          {!loading && <>
+          <section className="section">
+            <dl data-tour="stats-summary" className="grid grid-cols-2 gap-x-4 gap-y-4 md:grid-cols-4">
+              <div>
+                <dt className="meta">{t('Practice time')}</dt>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.totalMinutes ?? 0} {t('min')}</dd>
+              </div>
+              <div>
+                <dt className="meta">{t('Sessions logged')}</dt>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.totalSessions ?? 0}</dd>
+              </div>
+              <div>
+                <dt className="meta">{t('Current streak')}</dt>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.streakDays ?? 0} {t('days')}</dd>
+              </div>
+              <div>
+                <dt className="meta">{t('Selected period')}</dt>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.selectedPeriodMinutes ?? 0} {t('min')}</dd>
+              </div>
+            </dl>
+          </section>
 
-        {filterPreset === 'custom' && (
-          <div className="mt-4 space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="text-sm text-slate-300">
-                <span className="mb-1 block">{t('From')}</span>
-                <input
-                  type="date"
-                  value={toInputDate(customStart || null)}
-                  onChange={(event) => setCustomStart(event.target.value)}
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2"
-                />
-              </label>
-              <label className="text-sm text-slate-300">
-                <span className="mb-1 block">{t('To')}</span>
-                <input
-                  type="date"
-                  value={toInputDate(customEnd || null)}
-                  onChange={(event) => setCustomEnd(event.target.value)}
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2"
-                />
-              </label>
+          <section className="section">
+            <div className="flex min-h-11 items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="meta">{t('Last session')}</p>
+                <p className="text-base font-medium text-slate-200">
+                  {summary?.lastSessionDate ? formatDate(summary.lastSessionDate, locale) : t('No sessions yet')}
+                </p>
+              </div>
+              <span className="badge badge-neutral shrink-0">{summary?.lastSessionMinutes ?? 0} {t('min')}</span>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setFilterPreset('all')
-                setCustomStart('')
-                setCustomEnd('')
-              }}
-              className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300"
-            >
-              {t('Reset to full history')}
-            </button>
-          </div>
-        )}
-      </section>
+          </section>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        {insights.map((insight) => (
-          <div key={insight.title} className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-            <p className="text-sm text-slate-400">{insight.title}</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-100">{insight.value}</p>
-            <p className="mt-1 text-sm text-slate-400">{insight.detail}</p>
+          <div className="xl:grid xl:grid-cols-[2fr_1fr] xl:gap-x-6">
+            <section className="border-t border-slate-800 py-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="section-title">{t('Cumulative practice time')}</h2>
+                <div className="flex flex-wrap gap-2">
+                  {(['daily', 'weekly', 'monthly', 'yearly'] as ChartScale[]).map((scale) => (
+                    <button
+                      key={scale}
+                      type="button"
+                      aria-pressed={chartScale === scale}
+                      onClick={() => setChartScale(scale)}
+                      className="chip"
+                    >
+                      {t(scale)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div ref={chartBoxRef} className="relative">
+                <svg
+                  viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                  className="block h-auto w-full"
+                  role="img"
+                  aria-label={t('Cumulative practice timeline')}
+                  onMouseMove={(event) => {
+                    if (chartPointsWithCoords.length === 0) return
+                    const bounds = event.currentTarget.getBoundingClientRect()
+                    const scaleX = chartWidth / bounds.width
+                    const relativeX = Math.min(chartWidth - chartPadding, Math.max(chartPadding, (event.clientX - bounds.left) * scaleX))
+                    const closestPoint = chartPointsWithCoords.reduce((closestIndex, point, index) => {
+                      const currentDistance = Math.abs(point.x - relativeX)
+                      const closestDistance = Math.abs(chartPointsWithCoords[closestIndex].x - relativeX)
+                      return currentDistance < closestDistance ? index : closestIndex
+                    }, 0)
+                    setHoveredPointIndex(closestPoint)
+                  }}
+                  onMouseLeave={() => setHoveredPointIndex(null)}
+                >
+                  {yTicks.map((tick) => {
+                    const y = chartHeight - chartPadding - (tick / Math.max(1, maxValue)) * (chartHeight - chartPadding * 2)
+                    return (
+                      <g key={tick}>
+                        <line x1={chartPadding} y1={y} x2={chartWidth - chartPadding} y2={y} stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+                        <text x={6} y={y + 4} fontSize="11" fill="#94a3b8">{tick}</text>
+                      </g>
+                    )
+                  })}
+                  <line x1={chartPadding} y1={chartHeight - chartPadding} x2={chartWidth - chartPadding} y2={chartHeight - chartPadding} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
+                  <line x1={chartPadding} y1={chartPadding} x2={chartPadding} y2={chartHeight - chartPadding} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
+                  <polyline points={polylinePoints} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  {chartPointsWithCoords.map((point, index) => {
+                    const isActive = hoveredPointIndex === index
+                    const showLabel = index % labelStep === 0
+                    return (
+                      <g key={`${point.label}-${index}`}>
+                        <circle
+                          cx={point.x}
+                          cy={point.y}
+                          r={isActive ? 5.5 : 3.5}
+                          fill={isActive ? '#f8fafc' : '#38bdf8'}
+                          stroke="#38bdf8"
+                          strokeWidth="1.5"
+                        />
+                        {showLabel && (
+                          <text x={point.x} y={chartHeight - chartPadding + 18} textAnchor="middle" fontSize="11" fill="#94a3b8">
+                            {formatChartLabel(point.label, chartScale, (date) => t('Week of {date}', { date }), locale)}
+                          </text>
+                        )}
+                      </g>
+                    )
+                  })}
+                </svg>
+                {activePoint && (
+                  <div
+                    className="pointer-events-none absolute rounded border border-slate-700 bg-slate-900/95 px-3 py-2 text-xs text-slate-200 shadow-lg"
+                    style={{
+                      left: `${(activePoint.x / chartWidth) * 100}%`,
+                      top: `${(activePoint.y / chartHeight) * 100}%`,
+                      transform: 'translate(-50%, -120%)',
+                    }}
+                  >
+                    <p className="font-medium text-slate-100">{formatChartLabel(activePoint.label, chartScale, (date) => t('Week of {date}', { date }), locale)}</p>
+                    <p className="mt-1 text-slate-400">{t('{value} min total', { value: activePoint.value })}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="border-t border-slate-800 py-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="section-title">{t('Practice blocks')}</h2>
+                <p className="meta">{t('Selected period')}</p>
+              </div>
+              {pieSlices.length > 0 ? (
+                <>
+                  <svg viewBox={`0 0 ${pieWidth} ${pieHeight}`} className="mx-auto h-64 w-full max-w-[260px]" role="img" aria-label={t('Practice block distribution')}>
+                    {pieSegments.map((slice) => (
+                      <path key={slice.label} d={slice.d} fill={slice.color} />
+                    ))}
+                    <circle cx={pieCenter} cy={pieCenter} r={pieRadius * 0.55} fill="#0f172a" />
+                    {pieSegments.map((slice) => (
+                      <g key={`${slice.label}-label`}>
+                        <line x1={slice.startPointX} y1={slice.startPointY} x2={slice.connectorEndX} y2={slice.connectorEndY} stroke={connectorColor} strokeWidth="1.5" />
+                        <line x1={slice.connectorEndX} y1={slice.connectorEndY} x2={slice.labelX} y2={slice.labelY} stroke={connectorColor} strokeWidth="1.5" />
+                        <line x1={slice.labelX - (slice.textAnchor === 'start' ? 0 : 12)} y1={slice.labelY} x2={slice.labelX + (slice.textAnchor === 'start' ? 12 : 0)} y2={slice.labelY} stroke={connectorColor} strokeWidth="1.5" />
+                        <text x={slice.labelX + (slice.textAnchor === 'start' ? 8 : -8)} y={slice.labelY - 6} textAnchor={slice.textAnchor} fontSize="11" fill="#e2e8f0">
+                          {slice.percent}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                  <ul className="list mt-3">
+                    {pieSlices.map((slice) => (
+                      <li key={slice.label} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm text-slate-300">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: slice.color }} />
+                          <span className="min-w-0 break-words">{slice.label}</span>
+                        </div>
+                        <span className="shrink-0">{Math.floor(slice.value)} {t('min')}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="state">{t('No block data for this period.')}</p>
+              )}
+            </section>
           </div>
-        ))}
-      </section>
+
+          <section className="section">
+            <ul className="list md:grid md:grid-cols-3 md:gap-x-6 md:divide-y-0">
+              {insights.map((insight) => (
+                <li key={insight.title} className="flex items-center justify-between gap-3 py-3 md:items-start">
+                  <div className="min-w-0">
+                    <p className="text-base font-medium text-slate-200">{insight.title}</p>
+                    <p className="meta">{insight.detail}</p>
+                  </div>
+                  <p className="shrink-0 text-lg font-semibold text-slate-100">{insight.value}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+          </>}
+        </>
+      )}
     </div>
   )
 }

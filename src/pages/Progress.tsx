@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
@@ -52,27 +52,33 @@ function getStatus(week: ScheduledPlanWeek, today: string, sessionCount: number)
 function JourneyWeekRow({ item, onOpen }: { item: JourneyWeek; onOpen: () => void }) {
   const { language, t } = useI18n()
   return (
-    <button type="button" onClick={onOpen} className="flex w-full items-center gap-3 text-left">
+    <button type="button" onClick={onOpen} className="list-row items-start">
       <div className={[
-        'flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold',
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
         item.status === 'completed' && 'bg-emerald-500/20 text-emerald-200',
         item.status === 'current' && 'bg-sky-500/20 text-sky-200',
         item.status === 'upcoming' && 'bg-amber-500/20 text-amber-200',
         item.status === 'missed' && 'bg-rose-500/20 text-rose-200',
-      ].join(' ')}>
+      ].filter(Boolean).join(' ')}>
         {item.status === 'completed' ? '✓' : item.status === 'current' ? '•' : item.status === 'missed' ? '!' : '○'}
       </div>
 
-      <div className="flex-1 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 transition hover:border-slate-500">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <span className="font-medium text-slate-200">{t('Week {week}', { week: item.week_number })}</span>
             <p className="mt-1 text-xs font-medium text-sky-200">{item.programName}</p>
             <p className="mt-1 text-xs text-slate-400">{item.focus} · {formatDateRange(item.start_date, item.end_date, language)}</p>
           </div>
-          <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{t(item.status)}</span>
+          <span className={[
+            'badge shrink-0',
+            item.status === 'completed' && 'badge-success',
+            item.status === 'current' && 'badge-info',
+            item.status === 'upcoming' && 'badge-warn',
+            item.status === 'missed' && 'badge-danger',
+          ].filter(Boolean).join(' ')}>{t(item.status)}</span>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-slate-400">
           {item.sessionCount} {t(item.sessionCount === 1 ? 'session' : 'sessions')} · {item.totalMinutes} {t('minutes')}
         </p>
       </div>
@@ -118,12 +124,12 @@ export default function Progress() {
   const [newFocus, setNewFocus] = useState('')
   const [newTasks, setNewTasks] = useState('')
   const [savingWeek, setSavingWeek] = useState(false)
+  const hasLoadedRef = useRef(false)
 
   useEffect(() => {
     let isMounted = true
 
     async function loadProgress() {
-      setLoading(true)
       setError(null)
 
       const [{ data: weeksData, error: weeksError }, { data: sessionsData, error: sessionsError }, { data: settingsData, error: settingsError }, { data: programsData, error: programsError }] = await Promise.all([
@@ -154,7 +160,7 @@ export default function Progress() {
 
         return {
           ...week,
-          programName: programNameById.get(week.program_id) ?? 'Program',
+          programName: programNameById.get(week.program_id) ?? t('Program'),
           status: getStatus(week, today, weekSessions.length),
           sessionCount: weekSessions.length,
           totalMinutes: weekSessions.reduce((total, session) => total + Number(session.total_minutes ?? 0), 0),
@@ -167,7 +173,8 @@ export default function Progress() {
       const nextCurrentGroup = nextCurrentWeek
         ? nextGroups.find((group) => group.weeks.some((item) => item.id === nextCurrentWeek.id))
         : undefined
-      setOpenGroupKeys(nextCurrentGroup ? new Set([nextCurrentGroup.key]) : new Set())
+      setOpenGroupKeys((current) => (hasLoadedRef.current ? current : (nextCurrentGroup ? new Set([nextCurrentGroup.key]) : new Set())))
+      hasLoadedRef.current = true
       setLoading(false)
     }
 
@@ -220,24 +227,22 @@ export default function Progress() {
   }
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('Progress')}</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-100">{t('Practice journey')}</h1>
-          <p className="mt-2 text-sm text-slate-300">
-            {t('A tree-style overview of where you are, what you have done, and what is coming next.')}
-          </p>
-        </div>
-      </section>
+    <div className="page">
+      <div className="pb-4">
+        <h1 className="page-title">{t('Practice journey')}</h1>
+        <p className="meta mt-1">
+          {t('A tree-style overview of where you are, what you have done, and what is coming next.')}
+        </p>
+        {error && <p role="alert" className="msg-error mt-2">{error}</p>}
+      </div>
 
-      <section data-tour="progress-timeline" className="rounded-xl border border-slate-800 bg-slate-950/70 p-5">
-        {loading && <p className="text-sm text-slate-400">{t('Loading practice journey…')}</p>}
-        {error && <p className="text-sm text-red-300">{error}</p>}
+      <section data-tour="progress-timeline" className="section">
+        <h2 className="sr-only">{t('Timeline')}</h2>
+        {loading && <p role="status" className="state">{t('Loading practice journey…')}</p>}
         {!loading && !error && journey.length === 0 && (
-          <p className="text-sm text-slate-400">{t('No scheduled practice weeks yet. Start a program from Plan.')}</p>
+          <p className="state">{t('No scheduled practice weeks yet. Start a program from Plan.')}</p>
         )}
-        {!loading && !error && journey.length > 0 && <div className="relative space-y-5 pl-5 before:absolute before:inset-y-4 before:left-2 before:w-px before:bg-slate-700">
+        {!loading && journey.length > 0 && <div className="relative space-y-2 pl-6 before:absolute before:inset-y-4 before:left-2 before:w-px before:bg-slate-700">
           {programGroups.map((group) => {
             const isCurrentGroup = group.key === currentGroupKey
             const isOpen = openGroupKeys.has(group.key)
@@ -246,7 +251,8 @@ export default function Progress() {
 
             return (
               <div key={group.key} className="relative">
-                <div className="rounded-lg border border-slate-800 bg-slate-900/50">
+                <div>
+                  <h3>
                   <button
                     type="button"
                     aria-expanded={isOpen}
@@ -256,68 +262,65 @@ export default function Progress() {
                       else next.add(group.key)
                       return next
                     })}
-                    className="relative flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                    className="list-row relative justify-between"
                   >
                     <span className={[
-                      'absolute -left-[1.08rem] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-slate-950',
+                      'absolute -left-[1.35rem] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-slate-950',
                       isCurrentGroup ? 'bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.75)]' : 'bg-slate-500',
                     ].join(' ')} />
-                    <span>
-                      <span className="block text-sm font-semibold text-slate-100">{group.programName}</span>
-                      <span className="mt-1 block text-xs text-slate-500">
+                    <span className="min-w-0">
+                      <span className="item-title block text-sm">{group.programName}</span>
+                      <span className="mt-1 block text-xs text-slate-400">
                         {t('Week {week}', { week: `${firstWeek.week_number}–${lastWeek.week_number}` })} · {group.weeks.length} {t(group.weeks.length === 1 ? 'week' : 'weeks')} · {formatDateRange(firstWeek.start_date, lastWeek.end_date, language)}
                       </span>
                     </span>
                     <span aria-hidden="true" className="text-slate-400">{isOpen ? '−' : '+'}</span>
                   </button>
-                  {isOpen && <div className="space-y-3 border-t border-slate-800 p-3">
+                  </h3>
+                  {isOpen && <div className="list border-t border-slate-800">
                     {group.weeks.map((item) => (
                       <div key={item.id}>
                         <JourneyWeekRow item={item} onOpen={() => navigate(`/plan?week=${item.id}`)} />
                         {(item.status === 'current' || item.status === 'upcoming') && (
-                          <div className="mt-3 flex flex-col items-center">
+                          <div className="pb-3">
                             <button
                               type="button"
-                              aria-label={t('Add week after week {week}', { week: item.week_number })}
-                              title={t('Add week after week {week}', { week: item.week_number })}
                               onClick={() => beginAddWeek(item)}
-                              className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-500/60 bg-sky-500/10 text-xl leading-none text-sky-200 transition hover:border-sky-300 hover:bg-sky-500/20"
+                              className="btn btn-ghost w-full justify-start text-sky-200"
                             >
-                              <span aria-hidden="true" className="relative block h-3 w-3">
-                                <span className="absolute left-1/2 top-0 h-full w-0.5 -translate-x-1/2 rounded-full bg-current" />
-                                <span className="absolute left-0 top-1/2 h-0.5 w-full -translate-y-1/2 rounded-full bg-current" />
-                              </span>
+                              <span aria-hidden="true">+</span>
+                              {t('Add week after week {week}', { week: item.week_number })}
                             </button>
                             {addAfterWeekId === item.id && (
-                              <form onSubmit={(event) => { event.preventDefault(); void saveNewWeek(item) }} className="mt-3 w-full space-y-3 rounded-lg border border-sky-500/30 bg-slate-950/70 p-3">
-                                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200">{t('Add week after Week {week}', { week: item.week_number })}</p>
+                              <form onSubmit={(event) => { event.preventDefault(); void saveNewWeek(item) }} className="mt-3 space-y-3 border-l-2 border-sky-500/60 pl-3">
+                                <h4 className="item-title">{t('Add week after Week {week}', { week: item.week_number })}</h4>
                                 <div className="grid gap-3 sm:grid-cols-2">
-                                  <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">{t('Program')}</span>
-                                    <select value={newProgramId} onChange={(event) => setNewProgramId(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required>
+                                  <label>
+                                    <span className="label">{t('Program')}</span>
+                                    <select value={newProgramId} onChange={(event) => setNewProgramId(event.target.value)} className="field" required>
                                       {programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}
                                     </select>
                                   </label>
-                                  <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">{t('Focus')}</span>
-                                    <input value={newFocus} onChange={(event) => setNewFocus(event.target.value)} placeholder={t('Week focus')} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required />
+                                  <label>
+                                    <span className="label">{t('Focus')}</span>
+                                    <input value={newFocus} onChange={(event) => setNewFocus(event.target.value)} placeholder={t('Week focus')} className="field" required />
                                   </label>
-                                  <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">{t('Start')}</span>
-                                    <input type="date" value={newStartDate} onChange={(event) => setNewStartDate(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required />
+                                  <label>
+                                    <span className="label">{t('Start')}</span>
+                                    <input type="date" value={newStartDate} onChange={(event) => setNewStartDate(event.target.value)} className="field" required />
                                   </label>
-                                  <label className="space-y-1 text-xs text-slate-400">
-                                    <span className="block">{t('End')}</span>
-                                    <input type="date" value={newEndDate} onChange={(event) => setNewEndDate(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" required />
+                                  <label>
+                                    <span className="label">{t('End')}</span>
+                                    <input type="date" value={newEndDate} onChange={(event) => setNewEndDate(event.target.value)} className="field" required />
                                   </label>
                                 </div>
-                                <label className="block space-y-1 text-xs text-slate-400">
-                                  <span className="block">{t('Tasks')}</span>
-                                  <textarea value={newTasks} onChange={(event) => setNewTasks(event.target.value)} rows={3} placeholder={t('Describe the week plan')} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-200" />
+                                <label className="block">
+                                  <span className="label">{t('Tasks')}</span>
+                                  <textarea value={newTasks} onChange={(event) => setNewTasks(event.target.value)} rows={3} placeholder={t('Describe the week plan')} className="field" />
                                 </label>
-                                <div className="flex justify-end gap-2">
-                                  <button type="button" onClick={() => setAddAfterWeekId(null)} className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300">{t('Cancel')}</button>
-                                  <button type="submit" disabled={savingWeek} className="rounded border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs text-sky-100 disabled:opacity-50">{savingWeek ? t('Saving…') : t('Add week')}</button>
+                                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                  <button type="button" onClick={() => setAddAfterWeekId(null)} className="btn btn-secondary">{t('Cancel')}</button>
+                                  <button type="submit" disabled={savingWeek} className="btn btn-primary">{savingWeek ? t('Saving…') : t('Add week')}</button>
                                 </div>
                               </form>
                             )}

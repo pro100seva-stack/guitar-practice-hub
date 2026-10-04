@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import TourOverlay from './tour/TourOverlay'
 import { useScreenTour } from './tour/useScreenTour'
+import { HeaderSlotsContext } from './headerSlots'
 
 const navigationItems = [
   { key: 'Home', path: '/landing' }, { key: 'Progress', path: '/progress' }, { key: 'Plan', path: '/plan' },
@@ -14,20 +15,35 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
+  const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null)
+  const headerSlots = useMemo(() => ({ actions: actionsSlot, panel: panelSlot }), [actionsSlot, panelSlot])
   const { t } = useI18n()
   const tour = useScreenTour(location.pathname)
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
       if (!panelRef.current) return
-      if (!panelRef.current.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (!panelRef.current.contains(target) && !menuButtonRef.current?.contains(target)) {
         setMenuOpen(false)
       }
     }
 
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || !panelRef.current) return
+      setMenuOpen(false)
+      menuButtonRef.current?.focus()
+    }
+
     document.addEventListener('mousedown', handlePointerDown)
-    return () => document.removeEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [])
 
   function handleBack() {
@@ -43,19 +59,22 @@ export default function Layout() {
     path: '/landing',
   }
   const isLandingScreen = location.pathname === '/landing'
+  const isPracticeScreen = location.pathname === '/practice'
 
   return (
+    <HeaderSlotsContext.Provider value={headerSlots}>
     <div className="min-h-dvh bg-slate-900 text-slate-100">
-      <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm">
-        <div className="relative mx-auto max-w-6xl px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
+        <div className="relative mx-auto max-w-6xl px-[var(--page-px)] py-3">
+          <div className="grid grid-cols-[5.75rem_minmax(0,1fr)_5.75rem] items-center gap-1 sm:grid-cols-[8rem_minmax(0,1fr)_8rem]">
+            <div className="flex items-center gap-1">
               <button
+                ref={menuButtonRef}
                 type="button"
                 data-tour="menu"
                 aria-label={t('Open navigation menu')}
                 onClick={() => setMenuOpen((current) => !current)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
               >
                 ☰
               </button>
@@ -65,45 +84,53 @@ export default function Layout() {
                   type="button"
                   aria-label={t('Go back')}
                   onClick={handleBack}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
                 >
                   ←
                 </button>
               )}
             </div>
 
-            <div className="min-w-0 flex-1 text-center">
-              <p className="truncate text-[10px] uppercase tracking-[0.25em] text-slate-400">
+            <div className="min-w-0 text-center">
+              <p className={['truncate text-xs uppercase tracking-wider text-slate-400', isLandingScreen ? '' : 'max-[359px]:hidden'].join(' ')}>
                 {isLandingScreen ? t('Guitar Practice Hub') : t('Current screen')}
               </p>
-              {!isLandingScreen && <p className="text-sm font-medium text-slate-200">{t(currentScreen.key)}</p>}
+              {!isLandingScreen && <p className="truncate text-base font-semibold text-slate-200 max-[359px]:text-sm">{t(currentScreen.key)}</p>}
             </div>
 
-            {isLandingScreen && (
-              <button
-                type="button"
-                onClick={() => void supabase.auth.signOut()}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white"
-              >
-                {t('Sign out')}
-              </button>
-            )}
+            <div className="flex min-w-0 justify-end">
+              {isPracticeScreen && <div ref={setActionsSlot} data-tour="practice-tools" className="flex items-center gap-1" />}
+              {isLandingScreen && (
+                <button
+                  type="button"
+                  aria-label={t('Sign out')}
+                  title={t('Sign out')}
+                  onClick={() => void supabase.auth.signOut()}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white sm:w-auto sm:px-3"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                  </svg>
+                  <span className="hidden whitespace-nowrap sm:inline">{t('Sign out')}</span>
+                </button>
+              )}
 
-            {location.pathname === '/progress' && (
-              <button
-                type="button"
-                data-tour="stats-link"
-                onClick={() => navigate('/stats')}
-                className="rounded-lg border border-amber-700/60 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition hover:border-amber-500"
-              >
-                {t('Stats')}
-              </button>
-            )}
+              {location.pathname === '/progress' && (
+                <button
+                  type="button"
+                  data-tour="stats-link"
+                  onClick={() => navigate('/stats')}
+                  className="btn btn-secondary min-w-0 truncate rounded-lg px-1.5 text-xs"
+                >
+                  {t('Stats')}
+                </button>
+              )}
+            </div>
           </div>
 
           {menuOpen && (
             <div ref={panelRef} className="absolute left-4 top-16 z-40 w-[min(18rem,calc(100%-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-slate-950/50">
-              <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-slate-400">
+              <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-400">
                 {t('Navigation')}
               </div>
 
@@ -133,18 +160,19 @@ export default function Layout() {
             </div>
           )}
         </div>
+        {isPracticeScreen && <div ref={setPanelSlot} className="absolute inset-x-0 top-full" />}
       </header>
 
-      <main className="mx-auto flex min-h-dvh max-w-6xl flex-col px-4 pb-4 pt-[81px]">
+      <main className="mx-auto flex min-h-dvh max-w-6xl flex-col px-[var(--page-px)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(var(--app-header-h)+1rem)]">
         <div className={isLandingScreen ? 'flex flex-1 flex-col' : 'flex-1'}><Outlet key={location.pathname} /></div>
         {tour.canReplay && (
-          <footer className="flex justify-center pt-6">
+          <footer className="section mt-6 flex justify-center">
             <button
               type="button"
               hidden={tour.isOpen}
               title={t('Guided tour')}
               onClick={tour.replay}
-              className="min-h-10 rounded-lg border border-slate-700 bg-slate-950 px-4 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white"
+              className="btn btn-secondary rounded-lg text-xs"
             >
               {t('Help')}
             </button>
@@ -154,5 +182,6 @@ export default function Layout() {
 
       {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} />}
     </div>
+    </HeaderSlotsContext.Provider>
   )
 }

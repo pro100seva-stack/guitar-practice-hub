@@ -1,5 +1,53 @@
 @import "tailwindcss";
 
+:root {
+  --app-header-h: calc(4.3125rem + env(safe-area-inset-top));
+  --page-px: max(1rem, env(safe-area-inset-left));
+}
+
+@layer components {
+  .page { @apply mx-auto w-full min-w-0 max-w-3xl; }
+  .page-wide { @apply mx-auto w-full min-w-0 max-w-6xl; }
+  .bleed { margin-inline: calc(var(--page-px) * -1); padding-inline: var(--page-px); }
+  .section { @apply border-t border-slate-800 py-4; }
+  .section:first-child { @apply border-t-0 pt-0; }
+
+  .page-title { @apply text-xl font-semibold text-slate-100; }
+  .section-title { @apply text-lg font-semibold text-slate-100; }
+  .item-title { @apply text-base font-semibold text-slate-100; }
+  .meta { @apply text-sm text-slate-400; }
+  .label { @apply mb-1 block text-sm text-slate-300; }
+
+  .field { @apply block min-h-11 w-full rounded border border-slate-700 bg-slate-950 px-3 text-base text-slate-200 placeholder:text-slate-400 focus:border-slate-400; }
+  textarea.field { @apply py-2; }
+  .btn { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply bg-slate-100 text-slate-900 hover:bg-white; }
+  .btn-secondary { @apply border border-slate-700 bg-slate-950 text-slate-200 hover:border-slate-500; }
+  .btn-ghost { @apply text-slate-300 hover:bg-slate-800 hover:text-white; }
+  .btn-danger { @apply border border-rose-900/70 bg-slate-950 text-rose-300 hover:border-rose-700; }
+  .icon-btn { @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-slate-200 hover:border-slate-500 hover:text-white; }
+  .chip { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded border border-slate-700 bg-slate-950 px-4 text-sm font-medium text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50; }
+  .chip[aria-pressed='true'] { @apply border-slate-100 bg-slate-100 text-slate-900; }
+
+  .list { @apply divide-y divide-slate-800; }
+  .list-row { @apply flex min-h-11 w-full items-center gap-3 py-3 text-left; }
+  button.list-row { @apply hover:bg-slate-900/60; }
+  .list-row:focus-visible { outline-offset: -2px; }
+  .plan-week-list .list-row { @apply border-l-2 border-transparent pl-3; }
+  .list-row[aria-current='true'] { @apply border-l-2 border-sky-500 bg-sky-500/10 pl-3; }
+
+  .badge { @apply inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium; }
+  .badge-neutral { @apply border-slate-700 text-slate-300; }
+  .badge-success { @apply border-emerald-500/40 bg-emerald-500/10 text-emerald-300; }
+  .badge-info { @apply border-sky-500/40 bg-sky-500/10 text-sky-300; }
+  .badge-warn { @apply border-amber-500/40 bg-amber-500/10 text-amber-300; }
+  .badge-danger { @apply border-rose-500/40 bg-rose-500/10 text-rose-300; }
+
+  .state { @apply py-4 text-sm text-slate-400; }
+  .msg-error { @apply text-sm text-red-400; }
+  .msg-success { @apply text-sm text-emerald-400; }
+}
+
 html {
   color-scheme: dark;
   min-height: 100%;
@@ -10,7 +58,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100%;
-  overflow-x: hidden;
+  overflow-x: hidden; /* fallback for browsers without clip */
+  overflow-x: clip;
 }
 
 #root {

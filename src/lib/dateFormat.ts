@@ -4,6 +4,12 @@ function parseDate(value: string) {
   return new Date(`${value}T00:00:00`)
 }
 
+export function toLocalIsoDate(date: Date = new Date()) {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
 export function localeForLanguage(language: Language) {
   return language === 'ru' ? 'ru-RU' : language === 'it' ? 'it-IT' : language === 'fr' ? 'fr-FR' : 'en-US'
 }

@@ -57,7 +57,9 @@ create table if not exists songs (
   status text not null default 'learning',  -- 'planned' | 'learning' | 'maintained' | 'retired'
   tuning text,                       -- NULL = standard. Free text: 'Drop D', '1/2 step down', etc. -- not an enum, so new tunings don't need a migration
   notes text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint songs_status_domain_check
+    check (status in ('planned', 'learning', 'maintained', 'retired'))
 );
 
 create table if not exists week_songs (
@@ -80,7 +82,9 @@ create table if not exists block_templates (
   target_minutes int not null,
   description text,
   sort_order int not null default 0,
-  unique (phase, key)
+  unique (phase, key),
+  constraint block_templates_key_domain_check
+    check (key in ('warmup', 'technique', 'rhythm', 'harmony', 'repertoire', 'evening', 'learning'))
 );
 
 -- ---------- Practice sessions ----------
@@ -94,7 +98,9 @@ create table if not exists sessions (
   comment text,
   source text not null default 'app',   -- 'app' | 'notion_import'
   logged_at timestamptz not null default now(),
-  unique (user_id, session_date)
+  unique (user_id, session_date),
+  constraint sessions_source_domain_check
+    check (source in ('app', 'notion_import'))
 );
 
 create table if not exists session_blocks (

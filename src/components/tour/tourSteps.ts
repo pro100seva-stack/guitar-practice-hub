@@ -25,7 +25,7 @@ export const tourSteps: Record<string, TourStep[]> = {
     { target: '[data-tour="plan-songs-todos"]', title: 'Songs and ToDos', body: 'Keep a ToDo list for the week and add the songs you are learning, one per line.' },
   ],
   '/practice': [
-    { target: '[data-tour="practice-day-blocks"]', title: 'Choose a day and blocks', body: 'Select a day of the week, then add the practice blocks you want to work on.' },
+    { target: '[data-tour="practice-day-blocks"]', title: 'Choose a day and blocks', body: 'Select a day, then choose your first block.' },
     { target: '[data-tour="practice-tools"]', title: 'Timer, metronome and tuner', body: 'Keep time with the metronome, tune your guitar, and time each block while you play.' },
     { target: '[data-tour="practice-save"]', title: 'Save your session', body: 'Add a few notes and save the session so it counts toward your progress and stats.' },
   ],

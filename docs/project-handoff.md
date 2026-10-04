@@ -46,11 +46,38 @@ The core workflow, account foundation, session-block upsert, program foundation,
 
 The session write path is explicitly marked with `source: 'app'`; parent session upsert, targeted block removal, and block upsert all passed live verification.
 
-### In planning (2026-10-03)
+### Done (2026-10-03)
 
-- Backlog item 13: guided tour rework is coded, passes lint/build, and is deployed: migration `20261003100000_add_onboarding_tour_pending.sql` is applied and recorded, and `account-gateway` is redeployed. QA (item 14) is pending. It is per-screen, once per account stored server-side, with a per-screen Help button that replays that screen's tour.
-- Backlog item 14: QA pass on the tour across languages and devices.
-- Backlog item 15: database `CHECK` constraints and first automated tests.
+- Backlog items 13 and 14: per-screen guided tour, shown once per account (`app_settings.onboarding_tour_pending`, migration `20261003100000_add_onboarding_tour_pending.sql` applied, `account-gateway` redeployed), with a per-screen Help button. QA passed and the owner verified it.
+- Backlog item 16: collapsible featured-guitar note on Home, plus mobile Home fixes (readable buttons over the guitar image, spacing, text clamp). Owner verified on phone and desktop.
+
+### In planning / awaiting owner (2026-10-03, later)
+
+- Backlog items 17-22, 24 and 25 (materials fixes, PDF and YouTube handling, Practice header/layout/empty-blocks flow, Home guitar note, new metronome and tuning-fork icons) are implemented in the worktree and passed code-level QA (52 tests, lint, build). They have NOT been checked in a browser or on a phone and are not committed or deployed. The service worker config changed (PDF navigation denylist), so unregister the old service worker before testing a production build.
+- Backlog items 28 and 29 (Practice header tools in the header slot, one timer per block, blocks collapsed by default, and the uniform flat design across Home, Plan, Progress, Stats, Settings and Login) are also in the worktree, QA-passed at code level, not yet checked on a device.
+- Backlog item 23: the tour plan was re-run against the new layout and is awaiting owner approval (19 cards: Home 4, Plan 5, Practice 4, Progress 2, Stats 2, Settings 2) with three open decisions listed in the backlog.
+- Backlog items 26 and 27 need an owner decision (minute rounding consistency; deleting the session row when all blocks of a saved session are cleared).
+- Backlog item 30 is requested after YouTube playback QA: make the existing selected-day Practice time total prominent. UX recommends the current position beneath the selected-date heading and above the blocks/picker, with a semibold high-contrast value. Keep header, timer aggregation, and persistence unchanged; reuse existing four-language keys.
+
+### In progress: backlog item 15
+
+- Pure unit-test slice is implemented: Vitest Node tests cover session-block save planning and default-program continuation decisions. `npm test`, lint, and build pass. QA verdict is pass with issues; the session planner test does not call Supabase deletion.
+- Read-only live preflight completed through `npx supabase db query --linked`; all three checks returned zero rows. No live data was changed.
+- Migration `20261003110000_add_practice_field_domain_constraints.sql` was applied alone after owner approval and recorded as applied. Verification confirmed the three named constraints are validated and the allowed-domain checks return zero invalid rows. `schema.sql` is synchronized.
+- Pending migration history and live-object relevance are itemized in the audit below; do not run `db push` while the optional preference-cleanup migration remains pending.
+- Vitest 5’s supported Node range `^22.12.0 || ^24.0.0 || >=26.0.0` is now declared in `package.json`; validation ran on Node 24.19.0. Verify the range on Node 22.12 and 24.x when available. Week insertion/renumbering remains deferred to local Supabase RPC integration tests.
+- The local-only Supabase config and timestamped copies of legacy `01`-`09` SQL are isolated under `supabase/local-test/` without changing those numbered files. See `supabase/LOCAL_TESTING.md`; root linked migration listing no longer sees these local versions. The CLI reads `<workdir>/supabase/config.toml`, so the config and baseline now live in `supabase/local-test/supabase/`; real migrations from `20260914` onward are copied in by `scripts/sync-local-test-migrations.ps1` (git-ignored). Analytics, studio, inbucket and edge runtime are disabled because the Logflare analytics container is unhealthy on Windows Docker. A fresh `db reset --local` replays all 32 migrations and 35 pgTAP tests pass.
+- The owner approved skipping/defering an overdue active Default continuation when any scheduled user week overlaps the current UTC Monday-Sunday range, without moving existing weeks. Migration `20261003120000_serialize_default_program_continuation.sql` was applied alone and recorded after approval; read-only catalog checks confirmed the RPC, helper, triggers, and rewritten schedule RPCs exist. The frontend caller is in the worktree and must be released for the live app to use it. QA pass with issues; Node tests cover Wednesday/Monday/Sunday/year-boundary and same-week repeat.
+- The overlap RPC, triggers and plan-week RPCs are now tested against a local PostgreSQL (35 pgTAP tests pass). QA identified a possible deadlock if a service-role bulk transaction touches multiple users in opposite row order; PostgreSQL aborts one transaction. Review/retry handling if such bulk writes are supported.
+- Keep session-block save at the pure planner unit-test boundary for this slice; testing the actual client delete/upsert sequence is deferred. Never use the linked project for DB test setup. There are currently no pending remote migrations.
+
+### Linked migration history audit (2026-10-03)
+
+- Supabase reports **21 completed and 0 pending**: `20260914120000`, `20260914130000`, `20260924100000` through `20260924190000`, `20260925100000` through `20260925150000`, and `20261003100000` through `20261003120000`.
+- `20260925150000_remove_unused_preferences` was applied after owner approval. It dropped `habit_reminders`, `compact_practice_cards`, and `collapse_plan_notes`; before the drop all three had non-null values, and the latter two each had one non-default value. Those stored preference values are no longer available. The app has no current references to these fields.
+- Before isolation, eleven local-only bootstrap/snapshot versions (`20260913090000`, `20260913090100`, `20260913100000` through `20260913100800`) appeared pending. They are now under `supabase/local-test/` and no longer appear in the root linked list. Their effects are represented in the evolved live schema; never apply their local versions remotely.
+- The effects of `20260925100000` through `20260925140000` were already present in the live schema; their history entries were repaired to applied after read-only verification. No DDL from these five migrations was re-run. No other old migration was repaired or applied.
+- The approved continuation migration `20261003120000` and the final cleanup migration were applied individually; no other pending SQL was run. The local-only timestamped baseline is isolated under `supabase/local-test/` and is not part of the root linked migration list.
 
 ### Ready for the next product decision
 
