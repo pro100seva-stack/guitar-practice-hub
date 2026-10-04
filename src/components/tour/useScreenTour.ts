@@ -5,7 +5,8 @@ import { fallbackStep, tourSteps, type TourStep } from './tourSteps'
 export type TourMode = 'onboarding' | 'replay'
 type ActiveTour = { path: string; mode: TourMode; targets: string[]; index: number }
 
-const ANCHOR_TIMEOUT_MS = 6000
+const ANCHOR_TIMEOUT_MS = 4000
+const PARTIAL_ANCHOR_TIMEOUT_MS = 1500
 const doneKey = (userId: string) => `tour-flag-cleared:${userId}`
 
 async function clearPendingFlag(userId: string) {
@@ -32,14 +33,23 @@ function clearedThisSession(userId: string) {
   }
 }
 
-function resolveTargets(path: string) {
+export function resolveTargets(path: string, isCurrent = () => true) {
   const targets = (tourSteps[path] ?? []).map((step) => step.target)
   return new Promise<string[]>((resolve) => {
     const deadline = Date.now() + ANCHOR_TIMEOUT_MS
+    let firstFoundAt: number | null = null
+    let allFound = false
     const check = () => {
-      const found = targets.filter((target) => document.querySelector(target))
-      if (found.length === targets.length || Date.now() >= deadline) resolve(found)
+      if (!isCurrent()) { resolve([]); return }
+      const found = targets.filter((target) => {
+        const rect = document.querySelector(target)?.getBoundingClientRect()
+        return rect && rect.width > 0 && rect.height > 0
+      })
+      if (found.length > 0 && firstFoundAt === null) firstFoundAt = Date.now()
+      const complete = found.length === targets.length
+      if ((complete && allFound) || Date.now() >= deadline || (firstFoundAt !== null && Date.now() - firstFoundAt >= PARTIAL_ANCHOR_TIMEOUT_MS)) resolve(found)
       else window.setTimeout(check, 100)
+      allFound = complete
     }
     check()
   })
@@ -71,8 +81,10 @@ export function useScreenTour(pathname: string) {
 
   const openTour = useCallback((path: string, mode: TourMode) => {
     const id = ++runId.current
-    void resolveTargets(path).then((targets) => {
+    if (path === '/practice') window.dispatchEvent(new Event('practice-tour-start'))
+    void resolveTargets(path, () => runId.current === id).then((targets) => {
       if (runId.current !== id) return
+      if (path === '/practice') window.dispatchEvent(new Event('practice-tour-start'))
       if (mode === 'onboarding') visited.current.add(path)
       setActive({ path, mode, targets, index: 0 })
     })

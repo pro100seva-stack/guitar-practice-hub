@@ -85,6 +85,46 @@ export async function loadLocalMaterialBlob(material: LocalMaterial) {
   return response.blob()
 }
 
+export type MaterialMetadataPatch = { name?: string; bookmarks?: number[] }
+
+export function normalizeBookmarks(values: number[]) {
+  return [...new Set(values.filter((value) => Number.isFinite(value) && value >= 0).map((value) => Number(value.toFixed(1))))].sort((left, right) => left - right)
+}
+
+export async function patchLocalMaterialMetadata(id: string, blockKey: string, patch: MaterialMetadataPatch) {
+  const name = patch.name?.trim()
+  if (name === '') throw new Error('Material name is empty.')
+  const database = await openDatabase()
+  return new Promise<LocalMaterial>((resolve, reject) => {
+    const transaction = database.transaction(storeName, 'readwrite')
+    const store = transaction.objectStore(storeName)
+    let updated: LocalMaterial | null = null
+    let failure: Error | null = null
+    transaction.oncomplete = () => {
+      database.close()
+      if (updated) resolve(updated)
+      else reject(failure ?? new Error('Local material no longer exists.'))
+    }
+    transaction.onabort = transaction.onerror = () => {
+      database.close()
+      reject(failure ?? transaction.error ?? new Error('Could not update local material metadata.'))
+    }
+    const request = store.get(id)
+    request.onsuccess = () => {
+      const record = request.result as LocalMaterial | undefined
+      if (!record || record.id !== id || record.blockKey !== blockKey) {
+        failure = new Error('Local material no longer exists in this block.')
+        transaction.abort()
+        return
+      }
+      updated = { ...record }
+      if (name !== undefined) updated.name = name
+      if (patch.bookmarks !== undefined) updated.bookmarks = normalizeBookmarks(patch.bookmarks)
+      store.put(updated)
+    }
+  })
+}
+
 export async function deleteLocalMaterial(id: string) {
   const database = await openDatabase()
   await new Promise<void>((resolve, reject) => {

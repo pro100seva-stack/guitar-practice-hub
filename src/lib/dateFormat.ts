@@ -10,6 +10,25 @@ export function toLocalIsoDate(date: Date = new Date()) {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+export function getLocalDateRange(preset: 'current-week' | 'current-month' | 'this-year', today: Date = new Date()) {
+  const start = new Date(today)
+  const end = new Date(today)
+
+  if (preset === 'current-week') {
+    const day = start.getDay()
+    start.setDate(start.getDate() + (day === 0 ? -6 : 1 - day))
+    end.setFullYear(start.getFullYear(), start.getMonth(), start.getDate() + 6)
+  } else if (preset === 'current-month') {
+    start.setFullYear(today.getFullYear(), today.getMonth(), 1)
+    end.setFullYear(today.getFullYear(), today.getMonth() + 1, 0)
+  } else {
+    start.setFullYear(today.getFullYear(), 0, 1)
+    end.setFullYear(today.getFullYear(), 11, 31)
+  }
+
+  return { start: toLocalIsoDate(start), end: toLocalIsoDate(end) }
+}
+
 export function localeForLanguage(language: Language) {
   return language === 'ru' ? 'ru-RU' : language === 'it' ? 'it-IT' : language === 'fr' ? 'fr-FR' : 'en-US'
 }

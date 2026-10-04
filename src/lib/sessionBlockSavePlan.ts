@@ -7,6 +7,20 @@ type SessionBlockSaveInput = {
   elapsedSeconds?: number
 }
 
+export function sessionBlockMinutes(block: Pick<SessionBlockSaveInput, 'elapsedSeconds' | 'actualMinutes'>): number | null {
+  return block.elapsedSeconds
+    ? Math.round(block.elapsedSeconds / 60)
+    : block.actualMinutes ? Number(block.actualMinutes) : null
+}
+
+export function hasUnsupportedSessionBlocks(
+  savedBlocks: readonly { block_key: string }[],
+  templates: readonly { key: string }[],
+) {
+  const templateKeys = new Set(templates.map((template) => template.key))
+  return savedBlocks.some((block) => !templateKeys.has(block.block_key))
+}
+
 export function planSessionBlockSave(sessionId: string, selectedBlocks: SessionBlockSaveInput[]) {
   return {
     upserts: selectedBlocks.map((block) => ({
@@ -15,9 +29,7 @@ export function planSessionBlockSave(sessionId: string, selectedBlocks: SessionB
       label: block.label,
       done: block.done,
       target_minutes: block.targetMinutes,
-      actual_minutes: block.elapsedSeconds
-        ? Math.max(1, Math.ceil(block.elapsedSeconds / 60))
-        : block.actualMinutes ? Number(block.actualMinutes) : null,
+      actual_minutes: sessionBlockMinutes(block),
     })),
     blockKeysToKeep: selectedBlocks.map((block) => block.key),
   }

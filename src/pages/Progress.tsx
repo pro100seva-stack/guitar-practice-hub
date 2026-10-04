@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { formatDateRange } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
+import { hasPracticeMinutes } from '../lib/sessionActivity'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -150,7 +151,7 @@ export default function Progress() {
       setShowCompletedWeeks(settingsData?.show_completed_weeks ?? true)
 
       const today = new Date().toISOString().slice(0, 10)
-      const sessions = (sessionsData ?? []) as Session[]
+      const sessions = ((sessionsData ?? []) as Session[]).filter(hasPracticeMinutes)
       const programNameById = new Map((programsData as Pick<Program, 'id' | 'name'>[] | null ?? []).map((program) => [program.id, program.name]))
       setPrograms((programsData as Pick<Program, 'id' | 'name'>[] | null) ?? [])
       const nextJourney = ((weeksData ?? []) as PlanWeek[]).filter(isScheduledWeek).map((week) => {

@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { runInNewContext } from 'node:vm'
+import { transpileModule } from 'typescript'
 import { isYouTubeEmbedUrl, isYouTubeHostLink, toYouTubeEmbedUrl, toYouTubeIframeSrc, toYouTubeWatchUrl } from '../src/lib/youtube'
+import { lookupYouTubeTitle, toYouTubeApiSrc, youTubeTitleFallback } from '../src/lib/youtube'
+import { bookmarkSeek, formatPracticeTime, loopRange, loopSeekTarget, supportedPlaybackRates } from '../src/lib/youtubePractice'
 
 const id = 'dQw4w9WgXcQ'
 const embed = `https://www.youtube-nocookie.com/embed/${id}`
@@ -175,5 +180,86 @@ describe('toYouTubeIframeSrc', () => {
     'not a url',
   ])('rejects %s', (input) => {
     expect(toYouTubeIframeSrc(input)).toBeNull()
+  })
+})
+
+describe('API URLs and new-link titles', () => {
+  it('uses the current HTTP(S) origin, strips stored parameters and preserves start', () => {
+    const src = new URL(toYouTubeApiSrc(`${embed}?start=30&origin=https://evil.test&autoplay=1&controls=0`, 'http://localhost:5173')!)
+    expect(src.origin).toBe('https://www.youtube.com')
+    expect(Object.fromEntries(src.searchParams)).toEqual({ start: '30', playsinline: '1', rel: '0', enablejsapi: '1', origin: 'http://localhost:5173' })
+    expect(toYouTubeApiSrc(embed, 'https://practice.example')).not.toBeNull()
+    for (const origin of ['null', 'file:///', 'https://practice.example/path', 'https://evil.test@practice.example']) expect(toYouTubeApiSrc(embed, origin)).toBeNull()
+    expect(toYouTubeApiSrc(`https://user@www.youtube.com/embed/${id}`, 'https://practice.example')).toBeNull()
+  })
+
+  it('fetches only canonical oEmbed JSON and treats titles as plain strings', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ title: '  <img onerror=evil()> Lesson  ' })))
+    expect(await lookupYouTubeTitle(`${embed}?start=30&url=https://evil.test`, request)).toBe('<img onerror=evil()> Lesson')
+    const [input, options] = request.mock.calls[0]
+    const url = new URL(String(input))
+    expect(url.origin + url.pathname).toBe('https://www.youtube.com/oembed')
+    expect(url.searchParams.get('url')).toBe(`https://www.youtube.com/watch?v=${id}`)
+    expect(options).toMatchObject({ mode: 'cors', credentials: 'omit' })
+    expect(youTubeTitleFallback(embed)).toBe(`YouTube ${id}`)
+  })
+
+  it('returns null on invalid responses, network failure or timeout', async () => {
+    for (const payload of [{ title: '  ' }, { title: 42 }, {}, null]) {
+      expect(await lookupYouTubeTitle(embed, vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(payload))))).toBeNull()
+    }
+    expect(await lookupYouTubeTitle(embed, vi.fn<typeof fetch>().mockRejectedValue(new Error('offline')))).toBeNull()
+    expect(await lookupYouTubeTitle(embed, vi.fn<typeof fetch>().mockResolvedValue(new Response('{}', { status: 403 })))).toBeNull()
+    const invalid = vi.fn<typeof fetch>()
+    expect(await lookupYouTubeTitle('https://evil.test', invalid)).toBeNull()
+    expect(invalid).not.toHaveBeenCalled()
+    vi.useFakeTimers()
+    try {
+      const request = vi.fn<typeof fetch>().mockImplementation(() => new Promise(() => {}))
+      const result = lookupYouTubeTitle(embed, request)
+      await vi.advanceTimersByTimeAsync(4000)
+      expect(await result).toBeNull()
+      expect(request.mock.calls[0][1]?.signal?.aborted).toBe(true)
+    } finally { vi.useRealTimers() }
+  })
+})
+
+describe('practice decisions', () => {
+  it('provides all practice and rename translations in four languages', () => {
+    const source = readFileSync('src/lib/i18n.tsx', 'utf8')
+    const dictionarySource = source.slice(source.indexOf('const pageTranslations:'), source.indexOf('const I18nContext ='))
+    const dictionaries = runInNewContext(transpileModule(`${dictionarySource}\ntranslations`, {}).outputText) as Record<string, Record<string, string>>
+    const player = readFileSync('src/components/YouTubePracticePlayer.tsx', 'utf8')
+    const keys = [...player.matchAll(/\bt\('([^']+)'/g)].map((match) => match[1])
+    keys.push('Rename', 'Rename {name}', 'Material name', 'Save name', 'Cancel', 'Enter a material name.', 'Could not save material changes.', 'YouTube requires a valid HTTP or HTTPS origin.', 'YouTube could not load. Check your connection or open on YouTube.', 'YouTube could not verify this embed origin.', 'This video is unavailable or cannot be embedded. Open on YouTube.')
+    for (const language of ['en', 'ru', 'it', 'fr']) expect(keys.filter((key) => !dictionaries[language][key]), language).toEqual([])
+  })
+
+  it('validates finite section bounds and known duration', () => {
+    expect(loopRange('off', 0, 5, 10)).toBeNull()
+    expect(loopRange('whole', NaN, NaN, 10)).toEqual({ start: 0, end: 10 })
+    expect(loopRange('section', 0, 5.5, 10)).toEqual({ start: 0, end: 5.5 })
+    for (const [start, end, duration] of [[-1, 5, 10], [5, 5, 10], [6, 5, 10], [0, 11, 10], [NaN, 5, 10], [0, Infinity, 10], [0, 5, 0], [0, 5, Infinity]]) expect(loopRange('section', start, end, duration)).toBeNull()
+  })
+  it('loops only while playing or ended, and throttles in-flight seeks', () => {
+    const range = { start: 2, end: 5 }
+    expect(loopSeekTarget(range, 5, 1, false)).toBe(2)
+    expect(loopSeekTarget(range, 10, 0, false)).toBe(2)
+    expect(loopSeekTarget(range, 1, 1, false)).toBe(2)
+    for (const state of [-1, 2, 3, 5]) expect(loopSeekTarget(range, 5, state, false)).toBeNull()
+    expect(loopSeekTarget(range, 5, 1, true)).toBeNull()
+    expect(loopSeekTarget(null, 5, 1, false)).toBeNull()
+  })
+  it('keeps paused bookmark seeks paused and rejects invalid positions', () => {
+    expect(bookmarkSeek(2.5, 10, 2)).toEqual({ position: 2.5, play: false })
+    expect(bookmarkSeek(2.5, 10, 1)).toEqual({ position: 2.5, play: true })
+    for (const position of [-1, NaN, Infinity, 11]) expect(bookmarkSeek(position, 10, 2)).toBeNull()
+    expect(bookmarkSeek(0, 0, 2)).toBeNull()
+  })
+  it('offers only actual API rates and formats bookmark tenths', () => {
+    expect(supportedPlaybackRates([1, 0.25, 0.5, 1.5, 2, 1, NaN, -1])).toEqual([0.25, 0.5, 1, 1.5, 2])
+    expect(supportedPlaybackRates([1])).toEqual([1])
+    expect(formatPracticeTime(65.34)).toBe('1:05.3')
+    expect(formatPracticeTime(59.96)).toBe('1:00.0')
   })
 })

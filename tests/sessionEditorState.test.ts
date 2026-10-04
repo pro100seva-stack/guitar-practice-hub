@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getSessionEditorState, hasSavedSession, isSessionEditorDirty } from '../src/lib/sessionEditorState'
+import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession } from '../src/lib/sessionEditorState'
 
 const templates = [
   { id: 't1', key: 'warmup', label: 'Warm-up', target_minutes: 10 },
@@ -43,6 +43,30 @@ describe('getSessionEditorState', () => {
   it('reports whether a day has a saved session', () => {
     expect(hasSavedSession('2026-10-01', sessions)).toBe(true)
     expect(hasSavedSession('2026-10-02', sessions)).toBe(false)
+  })
+
+  it('restores notes-only rows without adding blocks or timers', () => {
+    const notesOnly = [{ session_date: '2026-10-02', comment: 'Remember this', session_blocks: [] }]
+    expect(hasSavedSession('2026-10-02', notesOnly)).toBe(true)
+    expect(getSessionEditorState('2026-10-02', templates, notesOnly)).toEqual({
+      comment: 'Remember this', timers: {}, selectedBlocks: [],
+    })
+  })
+})
+
+describe('shouldDeleteClearedSession', () => {
+  it('deletes an existing session only when blocks and non-whitespace notes are absent', () => {
+    expect(shouldDeleteClearedSession(true, 0, '')).toBe(true)
+    expect(shouldDeleteClearedSession(true, 0, ' \n\t ')).toBe(true)
+    expect(shouldDeleteClearedSession(true, 0, ' Keep notes ')).toBe(false)
+  })
+
+  it('retains selected blocks regardless of their rounded minutes', () => {
+    expect(shouldDeleteClearedSession(true, 1, '')).toBe(false)
+  })
+
+  it('never automatically deletes a new empty day', () => {
+    expect(shouldDeleteClearedSession(false, 0, '')).toBe(false)
   })
 })
 

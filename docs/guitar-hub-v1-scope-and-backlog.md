@@ -127,7 +127,8 @@ No blocking items.
    - PDFs actually render; the current blank white viewer is investigated (path, content type, service worker/PWA caching, iframe/embed headers) and fixed
    - applies to default PDFs under `public/default-exercises/` and still respects the default-exercise Settings toggle
 
-19. **Implemented — 2026-10-03 (code QA pass):** YouTube links work as plain links
+19. **Completed — 2026-10-04 (owner playback test passed):** YouTube links work as plain links
+   - owner confirmed adding and playing the supplied YouTube watch link works after the embed-rendering fix; render uses `www.youtube.com/embed/` without unused `origin` or `enablejsapi` parameters, retaining start time and the watch-page fallback
    - scheme-less links (`youtube.com/watch?v=...`) are accepted; invalid YouTube-host links show a localized error instead of being saved as page links; the fallback link opens a real watch URL
    - `src/lib/youtube.ts` converts watch, youtu.be, shorts, live, embed, m. and music. URLs and pasted iframe snippets to a nocookie embed with `start=` seconds; only exact hosts and 11-character IDs are accepted; unit tests cover lookalike hosts and `javascript:`/`data:` input
    - pasting a normal YouTube URL (`watch?v=`, `youtu.be/`, `shorts/`, `live/`, with or without extra query parameters or a timestamp) is converted automatically to the embed form
@@ -149,10 +150,8 @@ No blocking items.
    - assumed behaviour (to confirm with UX and owner): a new or empty day starts with no blocks; the user chooses which block to start with from a block picker and adds others as needed
    - UX Designer specifies the flow, including how it interacts with the existing add/remove-block and expand/collapse behaviour, saved sessions, and the guided tour
 
-23. **Audit complete — 2026-10-03 (awaiting owner approval to implement):** Guided tour coverage audit
-   - UX recommends Plan 7 steps, Practice 6, Stats 3, Home 5 (adds a Help step), Progress 2, Settings 2; about 33 new keys across four languages; fix scoped anchors, reorder Stats steps, and avoid anchoring conditional elements; Plan first, Practice after its layout lands
-   - UX Designer assesses which steps are worth adding on every screen (Plan is busy but the tour covers few aspects; new users can get lost)
-   - output is a prioritized step list per screen with anchors and copy keys; implementation follows after owner approval
+23. **Historical audit — superseded by the approved 19-card implementation below:** Guided tour coverage audit
+   - the initial larger card proposal was revised after Practice and uniform-layout changes; use the current implementation entry below
 
 24. **Implemented — 2026-10-03 (owner phone check pending):** Home featured-guitar note placement
    - move the collapsible "*Frankenstrat" container underneath the guitar image, aligned to the right
@@ -162,18 +161,26 @@ No blocking items.
    - `docs/references/metronome.png` and `docs/references/tuning_fork.png` are shape references only (no backgrounds)
    - recreate the shapes as vector icons (preferred) or use the shapes without their background; keep the metronome button's tap, hold, and beat-ring behaviour
 
-30. **Requested — 2026-10-04 (after YouTube playback QA):** Restore a prominent Practice total-time counter
+30. **Implemented — 2026-10-04 (code QA passed; visual check pending):** Restore a prominent Practice total-time counter
+   - implemented directly below the selected-date heading with a body-size label and larger semibold, high-contrast tabular total; all 69 tests, lint, and build pass, with three existing lint warnings
    - the current total exists as a subdued "Practice time: N min" line beneath the selected-date heading; promote it so it is easy to find
    - UX recommendation: keep the total directly beneath that heading, above the blocks or empty picker; use a semibold, high-contrast value with tabular numerals and normal body-size label
    - preserve the header (metronome/tuner only), existing spacing, and current total calculation; no new card, sticky bar, or duplicate total near Save
    - reuse `Practice time` and `{minutes} min` in EN/RU/IT/FR; display 0 min when empty, and verify active, paused, saved, and cleared-block states
    - verify wrapping at 320px and 200% text scaling; do not resolve rounding item 26 as part of this visual fix
 
-26. **Open — 2026-10-03 (needs owner decision):** Practice minute accounting consistency
-   - the session total uses floor plus a half-minute round-up while the saved block minutes use at least 1 and ceiling, so a 61 s block shows 1 min but saves 2 min; recommended: one shared rounding helper used by both
+26. **Implemented — 2026-10-04 (owner approved; code QA passed):** Practice minute accounting consistency
+   - one shared nearest-minute helper is used for saved blocks and displayed/saved session totals: 20 seconds -> 0 minutes, 30 seconds -> 1 minute, 61 seconds -> 1 minute, 90 seconds -> 2 minutes
+   - total equals the sum of rounded block minutes; manual minute fallback is preserved when no elapsed timer exists; historical records are not rewritten
+   - full gates passed: 88 tests, build, lint with three existing warnings; database persistence and browser interactions remain unverified
 
-27. **Open — 2026-10-03 (needs owner decision):** Clearing a saved session
-   - removing every block of a saved session and pressing "Save changes" currently leaves a 0-minute session row that Stats, streak and day markers may still count; recommended: delete the session row when no blocks remain
+27. **Implemented — 2026-10-04 (owner approved; focused QA passed; browser persistence check pending):** Clearing a saved session
+   - explicit Save changes deletes an existing session only when no selected blocks and no non-whitespace notes remain; deletion is constrained to session ID, owner, and date
+   - notes-only existing sessions are retained and editable at zero minutes; they do not count toward streaks or practiced-day markers and remain accessible in history. New-day notes-only Save eligibility is unchanged
+   - selected zero-minute blocks remain saved; generic activity counts retain such block sessions, while streak/day credit requires positive minutes
+   - saves containing unmapped legacy/imported block keys are refused before any write, with a localized preservation error; failures retain editor contents for retry
+   - local-date streak calculations were corrected; 104 tests and build pass, with three existing lint warnings. Live writes, cascade/RLS runtime behavior, and browser rendering were not exercised
+   - Stats local-date preset follow-up is resolved on 2026-10-04: presets and weekly chart keys use local dates; 19 focused date tests pass in UTC+14 and America/Los_Angeles
 
 28. **Implemented — 2026-10-03 (code QA pass with fixes; owner phone check pending):** Practice screen refinements
    - remove the metronome settings gear; settings open by long press on touch and right click on desktop (as before)
@@ -186,10 +193,21 @@ No blocking items.
    - apply the Practice layout principles (full-bleed sections with dividers instead of nested cards, removal of unneeded container margins and padding, 44px controls, consistent spacing scale and headings) to Home, Progress, Plan, Stats and Settings
    - the UX Designer produces one shared spec first, then the Frontend Developer applies it screen by screen
 
-23. **Re-run complete — 2026-10-03 (awaiting owner approval to implement):** guided tour plan against the new layout
+23. **Implemented — 2026-10-04 (owner approved; code QA passed; browser check pending):** guided tour plan against the new layout
    - proposed cards: Home 4 (Menu and Help, Plan your week, Practice and log, Track progress), Plan 5 (Your weeks, Selected week, Weekly tasks, ToDo list, Save your plan), Practice 4 (Pick a day, Add a block, Metronome and tuner, Save your session), Progress 2, Stats 2, Settings 2: 19 cards in total, about 29 new keys in four languages
-   - mechanics to add first: start the tour sooner than the current 6 s anchor wait, an "n of N" counter, better card placement on mobile, close tool panels when a tour starts, "Skip tour" label
-   - open decisions: Plan 5 cards instead of 7; fold the Help button into the menu card (it is hidden while a tour runs, so it cannot be spotlighted); a recovery action when a user has no week covering today (Plan and Progress currently point at each other)
+   - implemented: shorter anchor-resolution waits, a resolved-step "n of N" counter, measured mobile scrolling/card placement, closing Practice tool/picker panels at tour start, and the "Skip tour" label
+   - owner approved Plan 5 cards and folding Help into the menu card; no new recovery/start-program action was added. No-week recovery remains a separate product decision
+
+31. **Implemented — 2026-10-04 (real YouTube and isolated-browser QA passed; physical-device checks pending):** YouTube practice player and material metadata
+   - official YouTube IFrame API provides whole-video/A-B looping, numeric boundaries, Now capture, Jump, and only supported playback speeds; no video extraction or downloads
+   - persistent timestamp bookmarks can be captured, selected, and removed for YouTube videos; local bookmark removal remains available when playback/API is offline or fails
+   - all user-added file and URL materials support inline rename with Save/Cancel; names/bookmarks patch existing records by ID and block key without rewriting media bytes or recreating deleted records
+   - newly added YouTube links use their oEmbed video title when available, with editable fallback on lookup failure; manual names are not overwritten
+   - uploaded videos render exactly one video player with its own audio; the separate duplicate audio element is removed
+   - API playback uses an accurate current HTTP/HTTPS origin and strict-origin-when-cross-origin referrer policy; plain stored URLs are unchanged and legacy records remain compatible
+   - QA played the supplied b5SbZwd0egM video at confirmed 0.5x and observed 15 A-B restarts; mock/browser checks covered rates, pause/seek, rename continuity, scoped persistence, metadata concurrency, cached MP4 decoding, and 320px four-language controls
+   - deletion-race fixes passed isolated Chrome recheck: late lists cannot restore deleted materials, deleting A cannot close newly selected B, and offline/error bookmarks remain removable
+   - 150 tests and build pass; lint reports three existing warnings. Physical-phone playback, real YouTube end-of-video looping, background recovery, screen readers, and persistence after full browser restart remain manual checks
 
 9. **Completed — 2026-09-25:** Start the default program on account creation
    - week 1 starts on the account-creation date rather than the next Monday

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useI18n } from '../../lib/i18n'
 import type { TourStep } from './tourSteps'
 import type { TourMode } from './useScreenTour'
@@ -10,6 +10,7 @@ const CARD_HEIGHT_ESTIMATE = 220
 export default function TourOverlay({ steps, index, mode, onIndex, onClose, onSkip }: Props) {
   const { t } = useI18n()
   const step = steps[index]
+  const hasStep = Boolean(step)
   const dialogRef = useRef<HTMLDivElement | null>(null)
   const primaryRef = useRef<HTMLButtonElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -18,23 +19,50 @@ export default function TourOverlay({ steps, index, mode, onIndex, onClose, onSk
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight })
 
   useEffect(() => {
+    if (!hasStep) return
     const previous = document.activeElement as HTMLElement | null
-    primaryRef.current?.focus()
-    return () => { window.requestAnimationFrame(() => previous?.focus()) }
-  }, [])
+    primaryRef.current?.focus({ preventScroll: true })
+    return () => { window.requestAnimationFrame(() => previous?.focus({ preventScroll: true })) }
+  }, [hasStep])
 
   useEffect(() => {
+    if (!hasStep) return
     function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [hasStep, onClose])
+
+  useLayoutEffect(() => {
+    if (!step || !cardRef.current) return
+    const card = cardRef.current
+    function measure() { setCardHeight(card.offsetHeight) }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(card)
+    return () => observer.disconnect()
+  }, [step])
+
+  useEffect(() => {
+    if (!step?.target || viewport.width >= 640) return
+    const previous = document.body.style.paddingBottom
+    const padding = Number.parseFloat(window.getComputedStyle(document.body).paddingBottom) || 0
+    document.body.style.paddingBottom = `${padding + cardHeight + 48}px`
+    return () => { document.body.style.paddingBottom = previous }
+  }, [step, viewport.width, cardHeight])
 
   useEffect(() => {
     if (!step) return
     const anchor = step.target ? document.querySelector(step.target) : null
-    anchor?.scrollIntoView({ block: 'center' })
+    anchor?.scrollIntoView({ block: 'center', behavior: 'instant' })
+    if (anchor && viewport.width < 640 && !anchor.closest('header')) {
+      const target = anchor.getBoundingClientRect()
+      const top = (document.querySelector('header')?.getBoundingClientRect().bottom ?? 0) + 12
+      const bottom = viewport.height - cardHeight - 32
+      const desiredTop = top + Math.max(0, (bottom - top - target.height) / 2)
+      window.scrollBy({ top: target.top - desiredTop, behavior: 'instant' })
+    }
     function update() {
       setRect(step.target ? document.querySelector(step.target)?.getBoundingClientRect() ?? null : null)
       setViewport({ width: window.innerWidth, height: window.innerHeight })
@@ -46,12 +74,7 @@ export default function TourOverlay({ steps, index, mode, onIndex, onClose, onSk
       window.removeEventListener('resize', update)
       window.removeEventListener('scroll', update, true)
     }
-  }, [step])
-
-  useEffect(() => {
-    const height = cardRef.current?.offsetHeight
-    if (height && height !== cardHeight) setCardHeight(height)
-  }, [step, viewport, cardHeight])
+  }, [step, viewport.width, viewport.height, cardHeight])
 
   if (!step) return null
   const isLast = index === steps.length - 1
@@ -87,12 +110,13 @@ export default function TourOverlay({ steps, index, mode, onIndex, onClose, onSk
       {rect && <div className="pointer-events-none absolute rounded-lg ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-950" style={{ left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8, boxShadow: '0 0 0 9999px rgba(2, 6, 23, 0.72)' }} />}
       <div ref={cardRef} className="absolute overflow-y-auto rounded-lg border border-sky-500/60 bg-slate-950 p-4 text-slate-100 shadow-2xl" style={cardStyle}>
         <p id="tour-title" className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">{t(step.title)}</p>
+        <p aria-live="polite" className="mt-1 text-xs tabular-nums text-slate-400">{t('{current} of {total}', { current: index + 1, total: steps.length })}</p>
         <p id="tour-body" className="mt-2 text-sm leading-relaxed text-slate-300">{t(step.body)}</p>
-        <div className="mt-4 flex items-center justify-between gap-2">
-          <button type="button" onClick={mode === 'onboarding' ? onSkip : onClose} className="min-h-10 rounded px-2 text-xs text-slate-400 hover:text-slate-200">{t(mode === 'onboarding' ? 'Skip' : 'Close')}</button>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <button type="button" onClick={mode === 'onboarding' ? onSkip : onClose} className="min-h-11 rounded px-2 text-xs text-slate-400 hover:text-slate-200">{t(mode === 'onboarding' ? 'Skip tour' : 'Close')}</button>
           <div className="flex items-center gap-2">
-            {index > 0 && <button type="button" onClick={() => onIndex(index - 1)} className="min-h-10 rounded border border-slate-700 px-4 text-xs text-slate-300">{t('Back')}</button>}
-            <button ref={primaryRef} type="button" onClick={() => isLast ? onClose() : onIndex(index + 1)} className="min-h-10 rounded bg-sky-400 px-4 text-xs font-medium text-slate-950">{t(isLast ? 'Tour done' : 'Tour next')}</button>
+            {index > 0 && <button type="button" onClick={() => onIndex(index - 1)} className="min-h-11 rounded border border-slate-700 px-3 text-xs text-slate-300">{t('Back')}</button>}
+            <button ref={primaryRef} type="button" onClick={() => isLast ? onClose() : onIndex(index + 1)} className="min-h-11 rounded bg-sky-400 px-3 text-xs font-medium text-slate-950">{t(isLast ? 'Tour done' : 'Tour next')}</button>
           </div>
         </div>
       </div>

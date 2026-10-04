@@ -108,6 +108,7 @@ export function toYouTubeIframeSrc(storedUrl: string): string | null {
     return null
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+  if (url.username || url.password) return null
   if (!isYouTubeEmbedUrl(url)) return null
   const videoId = readVideoId(url.pathname.split('/').filter(Boolean)[1])
   if (!videoId) return null
@@ -117,4 +118,51 @@ export function toYouTubeIframeSrc(storedUrl: string): string | null {
   iframeUrl.searchParams.set('playsinline', '1')
   iframeUrl.searchParams.set('rel', '0')
   return iframeUrl.toString()
+}
+
+export function toYouTubeApiSrc(storedUrl: string, currentOrigin: string) {
+  const plain = toYouTubeIframeSrc(storedUrl)
+  if (!plain) return null
+  let origin: URL
+  try { origin = new URL(currentOrigin) } catch { return null }
+  if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== currentOrigin || origin.username || origin.password) return null
+  const url = new URL(plain)
+  url.searchParams.set('enablejsapi', '1')
+  url.searchParams.set('origin', origin.origin)
+  return url.toString()
+}
+
+export function youTubeTitleFallback(storedUrl: string) {
+  const plain = toYouTubeIframeSrc(storedUrl)
+  return plain ? `YouTube ${new URL(plain).pathname.split('/').pop()}` : 'YouTube'
+}
+
+export async function lookupYouTubeTitle(storedUrl: string, request: typeof fetch = fetch): Promise<string | null> {
+  const plain = toYouTubeIframeSrc(storedUrl)
+  if (!plain) return null
+  const watch = new URL(toYouTubeWatchUrl(plain)!)
+  watch.searchParams.delete('t')
+  const endpoint = new URL('https://www.youtube.com/oembed')
+  endpoint.searchParams.set('url', watch.toString())
+  endpoint.searchParams.set('format', 'json')
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const lookup = async () => {
+      const response = await request(endpoint.toString(), { mode: 'cors', credentials: 'omit', signal: controller.signal })
+      if (!response.ok) return null
+      const data: unknown = await response.json()
+      if (!data || typeof data !== 'object' || !('title' in data) || typeof data.title !== 'string') return null
+      return data.title.trim() || null
+    }
+    return await Promise.race([
+      lookup(),
+      new Promise<null>((resolve) => { timer = setTimeout(() => { controller.abort(); resolve(null) }, 4000) }),
+    ])
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
+  }
 }

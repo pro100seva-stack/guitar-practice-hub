@@ -753,7 +753,7 @@ export default function Plan() {
             </div>
             {actionError && <p role="alert" className="msg-error mt-3">{actionError}</p>}
 
-            <div ref={weekListRef} className="plan-week-list mt-3 max-h-[40dvh] overflow-y-auto lg:max-h-none">
+            <div ref={weekListRef} data-tour={week ? 'plan-weeks' : undefined} className="plan-week-list mt-3 max-h-[40dvh] overflow-y-auto lg:max-h-none">
               <div className="list">
                 {weeks.map((weekItem) => {
                   const isSelected = weekItem.id === selectedWeekId
@@ -786,7 +786,7 @@ export default function Plan() {
           </section>
 
           <form onSubmit={handleSubmit} className="section space-y-4 lg:border-t-0 lg:pt-0">
-            <div data-tour="plan-week">
+            <div>
               {week ? (
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -802,6 +802,7 @@ export default function Plan() {
 
             {week && (
               <>
+                <div data-tour="plan-week" className="space-y-4">
                 <label className="block">
                   <span className="label">{t('Focus')}</span>
                   <input
@@ -892,7 +893,9 @@ export default function Plan() {
                   )}
                 </div>
 
-                <label className="block">
+                </div>
+
+                <label data-tour="plan-tasks" className="block">
                   <span className="label">{t('Tasks')}</span>
                   <textarea
                     rows={8}
@@ -905,9 +908,9 @@ export default function Plan() {
               </>
             )}
 
-            <div data-tour="plan-songs-todos">
+            <div>
               <fieldset disabled={!week} className="min-w-0 space-y-4">
-                <div>
+                <div data-tour={week ? 'plan-todos' : undefined}>
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="item-title">{t('ToDo')}</h3>
                     <button type="button" onClick={addTodo} className="btn btn-secondary">
@@ -958,7 +961,7 @@ export default function Plan() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" disabled={saving || !week} className="btn btn-primary w-full sm:w-auto">
+              <button type="submit" data-tour={week ? 'plan-save' : undefined} disabled={saving || !week} className="btn btn-primary w-full sm:w-auto">
                 {saving ? t('Saving…') : t('Save plan')}
               </button>
               {message && <p role="status" className="msg-success">{message}</p>}

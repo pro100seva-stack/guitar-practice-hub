@@ -2,17 +2,20 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as Reac
 import { createPortal } from 'react-dom'
 import { useHeaderSlots } from '../components/headerSlots'
 import { supabase } from '../lib/supabase'
-import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, loadLocalMaterialBlob, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
+import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, loadLocalMaterialBlob, normalizeBookmarks, patchLocalMaterialMetadata, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
 import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { getDefaultMaterials } from '../lib/defaultMaterials'
-import { planSessionBlockSave } from '../lib/sessionBlockSavePlan'
-import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
-import { createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
+import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../lib/sessionBlockSavePlan'
+import { getPracticedDates } from '../lib/sessionActivity'
+import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
+import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
 import MetronomeIcon from '../components/icons/MetronomeIcon'
 import TuningForkIcon from '../components/icons/TuningForkIcon'
-import { isYouTubeEmbedUrl, isYouTubeHostLink, toYouTubeEmbedUrl, toYouTubeIframeSrc, toYouTubeWatchUrl } from '../lib/youtube'
+import { isYouTubeEmbedUrl, isYouTubeHostLink, lookupYouTubeTitle, toYouTubeEmbedUrl, youTubeTitleFallback } from '../lib/youtube'
+import { formatPracticeTime, validDuration } from '../lib/youtubePractice'
+import YouTubePracticePlayer from '../components/YouTubePracticePlayer'
 
 type MaterialFeedback = { error: string | null; notice: string | null; saveState: 'idle' | 'saving' | 'saved' }
 const emptyMaterialFeedback: MaterialFeedback = { error: null, notice: null, saveState: 'idle' }
@@ -153,7 +156,9 @@ export default function Sessions() {
   const [loopStart, setLoopStart] = useState<number | null>(null)
   const [loopEnd, setLoopEnd] = useState<number | null>(null)
   const [isLooping, setIsLooping] = useState(false)
-  const [bookmarks, setBookmarks] = useState<number[]>([])
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [bookmarkSaving, setBookmarkSaving] = useState(false)
+  const [materialRename, setMaterialRename] = useState<{ id: string; blockKey: string; draft: string; saving: boolean; error: string | null } | null>(null)
   const materialFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [isTunerOpen, setIsTunerOpen] = useState(false)
@@ -173,6 +178,8 @@ export default function Sessions() {
   const tunerButtonRef = useRef<HTMLButtonElement | null>(null)
   const lastToolButtonRef = useRef<HTMLButtonElement | null>(null)
   const materialsRequestTrackerRef = useRef(createRequestTracker())
+  const materialNavigationRef = useRef(0)
+  const materialsMountedRef = useRef(false)
   const dayStripRef = useRef<HTMLDivElement | null>(null)
   const blocksSectionRef = useRef<HTMLElement | null>(null)
   const addBlockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -191,11 +198,21 @@ export default function Sessions() {
     void loadAppSettings()
   }, [])
 
+  useEffect(() => {
+    materialsMountedRef.current = true
+    return () => { materialsMountedRef.current = false }
+  }, [])
+
+  useEffect(() => {
+    materialNavigationRef.current++
+  }, [expandedBlockIds, date, activeMaterial?.id, activeDefaultMaterial?.url])
+
   function patchMaterialFeedback(blockKey: string, patch: Partial<MaterialFeedback>) {
     setMaterialFeedback((current) => ({ ...current, [blockKey]: { ...emptyMaterialFeedback, ...current[blockKey], ...patch } }))
   }
 
   function setActiveMaterial(blockKey: string, id: string | null) {
+    materialNavigationRef.current++
     if (activeMaterial?.id !== id) setActiveMaterialUrl(null)
     setActiveMaterialState(id ? { blockKey, id } : null)
     if (id) setActiveDefaultMaterial(null)
@@ -214,6 +231,7 @@ export default function Sessions() {
   }
 
   const activeMaterialRecord = findActiveMaterial(materialsByBlock, activeMaterial)
+  const bookmarks = normalizeBookmarks(activeMaterialRecord?.bookmarks ?? [])
   const activeMaterialRecordRef = useRef<LocalMaterial | null>(null)
   const activeMaterialId = activeMaterialRecord?.id ?? null
   const activeMaterialSource = activeMaterialRecord?.source ?? null
@@ -228,17 +246,15 @@ export default function Sessions() {
   // Depends only on stable primitives so bookmark saves and list reloads keep the blob URL and A-B loop.
   useEffect(() => {
     const record = activeMaterialRecordRef.current
+    setVideoDuration(0)
     if (!record) {
       setActiveMaterialUrl(null)
       setMediaError(null)
       setLoopStart(null)
       setLoopEnd(null)
       setIsLooping(false)
-      setBookmarks([])
       return
     }
-
-    setBookmarks(record.bookmarks ?? [])
 
     if (record.source === 'url') {
       setActiveMaterialUrl(record.url ?? null)
@@ -337,6 +353,8 @@ export default function Sessions() {
   async function addMaterialUrl(blockKey: string) {
     const value = (materialUrlInputs[blockKey] ?? '').trim()
     if (!value) return
+    const navigation = materialNavigationRef.current
+    patchMaterialFeedback(blockKey, { error: null, saveState: 'saving' })
     try {
       const youTubeEmbedUrl = toYouTubeEmbedUrl(value)
       if (!youTubeEmbedUrl && isYouTubeHostLink(value)) throw new Error(t('This YouTube link is not valid.'))
@@ -349,31 +367,56 @@ export default function Sessions() {
       }
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error(t('Only HTTP and HTTPS URLs are supported.'))
       const materialId = crypto.randomUUID()
+      const name = youTubeEmbedUrl ? await lookupYouTubeTitle(youTubeEmbedUrl) ?? youTubeTitleFallback(youTubeEmbedUrl) : url.hostname
+      if (!materialsMountedRef.current) return
       await saveLocalMaterial({
         id: materialId,
         blockKey,
-        name: youTubeEmbedUrl ? 'YouTube' : url.hostname,
+        name,
         type: 'text/uri-list',
         size: 0,
         source: 'url',
         url: url.toString(),
         createdAt: new Date().toISOString(),
       })
+      if (!materialsMountedRef.current) return
       setMaterialUrlInputs((current) => ({ ...current, [blockKey]: '' }))
-      patchMaterialFeedback(blockKey, { error: null, notice: null })
+      patchMaterialFeedback(blockKey, { error: null, notice: null, saveState: 'idle' })
       await loadBlockMaterials(blockKey)
-      setActiveMaterial(blockKey, materialId)
+      if (materialsMountedRef.current && navigation === materialNavigationRef.current) setActiveMaterial(blockKey, materialId)
     } catch (urlError) {
-      patchMaterialFeedback(blockKey, { error: urlError instanceof Error ? urlError.message : t('Enter a valid web URL.') })
+      if (materialsMountedRef.current) patchMaterialFeedback(blockKey, { error: urlError instanceof Error ? urlError.message : t('Enter a valid web URL.'), saveState: 'idle' })
+    }
+  }
+
+  async function saveMaterialName() {
+    if (!materialRename || materialRename.saving) return
+    const { id, blockKey, draft } = materialRename
+    if (!draft.trim()) {
+      setMaterialRename((current) => current?.id === id ? { ...current, error: t('Enter a material name.') } : current)
+      return
+    }
+    setMaterialRename((current) => current?.id === id ? { ...current, saving: true, error: null } : current)
+    materialsRequestTrackerRef.current.begin(blockKey)
+    try {
+      const updated = await patchLocalMaterialMetadata(id, blockKey, { name: draft })
+      if (!materialsMountedRef.current) return
+      materialsRequestTrackerRef.current.begin(blockKey)
+      setMaterialsByBlock((current) => updateBlockMaterial(current, blockKey, id, { name: updated.name }))
+      setMaterialRename((current) => current?.id === id ? null : current)
+    } catch {
+      if (materialsMountedRef.current) setMaterialRename((current) => current?.id === id ? { ...current, saving: false, error: t('Could not save material changes.') } : current)
     }
   }
 
   async function removeLearningMaterial(blockKey: string, id: string) {
-    materialsRequestTrackerRef.current.begin(blockKey)
+    const commitDeletion = materialsRequestTrackerRef.current.beginDeletion(blockKey)
     try {
       await deleteLocalMaterial(id)
+      commitDeletion()
       setMaterialsByBlock((current) => removeBlockMaterial(current, blockKey, id))
-      if (activeMaterial?.id === id) setActiveMaterialState(null)
+      setMaterialRename((current) => current?.id === id ? null : current)
+      setActiveMaterialState((current) => closeDeletedMaterial(current, blockKey, id))
       setLocalStorageEstimate(await estimateLocalStorage())
     } catch (removeError) {
       patchMaterialFeedback(blockKey, { error: removeError instanceof Error ? removeError.message : t('Could not remove the local material.') })
@@ -401,27 +444,32 @@ export default function Sessions() {
 
   async function saveBookmark() {
     const currentTime = videoRef.current?.currentTime
-    if (!activeMaterial || !activeMaterialRecord || currentTime == null) return
-
-    const nextBookmarks = [...new Set([...bookmarks, Number(currentTime.toFixed(1))])].sort((left, right) => left - right)
-    await saveLocalMaterial({ ...activeMaterialRecord, blockKey: activeMaterial.blockKey, bookmarks: nextBookmarks })
-    setBookmarks(nextBookmarks)
-    setMaterialsByBlock((current) => updateBlockMaterial(current, activeMaterial.blockKey, activeMaterial.id, { bookmarks: nextBookmarks }))
+    if (!activeMaterial || currentTime == null || !Number.isFinite(currentTime) || currentTime < 0 || !validDuration(videoDuration)) return
+    await saveLocalBookmarks(activeMaterial.blockKey, activeMaterial.id, [...bookmarks, currentTime])
   }
 
   async function removeBookmark(bookmark: number) {
-    if (!activeMaterial || !activeMaterialRecord) return
-
-    const nextBookmarks = bookmarks.filter((value) => value !== bookmark)
-    await saveLocalMaterial({ ...activeMaterialRecord, blockKey: activeMaterial.blockKey, bookmarks: nextBookmarks })
-    setBookmarks(nextBookmarks)
-    setMaterialsByBlock((current) => updateBlockMaterial(current, activeMaterial.blockKey, activeMaterial.id, { bookmarks: nextBookmarks }))
+    if (!activeMaterial) return
+    await saveLocalBookmarks(activeMaterial.blockKey, activeMaterial.id, bookmarks.filter((value) => value !== bookmark))
   }
 
-  function formatBookmarkTime(value: number) {
-    const minutes = Math.floor(value / 60)
-    const seconds = Math.floor(value % 60).toString().padStart(2, '0')
-    return `${minutes}:${seconds}`
+  async function saveMaterialBookmarks(blockKey: string, id: string, next: number[]) {
+    materialsRequestTrackerRef.current.begin(blockKey)
+    const updated = await patchLocalMaterialMetadata(id, blockKey, { bookmarks: next })
+    if (!materialsMountedRef.current) return
+    materialsRequestTrackerRef.current.begin(blockKey)
+    setMaterialsByBlock((current) => updateBlockMaterial(current, blockKey, id, { bookmarks: updated.bookmarks }))
+  }
+
+  async function saveLocalBookmarks(blockKey: string, id: string, next: number[]) {
+    setBookmarkSaving(true)
+    try {
+      await saveMaterialBookmarks(blockKey, id, next)
+    } catch {
+      if (materialsMountedRef.current) patchMaterialFeedback(blockKey, { error: t('Could not save material changes.') })
+    } finally {
+      if (materialsMountedRef.current) setBookmarkSaving(false)
+    }
   }
 
   function getExternalMediaKind(material: LocalMaterial) {
@@ -432,15 +480,6 @@ export default function Sessions() {
     if (/\.(png|jpe?g|gif|webp|avif)$/.test(pathname)) return 'image'
     if (/\.pdf$/.test(pathname)) return 'pdf'
     return 'page'
-  }
-
-  function getInlineMaterialUrl(material: LocalMaterial) {
-    if (material.source !== 'url' || !material.url) return activeMaterialUrl
-
-    const parsedUrl = new URL(material.url)
-    if (!isYouTubeEmbedUrl(parsedUrl)) return material.url
-
-    return toYouTubeIframeSrc(material.url)
   }
 
   useEffect(() => {
@@ -715,6 +754,7 @@ export default function Sessions() {
   }
 
   function toggleBlockDetails(templateId: string, blockKey: string) {
+    materialNavigationRef.current++
     const isOpening = !expandedBlockIds.has(templateId)
     setExpandedBlockIds(isOpening ? new Set([templateId]) : new Set())
     if (isOpening) {
@@ -1046,6 +1086,18 @@ export default function Sessions() {
   const isToolPanelOpen = isMetronomeSettingsOpen || isTunerOpen
 
   useEffect(() => {
+    function prepareTour() {
+      setIsMetronomeSettingsOpen(false)
+      setIsTunerOpen(false)
+      setIsBlockPickerOpen(false)
+      if (metronomeHoldTimerRef.current !== null) window.clearTimeout(metronomeHoldTimerRef.current)
+      if (tunerHoldTimerRef.current !== null) window.clearTimeout(tunerHoldTimerRef.current)
+    }
+    window.addEventListener('practice-tour-start', prepareTour)
+    return () => window.removeEventListener('practice-tour-start', prepareTour)
+  }, [])
+
+  useEffect(() => {
     if (!isToolPanelOpen) return
 
     toolPanelRef.current?.focus({ preventScroll: true })
@@ -1286,6 +1338,40 @@ export default function Sessions() {
       return
     }
 
+    const existingSession = sessions.find((session) => session.session_date === date && session.user_id === user.id)
+    if (existingSession && hasUnsupportedSessionBlocks(existingSession.session_blocks, templates)) {
+      setError(t('Cannot save this session because it contains unsupported legacy blocks. All saved blocks and notes have been preserved.'))
+      setSaving(false)
+      return
+    }
+    if (existingSession && shouldDeleteClearedSession(true, selectedBlocks.length, comment)) {
+      try {
+        const { error: deletionError } = await supabase
+          .from('sessions')
+          .delete()
+          .eq('id', existingSession.id)
+          .eq('user_id', user.id)
+          .eq('session_date', date)
+          .select('id')
+          .single()
+
+        if (deletionError) {
+          setError(t('Could not delete the empty session. Your changes have been kept.'))
+          setSaving(false)
+          return
+        }
+      } catch {
+        setError(t('Could not delete the empty session. Your changes have been kept.'))
+        setSaving(false)
+        return
+      }
+
+      await loadData({ date, weekId: planWeek?.id ?? null })
+      setMessage(t('Empty session deleted successfully.'))
+      setSaving(false)
+      return
+    }
+
     const { data: sessionData, error: sessionError } = await supabase
       .from('sessions')
       .upsert(
@@ -1349,21 +1435,16 @@ export default function Sessions() {
   }
 
   const totalBlockMinutes = selectedBlocks.reduce((sum, block) => {
-    const elapsedSeconds = timers[block.id]?.elapsedSeconds ?? 0
-    if (elapsedSeconds > 0) {
-      const minutes = Math.floor(elapsedSeconds / 60) + (elapsedSeconds % 60 >= 30 ? 1 : 0)
-      return sum + minutes
-    }
-
-    if (!block.done) return sum
-
-    const value = Number(block.actualMinutes)
-    return Number.isFinite(value) && value > 0 ? sum + value : sum
+    return sum + (sessionBlockMinutes({
+      elapsedSeconds: timers[block.id]?.elapsedSeconds,
+      actualMinutes: block.actualMinutes,
+    }) ?? 0)
   }, 0)
 
   const selectedWeekDates = getWeekDates(planWeek ?? weeks[selectedWeekIndex] ?? null)
   const visibleWeeks = weeks.slice(Math.max(0, selectedWeekIndex - 2), Math.min(weeks.length, selectedWeekIndex + 3))
   const todayDate = toLocalIsoDate()
+  const practicedDates = getPracticedDates(sessions)
   const isPastDay = date < todayDate
   const savedForDate = hasSavedSession(date, sessions)
   const isDirty = isSessionEditorDirty(getSessionEditorState(date, templates, sessions), { comment, timers, selectedBlocks })
@@ -1770,12 +1851,12 @@ export default function Sessions() {
           </p>
         )}
 
-        <div data-tour="practice-day-blocks" role="group" aria-label={t('Days in selected week')} className="mt-2">
+        <div data-tour="practice-days" role="group" aria-label={t('Days in selected week')} className="mt-2">
           <div ref={dayStripRef} className="relative flex snap-x gap-2 overflow-x-auto pb-1">
             {selectedWeekDates.map((day) => {
               const isSelectedDay = day === date
               const isToday = day === todayDate
-              const isCompleted = day < todayDate && sessions.some((session) => session.session_date === day)
+              const isCompleted = day < todayDate && practicedDates.has(day)
               const dayDate = new Date(`${day}T00:00:00`)
               const fullDate = dayDate.toLocaleDateString(localeForLanguage(language), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -1824,7 +1905,9 @@ export default function Sessions() {
             </span>
           )}
         </div>
-        <p className="text-sm text-slate-400">{t('Practice time')}: {t('{minutes} min', { minutes: totalBlockMinutes })}</p>
+        <p className="text-base text-slate-300">
+          {t('Practice time')}: <span className="text-xl font-semibold tabular-nums text-slate-100">{t('{minutes} min', { minutes: totalBlockMinutes })}</span>
+        </p>
 
         {selectedBlocks.length === 0 && (
           <div data-tour="practice-block-picker" className="mt-3">
@@ -2013,6 +2096,7 @@ export default function Sessions() {
                               <input
                                 type="url"
                                 value={materialUrlInputs[template.key] ?? ''}
+                                disabled={blockFeedback.saveState === 'saving'}
                                 onChange={(event) => setMaterialUrlInputs((current) => ({ ...current, [template.key]: event.target.value }))}
                                 placeholder={t('Material URL')}
                                 className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
@@ -2020,6 +2104,7 @@ export default function Sessions() {
                               <button
                                 type="button"
                                 onClick={() => { void addMaterialUrl(template.key) }}
+                                disabled={blockFeedback.saveState === 'saving'}
                                 className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
                               >
                                 {t('Add URL')}
@@ -2028,7 +2113,15 @@ export default function Sessions() {
                             {blockMaterials.length > 0 && (
                               <div>
                                 {blockMaterials.map((material) => (
-                                  <div key={material.id} className="flex min-h-11 items-center justify-between gap-2 text-sm">
+                                  <div key={material.id} className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-sm">
+                                    {materialRename?.id === material.id && materialRename.blockKey === template.key ? (
+                                      <form className="flex w-full flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); void saveMaterialName() }}>
+                                        <input autoFocus aria-label={t('Material name')} value={materialRename.draft} disabled={materialRename.saving} onChange={(event) => setMaterialRename((current) => current ? { ...current, draft: event.target.value, error: null } : current)} className="min-h-11 w-full rounded border border-slate-600 bg-slate-950 px-3 text-slate-200" />
+                                        <button type="submit" disabled={materialRename.saving} className="min-h-11 rounded border border-slate-600 px-3 text-sky-300 disabled:opacity-40">{t('Save name')}</button>
+                                        <button type="button" disabled={materialRename.saving} onClick={() => setMaterialRename(null)} className="min-h-11 px-3 text-slate-300 disabled:opacity-40">{t('Cancel')}</button>
+                                        {materialRename.error && <p role="alert" className="w-full text-rose-300">{materialRename.error}</p>}
+                                      </form>
+                                    ) : (<>
                                     <button
                                       type="button"
                                       onClick={() => setActiveMaterial(template.key, material.id)}
@@ -2036,6 +2129,7 @@ export default function Sessions() {
                                     >
                                       {material.name}
                                     </button>
+                                    <button type="button" aria-label={t('Rename {name}', { name: material.name })} onClick={() => setMaterialRename({ id: material.id, blockKey: template.key, draft: material.name, saving: false, error: null })} className="min-h-11 min-w-11 shrink-0 px-2 text-slate-300">{t('Rename')}</button>
                                     <button
                                       type="button"
                                       onClick={() => { void removeLearningMaterial(template.key, material.id) }}
@@ -2043,6 +2137,7 @@ export default function Sessions() {
                                     >
                                       {t('Remove')}
                                     </button>
+                                    </>)}
                                   </div>
                                 ))}
                               </div>
@@ -2054,7 +2149,6 @@ export default function Sessions() {
                               const isImage = activeMaterial.type.startsWith('image/')
                               const externalMediaKind = getExternalMediaKind(activeMaterial)
                               const isExternalPage = externalMediaKind === 'page'
-                              const inlineMaterialUrl = getInlineMaterialUrl(activeMaterial)
 
                               return (
                                 <div className="mt-3 overflow-hidden bg-slate-950">
@@ -2062,21 +2156,20 @@ export default function Sessions() {
                                     <span className="min-w-0 truncate text-sm text-slate-300">{activeMaterial.name}</span>
                                     <button
                                       type="button"
-                                      onClick={() => setActiveMaterialState(null)}
+                                      onClick={() => setActiveMaterial(template.key, null)}
                                       className="min-h-11 min-w-11 shrink-0 px-2 text-sm text-slate-300 hover:text-slate-100"
                                     >
                                       {t('Close')}
                                     </button>
                                   </div>
-                                  {externalMediaKind === 'embed' && inlineMaterialUrl ? (
-                                    <iframe
-                                      src={inlineMaterialUrl}
-                                      title={activeMaterial.name}
-                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                      allowFullScreen
-                                      loading="lazy"
-                                      referrerPolicy="strict-origin-when-cross-origin"
-                                      className="aspect-video w-full bg-black"
+                                  {externalMediaKind === 'embed' && activeMaterial.url ? (
+                                    <YouTubePracticePlayer
+                                      key={activeMaterial.id}
+                                      materialId={activeMaterial.id}
+                                      url={activeMaterial.url}
+                                      name={activeMaterial.name}
+                                      bookmarks={bookmarks}
+                                      onBookmarksChange={(next) => saveMaterialBookmarks(template.key, activeMaterial.id, next)}
                                     />
                                   ) : isExternalPage && activeMaterial.url ? (
                                     <div className="space-y-3 p-4 text-sm text-slate-300">
@@ -2099,6 +2192,8 @@ export default function Sessions() {
                                         controls
                                         playsInline
                                         preload="metadata"
+                                        onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration)}
+                                        onDurationChange={(event) => setVideoDuration(event.currentTarget.duration)}
                                         onTimeUpdate={(event) => {
                                           if (!isLooping || loopStart == null || loopEnd == null || loopEnd <= loopStart) return
                                           if (event.currentTarget.currentTime >= loopEnd) {
@@ -2115,6 +2210,7 @@ export default function Sessions() {
                                           <button
                                             type="button"
                                             onClick={() => { void saveBookmark() }}
+                                            disabled={bookmarkSaving || !validDuration(videoDuration)}
                                             className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
                                           >
                                             {t('Save position')}
@@ -2124,10 +2220,10 @@ export default function Sessions() {
                                           <div className="flex flex-wrap gap-2">
                                             {bookmarks.map((bookmark) => (
                                               <span key={bookmark} className="inline-flex items-center rounded border border-slate-700 bg-slate-950 text-sm text-slate-300">
-                                                <button type="button" onClick={() => { if (videoRef.current) videoRef.current.currentTime = bookmark }} className="min-h-11 px-3 text-sky-300 hover:text-sky-100">
-                                                  {formatBookmarkTime(bookmark)}
+                                                <button type="button" disabled={!validDuration(videoDuration) || bookmark > videoDuration} onClick={() => { if (videoRef.current) videoRef.current.currentTime = bookmark }} className="min-h-11 px-3 text-sky-300 hover:text-sky-100 disabled:opacity-40">
+                                                  {formatPracticeTime(bookmark)}
                                                 </button>
-                                                <button type="button" onClick={() => { void removeBookmark(bookmark) }} aria-label={t('Remove bookmark')} className="min-h-11 min-w-11 text-slate-300 hover:text-rose-300">
+                                                <button type="button" disabled={bookmarkSaving} onClick={() => { void removeBookmark(bookmark) }} aria-label={t('Remove bookmark')} className="min-h-11 min-w-11 text-slate-300 hover:text-rose-300 disabled:opacity-40">
                                                   ×
                                                 </button>
                                               </span>
@@ -2168,18 +2264,6 @@ export default function Sessions() {
                                           {t('Clear')}
                                         </button>
                                       </div>
-                                      {activeMaterial.source === 'file' && (
-                                        <div>
-                                          <p className="mb-1 text-xs text-slate-400">{t('Audio track fallback')}</p>
-                                          <audio
-                                            src={activeMaterialUrl}
-                                            controls
-                                            preload="metadata"
-                                            className="w-full"
-                                            onError={() => setMediaError(t('The audio codec is not supported by this browser.'))}
-                                          />
-                                        </div>
-                                      )}
                                     </div>
                                   ) : isImage || externalMediaKind === 'image' ? (
                                     <img src={activeMaterialUrl} alt={activeMaterial.name} className="max-h-[420px] w-full object-contain" />
@@ -2198,16 +2282,6 @@ export default function Sessions() {
                                       title={activeMaterial.name}
                                       className="h-[420px] w-full bg-white"
                                     />
-                                  )}
-                                  {externalMediaKind === 'embed' && activeMaterial.url && (
-                                    <a
-                                      href={toYouTubeWatchUrl(activeMaterial.url) ?? activeMaterial.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200"
-                                    >
-                                      {t('Playback trouble? Open on YouTube')}
-                                    </a>
                                   )}
                                   {mediaError && <p className="py-2 text-sm text-rose-300">{mediaError}</p>}
                                 </div>

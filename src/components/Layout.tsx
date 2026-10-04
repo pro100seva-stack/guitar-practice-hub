@@ -24,6 +24,10 @@ export default function Layout() {
   const tour = useScreenTour(location.pathname)
 
   useEffect(() => {
+    if (tour.isOpen) setMenuOpen(false)
+  }, [tour.isOpen])
+
+  useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
       if (!panelRef.current) return
       const target = event.target as Node

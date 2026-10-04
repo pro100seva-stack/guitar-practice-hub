@@ -11,27 +11,31 @@ export function fallbackStep(path: string): TourStep {
 
 export const tourSteps: Record<string, TourStep[]> = {
   '/landing': [
-    { target: '[data-tour="menu"]', title: 'Your navigation menu', body: 'Open this menu to move between Home, Progress, Plan, Practice, Stats, and Settings.' },
-    { target: '[data-tour="progress"]', title: 'Track your progress', body: 'Review completed practice, upcoming weeks, and your progress timeline here.' },
-    { target: '[data-tour="current-week"]', title: 'Plan your week', body: 'Open the current week to edit focus, tasks, ToDos, and songs.' },
-    { target: '[data-tour="practice"]', title: 'Practice and log work', body: 'Use Practice for timers, blocks, ToDos, the metronome, tuner, and learning materials.' },
+    { target: '[data-tour="menu"]', title: 'Menu and Help', body: 'Switch screens here. Tap Help at the bottom of any screen to replay its tour.' },
+    { target: '[data-tour="current-week"]', title: 'Plan your week', body: "Start here: see this week's focus, tasks and ToDos, and edit them." },
+    { target: '[data-tour="practice"]', title: 'Practice and log', body: 'Pick blocks, use the timer, metronome and tuner, then save the session.' },
+    { target: '[data-tour="progress"]', title: 'Track progress', body: 'See finished and upcoming weeks. Your first session shows up here.' },
   ],
   '/progress': [
-    { target: '[data-tour="progress-timeline"]', title: 'Your timeline', body: 'See every program and week as a journey: what you finished, where you are now, and what comes next.' },
-    { target: '[data-tour="stats-link"]', title: 'Stats shortcut', body: 'Jump from here to Stats for your totals, streaks, and practice charts.' },
+    { target: '[data-tour="progress-timeline"]', title: 'Your timeline', body: 'Tap a program to open its weeks. Tap a week to edit it in Plan.' },
+    { target: '[data-tour="stats-link"]', title: 'Stats shortcut', body: 'Open Stats for totals, streaks and charts.' },
   ],
   '/plan': [
-    { target: '[data-tour="plan-week"]', title: 'This week\'s plan', body: 'Pick a week, set its focus and tasks, then press Save plan to keep your changes.' },
-    { target: '[data-tour="plan-songs-todos"]', title: 'Songs and ToDos', body: 'Keep a ToDo list for the week and add the songs you are learning, one per line.' },
+    { target: '[data-tour="plan-weeks"]', title: 'Your weeks', body: 'Each row is a practice week. Select one to edit it. Today marks this week.' },
+    { target: '[data-tour="plan-week"]', title: 'Selected week', body: 'Set the focus, program and dates for the week you picked.' },
+    { target: '[data-tour="plan-tasks"]', title: 'Weekly tasks', body: 'Write what to work on. Practice shows it as the week description.' },
+    { target: '[data-tour="plan-todos"]', title: 'ToDo list', body: 'Small goals for the week. Tick them off here or on the Practice screen.' },
+    { target: '[data-tour="plan-save"]', title: 'Save your plan', body: "Save stores the week's focus, program, dates, tasks, ToDos and songs." },
   ],
   '/practice': [
-    { target: '[data-tour="practice-day-blocks"]', title: 'Choose a day and blocks', body: 'Select a day, then choose your first block.' },
-    { target: '[data-tour="practice-tools"]', title: 'Timer, metronome and tuner', body: 'Keep time with the metronome, tune your guitar, and time each block while you play.' },
-    { target: '[data-tour="practice-save"]', title: 'Save your session', body: 'Add a few notes and save the session so it counts toward your progress and stats.' },
+    { target: '[data-tour="practice-days"]', title: 'Pick a day', body: 'Choose the day to log. Today is marked; days with a session show a check.' },
+    { target: '[data-tour="practice-block-picker"]', title: 'Add a block', body: 'Blocks are what you practice, like warm-up or technique. Add at least one.' },
+    { target: '[data-tour="practice-tools"]', title: 'Metronome and tuner', body: 'Tap play/stop; hold or right-click for settings. The tuner is beside it.' },
+    { target: '[data-tour="practice-save"]', title: 'Save your session', body: 'Save logs your blocks and notes. Add a block to unlock a new session; saved days can save changes.' },
   ],
   '/stats': [
-    { target: '[data-tour="stats-filters"]', title: 'Filter your stats', body: 'Switch between the current week, month, year, a custom range, or your full history.' },
-    { target: '[data-tour="stats-summary"]', title: 'Your totals', body: 'Practice time, sessions logged, your current streak, and the selected period at a glance.' },
+    { target: '[data-tour="stats-filters"]', title: 'Choose a period', body: 'Switch between week, month, year, a custom range or all time.' },
+    { target: '[data-tour="stats-summary"]', title: 'Your totals', body: 'Time, sessions and streak for the chosen period. Charts are below.' },
   ],
   '/settings': [
     { target: '[data-tour="settings-language"]', title: 'Interface language', body: 'Choose the language of the app. It is saved to your account and used on every device.' },

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { useI18n } from '../lib/i18n'
-import { localeForLanguage } from '../lib/dateFormat'
+import { getLocalDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
+import { getCurrentStreak, hasPracticeMinutes, hasSessionActivity } from '../lib/sessionActivity'
 
 type Session = Database['public']['Tables']['sessions']['Row']
 type SessionBlock = Database['public']['Tables']['session_blocks']['Row']
@@ -82,34 +83,6 @@ function getStartOfWeek(date: Date) {
   return start
 }
 
-function getStartOfMonth(date: Date) {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1)
-  start.setHours(0, 0, 0, 0)
-  return start
-}
-
-function getEndOfMonth(date: Date) {
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
-  end.setHours(23, 59, 59, 999)
-  return end
-}
-
-function getStartOfYear(date: Date) {
-  const start = new Date(date.getFullYear(), 0, 1)
-  start.setHours(0, 0, 0, 0)
-  return start
-}
-
-function getEndOfYear() {
-  const end = new Date(new Date().getFullYear(), 11, 31)
-  end.setHours(23, 59, 59, 999)
-  return end
-}
-
-function formatDateForInput(date: Date) {
-  return date.toISOString().slice(0, 10)
-}
-
 function isInRange(dateValue: string, start: string | null, end: string | null) {
   if (!start && !end) return true
   if (start && dateValue < start) return false
@@ -120,7 +93,7 @@ function isInRange(dateValue: string, start: string | null, end: string | null) 
 function getWeekKey(dateValue: string) {
   const date = new Date(`${dateValue}T00:00:00`)
   const start = getStartOfWeek(date)
-  return formatDateForInput(start)
+  return toLocalIsoDate(start)
 }
 
 function chartLabelStep(total: number, chartWidth: number) {
@@ -179,67 +152,21 @@ export default function Stats() {
     setLoading(false)
   }
 
-  const rangeStart = (() => {
-    const today = new Date()
-    if (filterPreset === 'current-week') {
-      return formatDateForInput(getStartOfWeek(today))
-    }
-    if (filterPreset === 'current-month') {
-      return formatDateForInput(getStartOfMonth(today))
-    }
-    if (filterPreset === 'this-year') {
-      return formatDateForInput(getStartOfYear(today))
-    }
-    if (filterPreset === 'all') {
-      return ''
-    }
-    return customStart
-  })()
+  const { start: rangeStart, end: rangeEnd } = filterPreset === 'custom'
+    ? { start: customStart, end: customEnd }
+    : filterPreset === 'all'
+      ? { start: '', end: '' }
+      : getLocalDateRange(filterPreset)
 
-  const rangeEnd = (() => {
-    const today = new Date()
-    if (filterPreset === 'current-week') {
-      const end = new Date(getStartOfWeek(today))
-      end.setDate(end.getDate() + 6)
-      end.setHours(23, 59, 59, 999)
-      return formatDateForInput(end)
-    }
-    if (filterPreset === 'current-month') {
-      return formatDateForInput(getEndOfMonth(today))
-    }
-    if (filterPreset === 'this-year') {
-      return formatDateForInput(getEndOfYear())
-    }
-    if (filterPreset === 'all') {
-      return ''
-    }
-    return customEnd
-  })()
-
-  const filteredSessions = sessions.filter((session) => isInRange(session.session_date, rangeStart || null, rangeEnd || null))
+  const filteredSessions = sessions.filter((session) => hasSessionActivity(session) && isInRange(session.session_date, rangeStart || null, rangeEnd || null))
 
   useEffect(() => {
-    const effectFilteredSessions = sessions.filter((session) => isInRange(session.session_date, rangeStart || null, rangeEnd || null))
+    const effectFilteredSessions = sessions.filter((session) => hasSessionActivity(session) && isInRange(session.session_date, rangeStart || null, rangeEnd || null))
     const sortedSessions = [...effectFilteredSessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
     const totalMinutes = sortedSessions.reduce((sum, session) => sum + Number(session.total_minutes ?? 0), 0)
     const totalSessions = sortedSessions.length
 
-    let streakDays = 0
-    if (sortedSessions.length > 0) {
-      const seen = new Set(sortedSessions.map((session) => session.session_date))
-      const today = new Date()
-      const cursor = new Date(today)
-
-      while (true) {
-        const key = cursor.toISOString().slice(0, 10)
-        if (seen.has(key)) {
-          streakDays += 1
-          cursor.setDate(cursor.getDate() - 1)
-          continue
-        }
-        break
-      }
-    }
+    const streakDays = getCurrentStreak(sortedSessions)
 
     const buckets = new Map<string, number>()
     for (const session of sortedSessions) {
@@ -376,7 +303,8 @@ export default function Stats() {
   })
 
   const insights: InsightCard[] = (() => {
-    if (filteredSessions.length === 0) {
+    const practicedSessions = filteredSessions.filter(hasPracticeMinutes)
+    if (practicedSessions.length === 0) {
       return [
         { title: t('Most continuous streak'), value: `0 ${t('weeks')}`, detail: t('Log a session to start building momentum.') },
         { title: t('Longest practice'), value: `0 ${t('min')}`, detail: t('Your best session will appear here.') },
@@ -384,7 +312,7 @@ export default function Stats() {
       ]
     }
 
-    const sortedSessions = [...filteredSessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
+    const sortedSessions = [...practicedSessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
     const longestPractice = sortedSessions.reduce((max, session) => {
       const minutes = Number(session.total_minutes ?? 0)
       return Math.max(max, minutes)

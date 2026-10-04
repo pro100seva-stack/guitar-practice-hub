@@ -35,6 +35,10 @@ export function hasSavedSession(date: string, sessions: Array<{ session_date: st
   return sessions.some((session) => session.session_date === date)
 }
 
+export function shouldDeleteClearedSession(existing: boolean, selectedBlockCount: number, comment: string) {
+  return existing && selectedBlockCount === 0 && comment.trim() === ''
+}
+
 // A day starts empty unless a session was saved for it; saved blocks keep template order.
 export function getSessionEditorState(date: string, templates: EditorTemplate[], sessions: EditorSession[]): SessionEditorState {
   const savedSession = sessions.find((session) => session.session_date === date)
