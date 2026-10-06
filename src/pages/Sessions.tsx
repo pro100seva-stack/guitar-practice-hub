@@ -624,17 +624,15 @@ export default function Sessions() {
   }
 
   function getWeekDates(week: PlanWeek | null) {
-    if (!week) return []
+    if (!week?.start_date) return []
 
-    const storedStart = new Date(`${week.start_date}T00:00:00`)
-    const day = storedStart.getDay()
-    const start = new Date(storedStart)
-    start.setDate(start.getDate() + (day === 0 ? -6 : 1 - day))
     const result: string[] = []
-    const cursor = new Date(start)
+    const cursor = new Date(`${week.start_date}T00:00:00`)
+    const lastDate = week.end_date && week.end_date >= week.start_date ? week.end_date : week.start_date
 
-    for (let index = 0; index < 7; index += 1) {
+    while (result.length < 14) {
       result.push(formatLocalDate(cursor))
+      if (result[result.length - 1] >= lastDate) break
       cursor.setDate(cursor.getDate() + 1)
     }
 

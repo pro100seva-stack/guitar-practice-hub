@@ -112,7 +112,9 @@ describe('video controls decisions', () => {
 
 describe('uploaded material types', () => {
   it('offers and accepts audio alongside PDF, image, text and video', () => {
-    expect(materialFileAccept.split(',')).toEqual(['application/pdf', 'image/*', 'text/plain', 'audio/*', 'video/*'])
+    const accepted = materialFileAccept.split(',')
+    for (const entry of ['application/pdf', 'image/*', 'text/plain', 'audio/*', 'video/*', 'audio/mpeg', 'audio/x-wav', '.mp3', '.wav', '.m4a', '.flac', '.ogg', '.mp4']) expect(accepted).toContain(entry)
+    expect(new Set(accepted).size).toBe(accepted.length)
     for (const type of ['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/flac', 'video/mp4', 'image/png', 'application/pdf', 'text/plain']) expect(isAllowedMaterialType(type), type).toBe(true)
     for (const type of ['', 'application/zip', 'text/html', 'audiox/mpeg', 'application/pdfx']) expect(isAllowedMaterialType(type), type).toBe(false)
   })

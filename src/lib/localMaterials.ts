@@ -19,7 +19,12 @@ const extensionTypes = new Map([
   ['ogg', 'audio/ogg'], ['oga', 'audio/ogg'], ['opus', 'audio/ogg'], ['weba', 'audio/webm'], ['aif', 'audio/aiff'], ['aiff', 'audio/aiff'],
 ])
 const allowedMaterialTypes = ['application/pdf', 'image/', 'text/plain', 'audio/', 'video/']
-export const materialFileAccept = 'application/pdf,image/*,text/plain,audio/*,video/*'
+// Mobile pickers (notably iOS Files) ignore audio/* alone, so explicit MIME types and extensions are listed too.
+export const materialFileAccept = [
+  'application/pdf', '.pdf', 'image/*', 'text/plain', '.txt', 'audio/*', 'video/*',
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/flac', 'audio/ogg', 'audio/webm', 'audio/aiff', 'audio/x-aiff',
+  ...[...extensionTypes.keys()].map((extension) => `.${extension}`),
+].join(',')
 
 export function detectMaterialType(fileName: string, reportedType: string) {
   return extensionTypes.get(fileName.split('.').pop()?.toLowerCase() ?? '') ?? reportedType
