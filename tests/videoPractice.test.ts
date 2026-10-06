@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { transpileModule } from 'typescript'
 import { activateBlockTimer, completeBlockTimer, resetBlockTimer, timerElapsedSeconds, toggleBlockTimer } from '../src/lib/sessionBlockTimer'
 import { bookmarkSeek, clampVideoPosition, createPlaybackTransition, loopRange, loopSeekTarget, videoShortcut } from '../src/lib/youtubePractice'
+import { detectMaterialType, isAllowedMaterialType, materialFileAccept, practiceMediaKind } from '../src/lib/localMaterials'
 
 describe('confirmed playback activation', () => {
   it('Sessions rejects stale material, removed/collapsed block, navigated session and unmounted callbacks; keeps Done on explicit resume', () => {
@@ -106,5 +107,36 @@ describe('video controls decisions', () => {
     expect(loopSeekTarget(loopRange('section', 5, 10, 60), 10, 2, false)).toBeNull()
     expect(loopSeekTarget(loopRange('section', 5, 10, 60), 10, 1, true)).toBeNull()
     for (const [start, end] of [[-1, 10], [10, 5], [0, 61], [NaN, 10], [0, Infinity]]) expect(loopRange('section', start, end, 60)).toBeNull()
+  })
+})
+
+describe('uploaded material types', () => {
+  it('offers and accepts audio alongside PDF, image, text and video', () => {
+    expect(materialFileAccept.split(',')).toEqual(['application/pdf', 'image/*', 'text/plain', 'audio/*', 'video/*'])
+    for (const type of ['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/flac', 'video/mp4', 'image/png', 'application/pdf', 'text/plain']) expect(isAllowedMaterialType(type), type).toBe(true)
+    for (const type of ['', 'application/zip', 'text/html', 'audiox/mpeg', 'application/pdfx']) expect(isAllowedMaterialType(type), type).toBe(false)
+  })
+
+  it('detects audio/video by extension when the reported type is missing or wrong, otherwise keeps it', () => {
+    expect(detectMaterialType('Track.MP3', '')).toBe('audio/mpeg')
+    expect(detectMaterialType('take.m4a', 'audio/x-m4a')).toBe('audio/mp4')
+    expect(detectMaterialType('loop.wav', '')).toBe('audio/wav')
+    expect(detectMaterialType('lesson.mov', '')).toBe('video/quicktime')
+    expect(detectMaterialType('tab.pdf', 'application/pdf')).toBe('application/pdf')
+    expect(detectMaterialType('song.ogg', 'audio/ogg')).toBe('audio/ogg')
+    expect(detectMaterialType('song.ogg', '')).toBe('audio/ogg')
+    expect(detectMaterialType('song.ogg', 'video/ogg')).toBe('audio/ogg')
+    expect(detectMaterialType('clip.ogv', '')).toBe('video/ogg')
+    expect(detectMaterialType('take.weba', '')).toBe('audio/webm')
+    expect(detectMaterialType('take.aiff', '')).toBe('audio/aiff')
+    expect(detectMaterialType('book.m4b', '')).toBe('audio/mp4')
+    expect(detectMaterialType('noextension', '')).toBe('')
+    expect(detectMaterialType('file.constructor', 'text/plain')).toBe('text/plain')
+  })
+
+  it('routes audio and video to the shared practice player and nothing else', () => {
+    expect(practiceMediaKind('audio/mpeg')).toBe('audio')
+    expect(practiceMediaKind('video/webm')).toBe('video')
+    for (const type of ['image/png', 'application/pdf', 'text/plain', 'text/uri-list']) expect(practiceMediaKind(type)).toBeNull()
   })
 })

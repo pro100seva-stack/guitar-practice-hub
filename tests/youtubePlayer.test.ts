@@ -177,7 +177,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   return {
     render, load, player, video, construct, policyAtNavigation, browser,
     native: (name: string) => {
-      const handler = tree.find((node) => node.type === 'video')?.props[name] as ((event: unknown) => void) | undefined
+      const handler = tree.find((node) => node.type === 'video' || node.type === 'audio')?.props[name] as ((event: unknown) => void) | undefined
       handler?.({ currentTarget: video })
     },
     ready: (playback = state) => { state = playback; options?.events.onReady({ target: player }) }, event,
@@ -561,6 +561,58 @@ describe('local native player with shared controls', () => {
     harness.native('onSeeked')
     harness.native('onTimeUpdate')
     expect(harness.video.currentTime).toBe(0)
+    harness.close()
+  })
+
+  it('renders uploaded audio as one native <audio> with the shared controls, shortcuts, loop and timer activation', () => {
+    const harness = playerHarness('local')
+    const confirm = vi.fn()
+    const persist = vi.fn(async (_next: number[]) => {})
+    harness.render({ kind: 'audio', url: 'blob:audio', name: 'Backing track', bookmarks: [], onPlaybackConfirmed: confirm, onBookmarksChange: persist })
+    harness.native('onLoadedMetadata')
+    harness.render()
+    const media = harness.nodes().filter((node) => node.type === 'audio' || node.type === 'video')
+    expect(media).toHaveLength(1)
+    expect(media[0].type).toBe('audio')
+    expect(media[0].props).toMatchObject({ src: 'blob:audio', controls: true, className: 'w-full', 'aria-label': 'Backing track' })
+    expect(media[0].props.playsInline).toBeUndefined()
+    const surface = harness.nodes().find((node) => node.props.tabIndex === 0)!
+    expect(surface.props['aria-label']).toBe('Audio practice: {name}')
+    expect(harness.nodes().some((node) => node.props['aria-label'] === 'Play audio')).toBe(true)
+    expect(harness.nodes().some((node) => node.type === 'option' && node.props.children === 'Whole track')).toBe(true)
+    expect(harness.nodes().some((node) => node.props['aria-label'] === 'Play video')).toBe(false)
+
+    const keyDown = surface.props.onKeyDown as (event: unknown) => void
+    const event = { key: 'ArrowRight', repeat: false, shiftKey: true, ctrlKey: false, altKey: false, metaKey: false, defaultPrevented: false, nativeEvent: { isComposing: false }, currentTarget: surface, target: surface, preventDefault: vi.fn() }
+    harness.video.currentTime = 10
+    keyDown(event)
+    expect(harness.video.currentTime).toBe(25)
+    keyDown({ ...event, key: 'ArrowLeft', shiftKey: false })
+    expect(harness.video.currentTime).toBe(20)
+    harness.native('onSeeked')
+    keyDown({ ...event, key: ' ' })
+    expect(harness.video.play).toHaveBeenCalledOnce()
+    harness.native('onPlay')
+    harness.native('onPlaying')
+    expect(confirm).toHaveBeenCalledExactlyOnceWith('explicit')
+    harness.native('onWaiting')
+    harness.native('onPlaying')
+    expect(confirm).toHaveBeenCalledTimes(1)
+
+    harness.render()
+    const now = harness.nodes().find((node) => node.props['aria-label'] === 'Set A to current position')!
+    ;(now.props.onClick as () => void)()
+    const save = harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Save position')!
+    ;(save.props.onClick as () => void)()
+    expect(persist).toHaveBeenCalledExactlyOnceWith([20])
+    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
+    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+    harness.render()
+    harness.video.currentTime = 60
+    harness.native('onTimeUpdate')
+    expect(harness.video.currentTime).toBe(0)
+    harness.render({ name: 'Renamed track', bookmarks: [20] })
+    expect(harness.nodes().filter((node) => node.type === 'audio')).toHaveLength(1)
     harness.close()
   })
 })

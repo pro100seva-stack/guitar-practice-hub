@@ -19,12 +19,32 @@ Historical item IDs are retained below, including reused IDs in the original P2/
 - **Item 15: actual client persistence coverage.** The original hardening slice is completed (constraints applied; local reset and 35 pgTAP tests passed). A real disposable-local test of the client session save/delete sequence remains deferred; this is not a pending migration.
 - **Item 15: conditional bulk-write risk.** Advisory-lock deadlock/retry coverage is needed only if a multi-user service-role bulk schedule writer is introduced. No such feature is approved.
 
+### Approved Roadmap - Practice Block Catalog (owner-aligned 2026-10-06)
+
+Order: items 36-37 first (independent quick wins), then 38, 39, 40. Items 41-42 are backlog only. ToDo stays as it is (Practice screen and tour cards unchanged).
+
+- **Item 36: quick navigation between screens.** Each Progress week card gets "View Week" (opens Plan on that week) and "Practice" (opens Practice on that week). Plan gets an accessible "Practice" button; UX picks the placement. Practice opens on today when the week is current, otherwise on the week's first day. Needs a Practice deep link.
+   - **Implemented 2026-10-06 (code QA passed; browser checks pending).** Progress rows show View week / Practice (Practice primary on the current week only; row body no longer clickable). Plan shows Practice in the selected-week heading, with a Discard / Keep editing prompt when Plan edits are unsaved. `/practice?week=<id>` opens today for the current week, otherwise the week's own start date; the link is read once and removed from the address bar; unknown ids fall back silently. Progress tour copy updated in all four languages.
+   - Known minor gaps: a week that starts mid-week can open on a day outside the Monday-based day strip (only for weeks created outside the Plan picker); Plan still has no warning when switching weeks or after a failed week load (pre-existing gap, not changed).
+- **Item 37: audio uploads.** Users can attach audio files to practice blocks, alongside video, with the same loop, speed, and bookmark controls where the browser supports them.
+   - **Implemented 2026-10-06 (code QA passed; playback check pending).** Audio files (mp3, m4a/m4b, aac, wav, flac, ogg/oga/opus, weba, aiff) upload and play with the shared controls, keyboard shortcuts, and block-timer behaviour used for video. 273 tests and build pass; lint has no errors.
+- **Item 38: practice block catalog and categories.**
+   - Categories: Technique and Warm-Ups; Chords and Rhythm; Scales and Fretboard Geography; Ear Training; Repertoire and Songwork; Improvisation and Composition; Other.
+   - Starter blocks: Technique and Warm-Ups - Chromatic, 2 notes per string, Technique (existing), Alternate picking, Legato. Chords and Rhythm - Rhythm (existing), Chord changes, Barre chords, Strumming patterns. Scales and Fretboard Geography - Major scales, Minor scales, Pentatonic scales, Notes on the fretboard. Ear Training - Notes, Intervals, Chords. Repertoire and Songwork - Repertoire (existing), Learn a new song, Evening Practice (existing, free play). Improvisation and Composition - Harm./Improv. (existing), Jam to track, Songwriting. Learning (existing) is kept as a general course/lesson block.
+   - "Warm-up" is retired as a block. Its historical time is reassigned by session date: before 2026-09-01 to Chromatic; from 2026-09-01 onward to 2 notes per string. No logged minutes may be lost. This is a data migration and needs explicit owner approval before it touches live data.
+   - "Other" lets a user create their own block; it is saved for that user and offered again whenever they add or change blocks.
+   - Existing block keys (technique, rhythm, harmony, repertoire, evening, learning) are reused so history and attached materials carry over. Open design point: where materials currently attached to the Warm-up block (including the default Warmup PDF) should move.
+- **Item 39: programs built from catalog blocks.** A program is a selection of catalog blocks. The user chooses whether the block set is the same every week or varies by week; predefined programs define this themselves. Users add, remove, and replace blocks in their own plan from the catalog (including their "Other" blocks). Only the Default program exists for now.
+- **Item 40: songs move into Repertoire.** The Songs field is removed. One Repertoire block can hold several songs, each with its own learning materials. Existing songs data migrates into Repertoire blocks rather than being deleted.
+- **Item 41 (backlog): Guitar Pro player.** Render and play Guitar Pro files (for example with the open-source alphaTab library). This changes the previous "Guitar Pro integration out of scope" decision; size, licensing, and offline caching need review first.
+- **Item 42 (backlog): shared learning-materials library.** A curated library of materials users can attach to blocks. Requires server storage design; device-local materials remain the default until then.
+
 ### Product Decisions - Not Approved Features
 
 - **No-week recovery.** Decide the user action when no week covers today. Existing planning functions and program lifecycle constraints must be checked before promising a new Default-program button; do not automatically extend custom programs or rewrite historical weeks.
 - Practice goals/streak enhancements and a repertoire screen were suggestions, not approved backlog features. Scope either only after an owner decision.
 
-**Recommended next step:** release verification first, starting with the item-32 Cloudflare asset-response investigation; then choose the no-week recovery flow or a new product feature. No pending migration was reported in the last live audit (21 applied); that audit is dated 2026-10-03, not a fresh query today.
+**Recommended next step:** items 36-37 (quick navigation and audio uploads), then the catalog design for item 38. Release verification (item 32) remains open in parallel. No pending migration was reported in the last live audit (21 applied); that audit is dated 2026-10-03, not a fresh query today.
 
 ## Delivered Baseline And History
 
@@ -62,7 +82,7 @@ The project is no longer in a greenfield discovery phase. The app is now a valid
 - broad unplanned schema churn
 - speculative feature exploration without a product decision
 - AI-guided practice coaching
-- Guitar Pro integration
+- Guitar Pro integration beyond backlog item 41 (a Guitar Pro player is now on the backlog)
 - audio-processing or DSP work beyond the in-browser metronome and tuner helpers
 
 ## v1 reality check

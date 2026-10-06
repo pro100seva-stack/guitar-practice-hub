@@ -12,6 +12,29 @@ export type LocalMaterial = {
   createdAt: string
 }
 
+// Extensions whose reported MIME type is often missing or wrong on some platforms.
+const extensionTypes = new Map([
+  ['mp4', 'video/mp4'], ['webm', 'video/webm'], ['mov', 'video/quicktime'], ['ogv', 'video/ogg'],
+  ['mp3', 'audio/mpeg'], ['m4a', 'audio/mp4'], ['m4b', 'audio/mp4'], ['aac', 'audio/aac'], ['wav', 'audio/wav'], ['flac', 'audio/flac'],
+  ['ogg', 'audio/ogg'], ['oga', 'audio/ogg'], ['opus', 'audio/ogg'], ['weba', 'audio/webm'], ['aif', 'audio/aiff'], ['aiff', 'audio/aiff'],
+])
+const allowedMaterialTypes = ['application/pdf', 'image/', 'text/plain', 'audio/', 'video/']
+export const materialFileAccept = 'application/pdf,image/*,text/plain,audio/*,video/*'
+
+export function detectMaterialType(fileName: string, reportedType: string) {
+  return extensionTypes.get(fileName.split('.').pop()?.toLowerCase() ?? '') ?? reportedType
+}
+
+export function isAllowedMaterialType(type: string) {
+  return allowedMaterialTypes.some((allowed) => allowed.endsWith('/') ? type.startsWith(allowed) : type === allowed)
+}
+
+export function practiceMediaKind(type: string): 'video' | 'audio' | null {
+  if (type.startsWith('video/')) return 'video'
+  if (type.startsWith('audio/')) return 'audio'
+  return null
+}
+
 const databaseName = 'guitar-practice-hub-local'
 const storeName = 'learning-materials'
 const mediaCacheName = 'guitar-practice-hub-media'

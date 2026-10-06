@@ -17,7 +17,7 @@ export const tourSteps: Record<string, TourStep[]> = {
     { target: '[data-tour="progress"]', title: 'Track progress', body: 'See finished and upcoming weeks. Your first session shows up here.' },
   ],
   '/progress': [
-    { target: '[data-tour="progress-timeline"]', title: 'Your timeline', body: 'Tap a program to open its weeks. Tap a week to edit it in Plan.' },
+    { target: '[data-tour="progress-timeline"]', title: 'Your timeline', body: 'Tap a program to open its weeks. View week opens it in Plan; Practice starts that week.' },
     { target: '[data-tour="stats-link"]', title: 'Stats shortcut', body: 'Open Stats for totals, streaks and charts.' },
   ],
   '/plan': [

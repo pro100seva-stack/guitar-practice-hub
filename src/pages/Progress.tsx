@@ -50,40 +50,50 @@ function getStatus(week: ScheduledPlanWeek, today: string, sessionCount: number)
   return 'upcoming'
 }
 
-function JourneyWeekRow({ item, onOpen }: { item: JourneyWeek; onOpen: () => void }) {
+function JourneyWeekRow({ item, onView, onPractice }: { item: JourneyWeek; onView: () => void; onPractice: () => void }) {
   const { language, t } = useI18n()
   return (
-    <button type="button" onClick={onOpen} className="list-row items-start">
-      <div className={[
-        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-        item.status === 'completed' && 'bg-emerald-500/20 text-emerald-200',
-        item.status === 'current' && 'bg-sky-500/20 text-sky-200',
-        item.status === 'upcoming' && 'bg-amber-500/20 text-amber-200',
-        item.status === 'missed' && 'bg-rose-500/20 text-rose-200',
-      ].filter(Boolean).join(' ')}>
-        {item.status === 'completed' ? '✓' : item.status === 'current' ? '•' : item.status === 'missed' ? '!' : '○'}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <span className="font-medium text-slate-200">{t('Week {week}', { week: item.week_number })}</span>
-            <p className="mt-1 text-xs font-medium text-sky-200">{item.programName}</p>
-            <p className="mt-1 text-xs text-slate-400">{item.focus} · {formatDateRange(item.start_date, item.end_date, language)}</p>
-          </div>
-          <span className={[
-            'badge shrink-0',
-            item.status === 'completed' && 'badge-success',
-            item.status === 'current' && 'badge-info',
-            item.status === 'upcoming' && 'badge-warn',
-            item.status === 'missed' && 'badge-danger',
-          ].filter(Boolean).join(' ')}>{t(item.status)}</span>
+    <div className="py-3">
+      <div className="flex items-start gap-3">
+        <div aria-hidden="true" className={[
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+          item.status === 'completed' && 'bg-emerald-500/20 text-emerald-200',
+          item.status === 'current' && 'bg-sky-500/20 text-sky-200',
+          item.status === 'upcoming' && 'bg-amber-500/20 text-amber-200',
+          item.status === 'missed' && 'bg-rose-500/20 text-rose-200',
+        ].filter(Boolean).join(' ')}>
+          {item.status === 'completed' ? '✓' : item.status === 'current' ? '•' : item.status === 'missed' ? '!' : '○'}
         </div>
-        <p className="mt-2 text-xs text-slate-400">
-          {item.sessionCount} {t(item.sessionCount === 1 ? 'session' : 'sessions')} · {item.totalMinutes} {t('minutes')}
-        </p>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="font-medium text-slate-200">{t('Week {week}', { week: item.week_number })}</span>
+              <p className="mt-1 text-xs font-medium text-sky-200">{item.programName}</p>
+              <p className="mt-1 text-xs text-slate-400">{item.focus} · {formatDateRange(item.start_date, item.end_date, language)}</p>
+            </div>
+            <span className={[
+              'badge shrink-0',
+              item.status === 'completed' && 'badge-success',
+              item.status === 'current' && 'badge-info',
+              item.status === 'upcoming' && 'badge-warn',
+              item.status === 'missed' && 'badge-danger',
+            ].filter(Boolean).join(' ')}>{t(item.status)}</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-400">
+            {item.sessionCount} {t(item.sessionCount === 1 ? 'session' : 'sessions')} · {item.totalMinutes} {t('minutes')}
+          </p>
+        </div>
       </div>
-    </button>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button type="button" onClick={onView} aria-label={t('View week {week}', { week: item.week_number })} className="btn btn-secondary min-h-11 px-2 py-1 text-center leading-tight">
+          {t('View week')}
+        </button>
+        <button type="button" onClick={onPractice} aria-label={t('Practice week {week}', { week: item.week_number })} className={`btn ${item.status === 'current' ? 'btn-primary' : 'btn-secondary'} min-h-11 px-2 py-1 text-center leading-tight`}>
+          {t('Practice')}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -281,7 +291,7 @@ export default function Progress() {
                   {isOpen && <div className="list border-t border-slate-800">
                     {group.weeks.map((item) => (
                       <div key={item.id}>
-                        <JourneyWeekRow item={item} onOpen={() => navigate(`/plan?week=${item.id}`)} />
+                        <JourneyWeekRow item={item} onView={() => navigate(`/plan?week=${item.id}`)} onPractice={() => navigate(`/practice?week=${item.id}`)} />
                         {(item.status === 'current' || item.status === 'upcoming') && (
                           <div className="pb-3">
                             <button

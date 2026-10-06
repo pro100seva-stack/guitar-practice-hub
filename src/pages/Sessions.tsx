@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router'
 import { useHeaderSlots } from '../components/headerSlots'
 import { supabase } from '../lib/supabase'
-import { deleteLocalMaterial, estimateLocalStorage, listLocalMaterials, loadLocalMaterialBlob, normalizeBookmarks, patchLocalMaterialMetadata, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
+import { deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
 import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
@@ -10,6 +11,7 @@ import { getDefaultMaterials } from '../lib/defaultMaterials'
 import { normalizeBlockLabel } from '../lib/blockLabels'
 import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../lib/sessionBlockSavePlan'
 import { getPracticedDates } from '../lib/sessionActivity'
+import { resolvePracticeDeepLink } from '../lib/practiceDeepLink'
 import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
 import { activateBlockTimer, completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, toggleBlockTimer } from '../lib/sessionBlockTimer'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
@@ -110,6 +112,7 @@ function formatLocalDate(date: Date) {
 export default function Sessions() {
   const { language, t } = useI18n()
   const headerSlots = useHeaderSlots()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
   const [planWeek, setPlanWeek] = useState<ScheduledPlanWeek | null>(null)
   const [programName, setProgramName] = useState<string | null>(null)
@@ -192,7 +195,14 @@ export default function Sessions() {
   const nextNoteTimeRef = useRef(0)
 
   useEffect(() => {
-    void loadData()
+    const linkedWeekId = searchParams.get('week')
+    // Consume the link once so reload/back does not override the user's later in-page selection.
+    if (linkedWeekId) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('week')
+      setSearchParams(next, { replace: true })
+    }
+    void loadData(undefined, linkedWeekId)
     void loadAppSettings()
   }, [])
 
@@ -298,13 +308,9 @@ export default function Sessions() {
   async function handleLocalMaterialUpload(blockKey: string, file: File | undefined) {
     if (!file) return
     patchMaterialFeedback(blockKey, { error: null, notice: null, saveState: 'saving' })
-    const extension = file.name.split('.').pop()?.toLowerCase()
-    const extensionType = extension === 'mp4' ? 'video/mp4' : extension === 'webm' ? 'video/webm' : extension === 'mov' ? 'video/quicktime' : ''
-    const detectedType = extensionType || file.type
-    const allowedTypes = ['application/pdf', 'image/', 'text/plain', 'video/']
-    const isAllowed = allowedTypes.some((type) => type.endsWith('/') ? detectedType.startsWith(type) : detectedType === type)
-    if (!isAllowed) {
-      patchMaterialFeedback(blockKey, { error: t('Use a PDF, image, text, or video file.'), saveState: 'idle' })
+    const detectedType = detectMaterialType(file.name, file.type)
+    if (!isAllowedMaterialType(detectedType)) {
+      patchMaterialFeedback(blockKey, { error: t('Use a PDF, image, text, audio, or video file.'), saveState: 'idle' })
       return
     }
     const storageEstimate = await estimateLocalStorage()
@@ -316,12 +322,13 @@ export default function Sessions() {
       }
     }
 
-    if (detectedType.startsWith('video/')) {
-      const probe = document.createElement('video')
-      const support = probe.canPlayType(detectedType)
-      if (!support) {
-        patchMaterialFeedback(blockKey, { notice: t('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.') })
-      }
+    const mediaKind = practiceMediaKind(detectedType)
+    if (mediaKind && !document.createElement(mediaKind).canPlayType(detectedType)) {
+      patchMaterialFeedback(blockKey, {
+        notice: mediaKind === 'video'
+          ? t('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.')
+          : t('This browser may not decode this audio format. MP3, AAC (M4A) or Ogg/Opus is usually the most compatible.'),
+      })
     }
 
     try {
@@ -520,7 +527,7 @@ export default function Sessions() {
     setIncludeDefaultExercises(data.include_default_exercises ?? true)
   }
 
-  async function loadData(keep?: { date: string; weekId: string | null }) {
+  async function loadData(keep?: { date: string; weekId: string | null }, linkedWeekId?: string | null) {
     if (!keep) setLoading(true)
     setError(null)
 
@@ -586,7 +593,8 @@ export default function Sessions() {
     }
 
     const allWeeks = ((weeksResult.data ?? []) as PlanWeek[]).filter(isScheduledWeek)
-    const keptWeek = keep?.weekId ? allWeeks.find((entry) => entry.id === keep.weekId) : undefined
+    const linked = keep ? null : resolvePracticeDeepLink(allWeeks, linkedWeekId ?? null, today)
+    const keptWeek = keep?.weekId ? allWeeks.find((entry) => entry.id === keep.weekId) : linked?.week
     const currentWeek = keptWeek ?? allWeeks.find((entry) => entry.start_date <= today && entry.end_date >= today) ?? allWeeks[0] ?? null
     const currentWeekIndex = currentWeek ? allWeeks.findIndex((item) => item.id === currentWeek.id) : 0
     const allTemplates = (templatesResult.data ?? []) as BlockTemplate[]
@@ -595,7 +603,7 @@ export default function Sessions() {
       return index === array.findIndex((candidate) => candidate.key === template.key)
     }).map((template) => ({ ...template, label: normalizeBlockLabel(template.label) }))
 
-    const defaultDate = keep?.date ?? getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
+    const defaultDate = keep?.date ?? linked?.date ?? getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
     const loadedSessions = (sessionsResult.data as SessionWithBlocks[]) ?? []
     const editorState = getSessionEditorState(defaultDate, dedupedTemplates, loadedSessions)
 
@@ -2033,7 +2041,7 @@ export default function Sessions() {
                                 ref={(element) => { materialFileInputRefs.current[template.key] = element }}
                                 id={`learning-material-file-${template.key}`}
                                 type="file"
-                                accept="application/pdf,image/*,text/plain,video/*"
+                                accept={materialFileAccept}
                                 onChange={(event) => { void handleLocalMaterialUpload(template.key, event.target.files?.[0]); event.currentTarget.value = '' }}
                                 className="sr-only"
                               />
@@ -2096,7 +2104,7 @@ export default function Sessions() {
                             {activeMaterial?.blockKey === template.key && activeMaterialUrl && (() => {
                               const activeMaterial = activeMaterialRecord
                               if (!activeMaterial) return null
-                              const isVideo = activeMaterial.type.startsWith('video/')
+                              const uploadedMediaKind = practiceMediaKind(activeMaterial.type)
                               const isImage = activeMaterial.type.startsWith('image/')
                               const externalMediaKind = getExternalMediaKind(activeMaterial)
                               const isExternalPage = externalMediaKind === 'page'
@@ -2135,8 +2143,8 @@ export default function Sessions() {
                                         {t('Open in browser')}
                                       </a>
                                     </div>
-                                  ) : isVideo || externalMediaKind === 'video' ? (
-                                    <LocalVideoPracticePlayer key={`${date}:${activeMaterial.id}:${activeMaterialUrl}`} url={activeMaterialUrl} name={activeMaterial.name} bookmarks={bookmarks}
+                                  ) : uploadedMediaKind || externalMediaKind === 'video' ? (
+                                    <LocalVideoPracticePlayer key={`${date}:${activeMaterial.id}:${activeMaterialUrl}`} kind={uploadedMediaKind ?? 'video'} url={activeMaterialUrl} name={activeMaterial.name} bookmarks={bookmarks}
                                       onBookmarksChange={(next) => saveMaterialBookmarks(template.key, activeMaterial.id, next)}
                                       onPlaybackConfirmed={(intent) => confirmMaterialPlayback(date, planWeek?.id ?? null, template.id, template.key, activeMaterial.id, intent)} />
                                   ) : isImage || externalMediaKind === 'image' ? (

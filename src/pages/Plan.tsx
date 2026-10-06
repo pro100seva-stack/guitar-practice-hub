@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { formatDateRange, localeForLanguage } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
+import { isPlanWeekDirty, type PlanWeekDraft } from '../lib/planWeekDirty'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -151,6 +152,7 @@ function CalendarSurface({ label, onClose, anchorRef, children }: { label: strin
 export default function Plan() {
   const { language, t } = useI18n()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [programs, setPrograms] = useState<Program[]>([])
   const [week, setWeek] = useState<ScheduledPlanWeek | null>(null)
@@ -172,6 +174,10 @@ export default function Plan() {
   const otherProgramOption = '__other__'
   const [selectedProgramId, setSelectedProgramId] = useState('')
     const [otherProgramName, setOtherProgramName] = useState('')
+  const [loadedDraft, setLoadedDraft] = useState<PlanWeekDraft | null>(null)
+  const [isPracticePromptOpen, setIsPracticePromptOpen] = useState(false)
+  const practiceButtonRef = useRef<HTMLButtonElement | null>(null)
+  const practicePromptRef = useRef<HTMLDivElement | null>(null)
   const weekListRef = useRef<HTMLDivElement | null>(null)
   const weekPickerRef = useRef<HTMLDivElement | null>(null)
   const rangePickerRef = useRef<HTMLDivElement | null>(null)
@@ -229,6 +235,10 @@ export default function Plan() {
       container.scrollTo({ top: targetScroll, behavior: 'smooth' })
     }
   }, [loading, selectedWeekId])
+
+  useEffect(() => {
+    if (isPracticePromptOpen) practicePromptRef.current?.focus()
+  }, [isPracticePromptOpen])
 
   async function loadWeeks() {
     setLoading(true)
@@ -290,6 +300,8 @@ export default function Plan() {
     setLoading(true)
     setError(null)
     setMessage(null)
+    setLoadedDraft(null)
+    setIsPracticePromptOpen(false)
 
     if (!weekId) {
       setWeek(null)
@@ -373,6 +385,15 @@ export default function Plan() {
 
     setTodos(loadedTodos)
     setSongText(loadedSongs.join('\n'))
+    setLoadedDraft({
+      focus: weekData.focus ?? '',
+      programId: loadedWeek.program_id,
+      startDate: loadedWeek.start_date,
+      endDate: loadedWeek.end_date,
+      tasks: weekData.tasks ?? '',
+      todos: loadedTodos,
+      songText: loadedSongs.join('\n'),
+    })
     setLoading(false)
   }
 
@@ -628,6 +649,14 @@ export default function Plan() {
   const programName = (programId: string) => programs.find((program) => program.id === programId)?.name ?? t('Program')
   const initialLoading = loading && !week
 
+  function openPractice() {
+    if (!selectedWeekId) return
+    const practicePath = `/practice?week=${encodeURIComponent(selectedWeekId)}`
+    const dirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText })
+    if (dirty) setIsPracticePromptOpen(true)
+    else navigate(practicePath)
+  }
+
   const calendarNav = (
     <>
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -793,10 +822,43 @@ export default function Plan() {
                     <h2 className="section-title">{t('Week {week}', { week: week.week_number })}: {week.focus}</h2>
                     <p className="meta mt-1">{formatDateRange(week.start_date, week.end_date, language)} · {programName(week.program_id)}</p>
                   </div>
-                  {todayRange(week) && <span className="badge badge-info">{t('Current week')}</span>}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {todayRange(week) && <span className="badge badge-info">{t('Current week')}</span>}
+                    <button
+                      ref={practiceButtonRef}
+                      type="button"
+                      onClick={openPractice}
+                      disabled={loading || saving}
+                      className="btn btn-secondary"
+                    >
+                      {t('Practice')}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <p className="state">{t("No plan_weeks row covers today's date.")}</p>
+              )}
+              {week && isPracticePromptOpen && (
+                <div ref={practicePromptRef} tabIndex={-1} role="alert" className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 focus:outline-none">
+                  <p className="text-sm font-medium text-amber-100">{t('Discard changes?')}</p>
+                  <p className="mt-1 text-sm text-slate-300">{t('Unsaved changes will be lost.')}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setIsPracticePromptOpen(false); navigate(`/practice?week=${encodeURIComponent(week.id)}`) }}
+                      className="min-h-11 rounded bg-slate-100 px-4 text-sm font-medium text-slate-900"
+                    >
+                      {t('Discard')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setIsPracticePromptOpen(false); practiceButtonRef.current?.focus() }}
+                      className="min-h-11 rounded border border-slate-600 px-4 text-sm text-slate-200"
+                    >
+                      {t('Keep editing')}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
