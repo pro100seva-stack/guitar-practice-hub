@@ -7,6 +7,7 @@ import type { Database } from '../lib/database.types'
 import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { getDefaultMaterials } from '../lib/defaultMaterials'
+import { normalizeBlockLabel } from '../lib/blockLabels'
 import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../lib/sessionBlockSavePlan'
 import { getPracticedDates } from '../lib/sessionActivity'
 import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
@@ -592,7 +593,7 @@ export default function Sessions() {
 
     const dedupedTemplates = allTemplates.filter((template, index, array) => {
       return index === array.findIndex((candidate) => candidate.key === template.key)
-    })
+    }).map((template) => ({ ...template, label: normalizeBlockLabel(template.label) }))
 
     const defaultDate = keep?.date ?? getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
     const loadedSessions = (sessionsResult.data as SessionWithBlocks[]) ?? []
@@ -2353,7 +2354,7 @@ export default function Sessions() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {session.session_blocks.map((block) => (
                       <span key={block.id} className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400">
-                        {block.label} {block.done ? '✓' : '—'}
+                        {normalizeBlockLabel(block.label)} {block.done ? '✓' : '—'}
                       </span>
                     ))}
                   </div>

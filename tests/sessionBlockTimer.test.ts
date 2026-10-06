@@ -267,7 +267,7 @@ describe('Sessions save handler timer regressions', () => {
         user_id: 'user', session_date: '2026-10-04', total_minutes: 5, comment: null, week_id: null, source: 'app',
       } },
       { table: 'session_blocks', payload: [
-        { session_id: 'session', block_key: 'warmup', label: 'warmup', done: false, target_minutes: 10, actual_minutes: 3 },
+        { session_id: 'session', block_key: 'warmup', label: 'Warm-up', done: false, target_minutes: 10, actual_minutes: 3 },
         { session_id: 'session', block_key: 'technique', label: 'technique', done: false, target_minutes: 10, actual_minutes: 2 },
       ] },
     ])

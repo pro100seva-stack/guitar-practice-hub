@@ -253,6 +253,13 @@ No blocking items.
    - actual native-video playback and 320/375/1280px layouts were checked; YouTube timer/event controls use mock-API browser evidence. First native paused/cued Play after stop/Done passed the repaired mock regression
    - 229 tests and build pass; lint has three existing warnings. Real YouTube native-play acceptance, translated/mobile focus, and delayed callbacks after navigation remain device checks
 
+35. **Implemented — 2026-10-06 (focused QA passed; browser acceptance pending):** Merge practice block display-name aliases
+   - canonical names: `Warm-up`, `Evening Practice`, and `Harm./Improv.`; legacy `Warmup`, `Evening practice`, and `Hand./Impr.` resolve to those names
+   - Stats normalizes the names before grouping, combining old/new category minutes without changing allocation or rounding; regression fixtures preserve all 51 minutes and fractional imported-session fallback
+   - template pickers, restored blocks, recent sessions, and explicitly saved labels use the same helper; unrelated/custom/non-English labels remain unchanged
+   - block keys, template IDs, local-material block associations, existing rows, and numeric practice history are not migrated, deleted, or rewritten automatically
+   - frontend full gates passed 255 tests and build, with three existing lint warnings; independent focused QA passed 111 tests and a conservation probe of the actual Stats effect. Browser/real persistence checks were not run; no commit or deploy performed
+
 9. **Completed — 2026-09-25:** Start the default program on account creation
    - week 1 starts on the account-creation date rather than the next Monday
    - the five-week sequence and seven-day week durations remain unchanged

@@ -6,7 +6,9 @@ Guitar Practice Hub is a multi-user guitar practice tracking app, built as a PWA
 
 ## Current status (2026-10-04)
 
-Requested work through backlog item 34 is implemented. Latest recorded checks passed 229 tests and the production build; lint reports three existing warnings. Test counts below are historical snapshots. Backend migrations were audited with 21 applied and zero pending on 2026-10-03; no fresh remote audit is claimed today.
+Requested work through backlog item 35 is implemented. Latest frontend checks passed 255 tests and the production build; lint reports three existing warnings. Test counts below are historical snapshots. Backend migrations were audited with 21 applied and zero pending on 2026-10-03; no fresh remote audit is claimed today.
+
+**Block naming (2026-10-06):** `Warmup`, `Evening practice`, and `Hand./Impr.` display and aggregate as `Warm-up`, `Evening Practice`, and `Harm./Improv.` respectively. A shared helper normalizes labels before Stats grouping and across Practice/restoration/recent sessions. Minutes, block keys/IDs, and local-material associations are preserved; historical rows are not rewritten automatically. Independent focused QA passed 111 tests plus a probe of actual Stats aggregation, including fractional imported-time conservation. Browser acceptance and release remain separate.
 
 ### Next Priorities
 

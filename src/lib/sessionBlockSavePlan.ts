@@ -1,3 +1,5 @@
+import { normalizeBlockLabel } from './blockLabels'
+
 type SessionBlockSaveInput = {
   key: string
   label: string
@@ -26,7 +28,7 @@ export function planSessionBlockSave(sessionId: string, selectedBlocks: SessionB
     upserts: selectedBlocks.map((block) => ({
       session_id: sessionId,
       block_key: block.key,
-      label: block.label,
+      label: normalizeBlockLabel(block.label),
       done: block.done,
       target_minutes: block.targetMinutes,
       actual_minutes: sessionBlockMinutes(block),

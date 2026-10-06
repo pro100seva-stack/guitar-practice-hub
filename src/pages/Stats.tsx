@@ -4,6 +4,7 @@ import type { Database } from '../lib/database.types'
 import { useI18n } from '../lib/i18n'
 import { getLocalDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { getCurrentStreak, hasPracticeMinutes, hasSessionActivity } from '../lib/sessionActivity'
+import { aggregateSessionBlockMinutes } from '../lib/blockLabels'
 
 type Session = Database['public']['Tables']['sessions']['Row']
 type SessionBlock = Database['public']['Tables']['session_blocks']['Row']
@@ -192,28 +193,7 @@ export default function Stats() {
       })
     }
 
-    const pieMap = new Map<string, number>()
-    for (const session of sortedSessions) {
-      const doneBlocks = (session.session_blocks ?? []).filter((block) => block.done)
-      if (doneBlocks.length === 0) continue
-
-      const explicitMinutes = doneBlocks.reduce(
-        (sum, block) => sum + Number(block.actual_minutes ?? 0),
-        0
-      )
-      // Imported sessions (source='notion_import') have actual_minutes = NULL
-      // on every block, so distribute the session total evenly across the
-      // done blocks instead of counting each block as a fake 1 minute.
-      const perBlockFallback =
-        explicitMinutes > 0 ? null : Number(session.total_minutes ?? 0) / doneBlocks.length
-
-      for (const block of doneBlocks) {
-        const label = block.label || block.block_key
-        const value =
-          perBlockFallback !== null ? perBlockFallback : Number(block.actual_minutes ?? 0)
-        pieMap.set(label, (pieMap.get(label) ?? 0) + value)
-      }
-    }
+    const pieMap = aggregateSessionBlockMinutes(sortedSessions)
 
     const colors = ['#38bdf8', '#22c55e', '#f59e0b', '#f472b6', '#818cf8', '#fb923c', '#a78bfa']
     const nextPieSlices = Array.from(pieMap.entries())

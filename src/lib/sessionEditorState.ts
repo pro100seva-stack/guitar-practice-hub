@@ -1,3 +1,5 @@
+import { normalizeBlockLabel } from './blockLabels'
+
 export type SelectedBlock = {
   id: string
   key: string
@@ -62,7 +64,7 @@ export function getSessionEditorState(date: string, templates: EditorTemplate[],
       return {
         id: template.id,
         key: template.key,
-        label: template.label,
+        label: normalizeBlockLabel(template.label),
         done: savedBlock?.done ?? false,
         actualMinutes: savedBlock?.actual_minutes != null ? String(savedBlock.actual_minutes) : '',
         targetMinutes: template.target_minutes,
