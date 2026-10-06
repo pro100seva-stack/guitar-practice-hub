@@ -38,6 +38,8 @@ Order: items 36-37 first (independent quick wins), then 38, 39, 40. Items 41-42 
 - **Item 40: songs move into Repertoire.** The Songs field is removed. One Repertoire block can hold several songs, each with its own learning materials. Existing songs data migrates into Repertoire blocks rather than being deleted.
 - **Item 41 (backlog): Guitar Pro player.** Render and play Guitar Pro files (for example with the open-source alphaTab library). This changes the previous "Guitar Pro integration out of scope" decision; size, licensing, and offline caching need review first.
 - **Item 42 (backlog): shared learning-materials library.** A curated library of materials users can attach to blocks. Requires server storage design; device-local materials remain the default until then.
+- **Item 43: Plan unsaved-changes guard.** Implemented 2026-10-06 (code QA passed; browser check pending). Selecting a week, picking a calendar day, Current week, Insert after selected, Remove week, the heading Practice button, and `?week=` changes all ask Discard / Keep editing when Plan has unsaved edits; reloading or closing the tab warns too. Save closes an open prompt, and a held action is dropped if the saved state changed. A failed week load keeps the previous week and edits. Remaining minor gap: overlapping week loads are not ordered (the last to finish wins), and in-page week switches do not update `?week=`.
+- **Item 44: app version label.** Implemented 2026-10-06. Home shows `v<version> · <7-char commit> · <UTC build time>` so the owner can confirm which build is running. Versioning convention is recorded in `docs/project-handoff.md`.
 
 ### Product Decisions - Not Approved Features
 

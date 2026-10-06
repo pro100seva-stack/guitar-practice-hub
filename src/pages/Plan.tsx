@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { formatDateRange, localeForLanguage } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
-import { isPlanWeekDirty, type PlanWeekDraft } from '../lib/planWeekDirty'
+import { isPlanWeekDirty, requestWeekChange, resolveWeekChange, settlePendingWeekChange, settleWeekLoad, type PendingWeekChange, type PlanWeekDraft, type WeekLoadResult } from '../lib/planWeekDirty'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -22,6 +22,9 @@ type EditableTodo = {
   name: string
   done: boolean
 }
+
+type WeekChange = { kind: 'load'; weekId: string } | { kind: 'add' } | { kind: 'remove' } | { kind: 'practice' }
+type WeekChangePrompt = { change: WeekChange; trigger: HTMLElement | null }
 
 function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
   return week.week_number !== null && week.start_date !== null && week.end_date !== null
@@ -175,11 +178,16 @@ export default function Plan() {
   const [selectedProgramId, setSelectedProgramId] = useState('')
     const [otherProgramName, setOtherProgramName] = useState('')
   const [loadedDraft, setLoadedDraft] = useState<PlanWeekDraft | null>(null)
-  const [isPracticePromptOpen, setIsPracticePromptOpen] = useState(false)
-  const practiceButtonRef = useRef<HTMLButtonElement | null>(null)
-  const practicePromptRef = useRef<HTMLDivElement | null>(null)
+  const [pendingChange, setPendingChange] = useState<PendingWeekChange<WeekChangePrompt> | null>(null)
+  const urlPendingRef = useRef(false)
+  const discardPromptRef = useRef<HTMLDivElement | null>(null)
+  const weekHeadingRef = useRef<HTMLHeadingElement | null>(null)
   const weekListRef = useRef<HTMLDivElement | null>(null)
   const weekPickerRef = useRef<HTMLDivElement | null>(null)
+  const weekPickerButtonRef = useRef<HTMLButtonElement | null>(null)
+  const requestedWeekParam = searchParams.get('week')
+  const handledWeekParamRef = useRef(requestedWeekParam)
+  const isDirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText })
   const rangePickerRef = useRef<HTMLDivElement | null>(null)
 
   const coveredDates = useMemo(() => {
@@ -237,8 +245,72 @@ export default function Plan() {
   }, [loading, selectedWeekId])
 
   useEffect(() => {
-    if (isPracticePromptOpen) practicePromptRef.current?.focus()
-  }, [isPracticePromptOpen])
+    if (pendingChange) discardPromptRef.current?.focus()
+  }, [pendingChange])
+
+  useEffect(() => {
+    if (!isDirty) return
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeUnload)
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+  }, [isDirty])
+
+  const onWeekParamChange = useEffectEvent((weekId: string | null) => {
+    if (!weekId || weekId === selectedWeekId) return
+    guardWeekChange({ kind: 'load', weekId }, null, true)
+  })
+
+  useEffect(() => {
+    if (requestedWeekParam === handledWeekParamRef.current) return
+    handledWeekParamRef.current = requestedWeekParam
+    onWeekParamChange(requestedWeekParam)
+  }, [requestedWeekParam])
+
+  // A declined or dropped ?week= change must not leave the URL pointing at a week that is not shown.
+  function restoreWeekParam(shownWeekId: string | null) {
+    if (!urlPendingRef.current) return
+    urlPendingRef.current = false
+    navigate({ search: shownWeekId ? `?week=${encodeURIComponent(shownWeekId)}` : '' }, { replace: true })
+  }
+
+  function runWeekChange(change: WeekChange) {
+    if (change.kind === 'load') void loadWeek(change.weekId)
+    else if (change.kind === 'add') void addWeek()
+    else if (change.kind === 'remove') void removeWeek()
+    else if (selectedWeekId) navigate(`/practice?week=${encodeURIComponent(selectedWeekId)}`)
+  }
+
+  function guardWeekChange(change: WeekChange, trigger: HTMLElement | null, fromUrl = false) {
+    const request = requestWeekChange(isDirty, { change, trigger }, loadedDraft)
+    if (request.kind === 'run') {
+      urlPendingRef.current = false
+      setPendingChange(null)
+      runWeekChange(request.action.change)
+      return
+    }
+    if (!fromUrl) restoreWeekParam(selectedWeekId)
+    urlPendingRef.current = fromUrl
+    setPendingChange(request.pending)
+  }
+
+  function resolvePendingChange(choice: 'discard' | 'keep') {
+    const resolution = resolveWeekChange(pendingChange, choice, { saving, baseline: loadedDraft })
+    if (resolution.kind === 'blocked') return
+    const trigger = pendingChange?.action.trigger ?? null
+    setPendingChange(null)
+    if (resolution.kind === 'close') {
+      restoreWeekParam(selectedWeekId)
+      ;(trigger ?? weekPickerButtonRef.current)?.focus()
+      return
+    }
+    urlPendingRef.current = false
+    const { change } = resolution.action
+    if (change.kind !== 'practice') (weekHeadingRef.current ?? weekPickerButtonRef.current)?.focus()
+    runWeekChange(change)
+  }
 
   async function loadWeeks() {
     setLoading(true)
@@ -281,10 +353,13 @@ export default function Plan() {
       ?? nextWeeks[0]
       ?? null
     const currentWeekId = currentWeek?.id ?? null
-    setSelectedWeekId(currentWeekId)
 
     if (!currentWeekId) {
+      setSelectedWeekId(null)
       setWeek(null)
+      setLoadedDraft(null)
+      setPendingChange((current) => settlePendingWeekChange(current, { kind: 'baseline', baseline: null }))
+      restoreWeekParam(null)
       setFocus('')
       setTasks('')
       setTodos([])
@@ -296,81 +371,32 @@ export default function Plan() {
     await loadWeek(currentWeekId)
   }
 
-  async function loadWeek(weekId: string | null) {
-    setLoading(true)
-    setError(null)
-    setMessage(null)
-    setLoadedDraft(null)
-    setIsPracticePromptOpen(false)
-
-    if (!weekId) {
-      setWeek(null)
-      setFocus('')
-      setTasks('')
-      setTodos([])
-      setSongText('')
-      setLoading(false)
-      return
-    }
-
+  async function fetchWeek(weekId: string): Promise<WeekLoadResult<ScheduledPlanWeek>> {
     const { data: weekData, error: weekError } = await supabase
       .from('plan_weeks')
       .select('*')
       .eq('id', weekId)
       .single()
 
-    if (weekError) {
-      setError(weekError.message)
-      setLoading(false)
-      return
-    }
+    if (weekError) return { ok: false, error: weekError.message }
 
     const loadedWeek = weekData as PlanWeek
-    if (!isScheduledWeek(loadedWeek)) {
-      setError(t('This week is currently unscheduled.'))
-      setLoading(false)
-      return
-    }
-
-    setWeek(loadedWeek)
-    setWeeks((current) => current.map((item) => item.id === loadedWeek.id ? loadedWeek : item))
-    setSelectedWeekId(weekId)
-    setSelectedProgramId(loadedWeek.program_id)
-    setFocus(weekData?.focus ?? '')
-    setTasks(weekData?.tasks ?? '')
-    setWeekStartDate(loadedWeek.start_date)
-    setWeekEndDate(loadedWeek.end_date)
-    setTodos([])
-    setSongText('')
-
-    if (!weekData) {
-      setLoading(false)
-      return
-    }
+    if (!isScheduledWeek(loadedWeek)) return { ok: false, error: t('This week is currently unscheduled.') }
 
     const [{ data: todosData, error: todosError }, { data: weekSongsData, error: weekSongsError }] = await Promise.all([
       supabase
         .from('todos')
         .select('*')
-        .eq('week_id', weekData.id)
+        .eq('week_id', loadedWeek.id)
         .order('sort_order', { ascending: true }),
       supabase
         .from('week_songs')
         .select('song_id, songs(*)')
-        .eq('week_id', weekData.id),
+        .eq('week_id', loadedWeek.id),
     ])
 
-    if (todosError) {
-      setError(todosError.message)
-      setLoading(false)
-      return
-    }
-
-    if (weekSongsError) {
-      setError(weekSongsError.message)
-      setLoading(false)
-      return
-    }
+    if (todosError) return { ok: false, error: todosError.message }
+    if (weekSongsError) return { ok: false, error: weekSongsError.message }
 
     const loadedTodos = (todosData ?? []).map((todo: Todo) => ({
       id: todo.id,
@@ -383,17 +409,47 @@ export default function Plan() {
       return name ? [name] : []
     })
 
-    setTodos(loadedTodos)
-    setSongText(loadedSongs.join('\n'))
-    setLoadedDraft({
-      focus: weekData.focus ?? '',
-      programId: loadedWeek.program_id,
-      startDate: loadedWeek.start_date,
-      endDate: loadedWeek.end_date,
-      tasks: weekData.tasks ?? '',
-      todos: loadedTodos,
-      songText: loadedSongs.join('\n'),
-    })
+    return {
+      ok: true,
+      week: loadedWeek,
+      draft: {
+        focus: loadedWeek.focus ?? '',
+        programId: loadedWeek.program_id,
+        startDate: loadedWeek.start_date,
+        endDate: loadedWeek.end_date,
+        tasks: loadedWeek.tasks ?? '',
+        todos: loadedTodos,
+        songText: loadedSongs.join('\n'),
+      },
+    }
+  }
+
+  async function loadWeek(weekId: string) {
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+
+    const outcome = settleWeekLoad(await fetchWeek(weekId))
+    if (outcome.kind === 'keep') {
+      setError(outcome.error)
+      setLoading(false)
+      return
+    }
+
+    const { week: loadedWeek, draft, baseline } = outcome
+    setWeek(loadedWeek)
+    setWeeks((current) => current.map((item) => item.id === loadedWeek.id ? loadedWeek : item))
+    setSelectedWeekId(loadedWeek.id)
+    setSelectedProgramId(draft.programId)
+    setFocus(draft.focus)
+    setTasks(draft.tasks)
+    setWeekStartDate(draft.startDate)
+    setWeekEndDate(draft.endDate)
+    setTodos(draft.todos)
+    setSongText(draft.songText)
+    setLoadedDraft(baseline)
+    setPendingChange((current) => settlePendingWeekChange(current, { kind: 'baseline', baseline }))
+    restoreWeekParam(loadedWeek.id)
     setLoading(false)
   }
 
@@ -463,6 +519,8 @@ export default function Plan() {
 
     if (!week) return
 
+    setPendingChange((current) => settlePendingWeekChange(current, { kind: 'save-start' }))
+    restoreWeekParam(week.id)
     setSaving(true)
     setError(null)
     setMessage(null)
@@ -649,12 +707,9 @@ export default function Plan() {
   const programName = (programId: string) => programs.find((program) => program.id === programId)?.name ?? t('Program')
   const initialLoading = loading && !week
 
-  function openPractice() {
+  function openPractice(trigger: HTMLElement) {
     if (!selectedWeekId) return
-    const practicePath = `/practice?week=${encodeURIComponent(selectedWeekId)}`
-    const dirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText })
-    if (dirty) setIsPracticePromptOpen(true)
-    else navigate(practicePath)
+    guardWeekChange({ kind: 'practice' }, trigger)
   }
 
   const calendarNav = (
@@ -700,6 +755,7 @@ export default function Plan() {
 
             <div ref={weekPickerRef} className="mt-3">
               <button
+                ref={weekPickerButtonRef}
                 type="button"
                 aria-haspopup="dialog"
                 aria-expanded={calendarOpen}
@@ -731,7 +787,7 @@ export default function Plan() {
                             const targetWeek = coveredDates.weekByDate.get(isoDate)
                             if (targetWeek) {
                               setCalendarOpen(false)
-                              void loadWeek(targetWeek.id)
+                              guardWeekChange({ kind: 'load', weekId: targetWeek.id }, weekPickerButtonRef.current)
                             }
                           }}
                           className={[
@@ -754,9 +810,9 @@ export default function Plan() {
               <button
                 type="button"
                 disabled={!currentWeek || isCurrentWeekSelected}
-                onClick={() => {
+                onClick={(event) => {
                   if (currentWeek) {
-                    void loadWeek(currentWeek.id)
+                    guardWeekChange({ kind: 'load', weekId: currentWeek.id }, event.currentTarget)
                   }
                 }}
                 className="btn btn-secondary"
@@ -765,7 +821,7 @@ export default function Plan() {
               </button>
               <button
                 type="button"
-                onClick={() => void addWeek()}
+                onClick={(event) => guardWeekChange({ kind: 'add' }, event.currentTarget)}
                 disabled={saving}
                 className="btn btn-secondary"
               >
@@ -773,7 +829,7 @@ export default function Plan() {
               </button>
               <button
                 type="button"
-                onClick={() => void removeWeek()}
+                onClick={(event) => guardWeekChange({ kind: 'remove' }, event.currentTarget)}
                 disabled={saving || weeks.length <= 1 || !week}
                 className="btn btn-danger"
               >
@@ -793,7 +849,7 @@ export default function Plan() {
                       type="button"
                       data-week-id={weekItem.id}
                       aria-current={isSelected ? 'true' : undefined}
-                      onClick={() => void loadWeek(weekItem.id)}
+                      onClick={(event) => guardWeekChange({ kind: 'load', weekId: weekItem.id }, event.currentTarget)}
                       className="list-row text-slate-200"
                     >
                       <span className="min-w-0 flex-1">
@@ -819,15 +875,14 @@ export default function Plan() {
               {week ? (
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <h2 className="section-title">{t('Week {week}', { week: week.week_number })}: {week.focus}</h2>
+                    <h2 ref={weekHeadingRef} tabIndex={-1} className="section-title focus:outline-none">{t('Week {week}', { week: week.week_number })}: {week.focus}</h2>
                     <p className="meta mt-1">{formatDateRange(week.start_date, week.end_date, language)} · {programName(week.program_id)}</p>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {todayRange(week) && <span className="badge badge-info">{t('Current week')}</span>}
                     <button
-                      ref={practiceButtonRef}
                       type="button"
-                      onClick={openPractice}
+                      onClick={(event) => openPractice(event.currentTarget)}
                       disabled={loading || saving}
                       className="btn btn-secondary"
                     >
@@ -838,22 +893,24 @@ export default function Plan() {
               ) : (
                 <p className="state">{t("No plan_weeks row covers today's date.")}</p>
               )}
-              {week && isPracticePromptOpen && (
-                <div ref={practicePromptRef} tabIndex={-1} role="alert" className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 focus:outline-none">
+              {week && pendingChange && (
+                <div ref={discardPromptRef} tabIndex={-1} role="alert" className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 focus:outline-none">
                   <p className="text-sm font-medium text-amber-100">{t('Discard changes?')}</p>
                   <p className="mt-1 text-sm text-slate-300">{t('Unsaved changes will be lost.')}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => { setIsPracticePromptOpen(false); navigate(`/practice?week=${encodeURIComponent(week.id)}`) }}
-                      className="min-h-11 rounded bg-slate-100 px-4 text-sm font-medium text-slate-900"
+                      onClick={() => resolvePendingChange('discard')}
+                      disabled={saving}
+                      className="min-h-11 rounded bg-slate-100 px-4 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {t('Discard')}
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setIsPracticePromptOpen(false); practiceButtonRef.current?.focus() }}
-                      className="min-h-11 rounded border border-slate-600 px-4 text-sm text-slate-200"
+                      onClick={() => resolvePendingChange('keep')}
+                      disabled={saving}
+                      className="min-h-11 rounded border border-slate-600 px-4 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {t('Keep editing')}
                     </button>

@@ -19,6 +19,14 @@ Requested work through backlog item 35 is implemented. Latest frontend checks pa
 
 Use Active Work in `docs/guitar-hub-v1-scope-and-backlog.md` for prioritization. Preserve local materials; do not clear IndexedDB or media caches as a testing shortcut.
 
+### Versioning (adopted 2026-10-06)
+
+- Semantic Versioning 2.0.0 in pre-release form `0.MINOR.PATCH` until the first public release (`1.0.0`). Beta builds later use pre-release tags such as `1.0.0-beta.1`.
+- Every commit pushed to GitHub bumps the version, decided by its Conventional Commits type: `feat` bumps MINOR (PATCH resets to 0); `fix`, `perf`, and all other types (`docs`, `test`, `refactor`, `chore`, `style`, `build`, `ci`) bump PATCH. Breaking changes bump MINOR while the version is below 1.0.0.
+- Bump before committing with `npm run version:minor` or `npm run version:patch` (no git tags). The starting version is `0.1.0`.
+- The build injects the version, the 7-character commit (from `WORKERS_CI_COMMIT_SHA` on Cloudflare, otherwise local git, otherwise `dev`), and the UTC build time. Home shows them at the bottom, so a cached older build is visible at a glance.
+- QA Browser agent: it now lists the integrated browser tools. Signing in requires an owner-approved disposable test account or the local Supabase stack; it must never use the owner's account.
+
 **Owner feedback and item 34 (2026-10-04):** the owner reported the deployed app working well after their commit/build. Added video-driven block-timer start/resume on confirmed playback, shared uploaded/YouTube loop/speed/bookmark controls, and focus-scoped Space/arrow shortcuts. Video pause does not stop the counter; manual stop/Done survives automatic looping/buffering. App shortcuts require local-controller focus, not focus inside the YouTube iframe or form controls. Native-video browser checks and YouTube mock checks passed, including the repaired first native paused/cued Play boundary. Real YouTube native-control acceptance remains; the previous release probe below predates the owner's latest deployment and is not proof of current staleness.
 
 **Live release check (2026-10-04):** entry `index-B2lwA2jd.js`, Landing `Landing-B2__UE3u.js`, and Practice `Sessions-CgTKqBbV.js` were served. The custom recovery markers were absent; Practice still used interval callback increments rather than timestamp anchors. Old and deliberately missing asset URLs returned the same 722-byte root HTML with HTTP 200. The live build therefore differs from the latest local artifact, but its Git revision/deployment time are not established. Obtain Cloudflare deployment revision, build/deploy commands, output directory, and effective asset/fallback configuration before changing hosting rules. Never infer a 404 fix from a header rule or disable SPA deep links blindly.

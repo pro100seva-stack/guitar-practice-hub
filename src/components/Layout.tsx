@@ -6,6 +6,7 @@ import TourOverlay from './tour/TourOverlay'
 import { useScreenTour } from './tour/useScreenTour'
 import { HeaderSlotsContext } from './headerSlots'
 import { isRenderedLazyPageReady, lazyChunkRecovery } from '../lib/lazyChunkRecovery'
+import { buildLabel } from '../lib/buildInfo'
 
 const navigationItems = [
   { key: 'Home', path: '/landing' }, { key: 'Progress', path: '/progress' }, { key: 'Plan', path: '/plan' },
@@ -190,6 +191,7 @@ export default function Layout() {
             </button>
           </footer>
         )}
+        {isLandingScreen && <p translate="no" className="pt-2 text-center text-xs text-slate-400">{buildLabel}</p>}
       </main>
 
       {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} />}
