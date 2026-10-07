@@ -18,10 +18,13 @@ create table if not exists programs (
   name text not null,
   status text not null default 'active',
   total_weeks int not null default 5,
+  block_set_mode text not null default 'legacy_unconfigured',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint programs_name_not_blank check (length(btrim(name)) > 0),
   constraint programs_total_weeks_check check (total_weeks > 0),
+  constraint programs_block_set_mode_check
+    check (block_set_mode in ('legacy_unconfigured', 'same_every_week', 'varies_by_week')),
   unique (id, user_id)
 );
 
@@ -65,8 +68,12 @@ create table if not exists songs (
 create table if not exists week_songs (
   week_id uuid not null references plan_weeks(id) on delete cascade,
   song_id uuid not null references songs(id) on delete cascade,
+  sort_order integer not null,
   primary key (week_id, song_id)
 );
+
+create unique index if not exists week_songs_week_sort_order_idx
+  on week_songs (week_id, sort_order);
 
 -- ---------- Session block templates ----------
 -- Defines the universal set of practice blocks (phase = 'common').
@@ -76,15 +83,41 @@ create table if not exists week_songs (
 
 create table if not exists block_templates (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
   phase text not null,
   key text not null,                 -- 'warmup' | 'technique' | 'rhythm' | 'harmony' | 'repertoire' | 'evening' | 'learning'
   label text not null,
-  target_minutes int not null,
+  target_minutes int,
   description text,
   sort_order int not null default 0,
+  category_key text not null default 'other',
+  is_selectable boolean not null default true,
+  archived_at timestamptz,
   unique (phase, key),
-  constraint block_templates_key_domain_check
-    check (key in ('warmup', 'technique', 'rhythm', 'harmony', 'repertoire', 'evening', 'learning'))
+  constraint block_templates_category_key_check
+    check (category_key in (
+      'technique_warmups', 'chords_rhythm', 'scales_fretboard',
+      'ear_training', 'repertoire_songwork', 'improvisation_composition', 'other'
+    )),
+  constraint block_templates_custom_blocks_are_other_check
+    check (user_id is null or category_key = 'other'),
+  unique (key)
+);
+
+create table if not exists program_blocks (
+  program_id uuid not null references programs(id) on delete cascade,
+  block_key text not null references block_templates(key),
+  sort_order int not null check (sort_order > 0),
+  primary key (program_id, block_key),
+  unique (program_id, sort_order)
+);
+
+create table if not exists plan_week_blocks (
+  week_id uuid not null references plan_weeks(id) on delete cascade,
+  block_key text not null references block_templates(key),
+  sort_order int not null check (sort_order > 0),
+  primary key (week_id, block_key),
+  unique (week_id, sort_order)
 );
 
 -- ---------- Practice sessions ----------

@@ -8,7 +8,7 @@ export type DefaultMaterial = {
 
 const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
   en: {
-    warmup: [
+    chromatic: [
       { title: 'Chromatic warm-up', detail: 'Play 1-2-3-4 across every string, then reverse the pattern.' },
       { title: 'Finger independence', detail: 'Keep each finger close to the fretboard and use a relaxed, even attack.' },
     ],
@@ -38,7 +38,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
     ],
   },
   ru: {
-    warmup: [{ title: 'Хроматическая разминка', detail: 'Играйте 1-2-3-4 на каждой струне, затем повторите рисунок в обратную сторону.' }, { title: 'Независимость пальцев', detail: 'Держите пальцы близко к грифу и играйте расслабленно и ровно.' }],
+    chromatic: [{ title: 'Хроматическая разминка', detail: 'Играйте 1-2-3-4 на каждой струне, затем повторите рисунок в обратную сторону.' }, { title: 'Независимость пальцев', detail: 'Держите пальцы близко к грифу и играйте расслабленно и ровно.' }],
     technique: [{ title: 'Переменный штрих', detail: 'Начните медленно с метрономом и ускоряйтесь только при чистом звучании каждой ноты.' }, { title: 'Контроль легато', detail: 'Отрабатывайте хаммер-оны и пулл-оффы с одинаковой громкостью нот.' }],
     rhythm: [{ title: 'Деление под метроном', detail: 'Считайте четверти, восьмые и шестнадцатые, затем добавляйте синкопы.' }, { title: 'Ровный бой', detail: 'Сохраняйте равномерное движение правой руки, включая беззвучные взмахи.' }],
     harmony: [{ title: 'Карта аккордовых тонов', detail: 'Найдите тонику, терцию и квинту перед построением импровизационной фразы.' }, { title: 'Движение трезвучий', detail: 'Соединяйте близкие формы трезвучий вместо резких переходов между позициями.' }],
@@ -47,7 +47,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
     learning: [{ title: 'Активное слушание', detail: 'Запишите одну технику, фразу или идею, которую попробуете сразу после просмотра.' }, { title: 'Заметки по материалу', detail: 'Сохраняйте один короткий вывод после каждого курса, видео или занятия теорией.' }],
   },
   it: {
-    warmup: [{ title: 'Riscaldamento cromatico', detail: 'Suona 1-2-3-4 su ogni corda, poi ripeti il disegno al contrario.' }, { title: 'Indipendenza delle dita', detail: 'Tieni le dita vicine alla tastiera e usa un attacco rilassato e uniforme.' }],
+    chromatic: [{ title: 'Riscaldamento cromatico', detail: 'Suona 1-2-3-4 su ogni corda, poi ripeti il disegno al contrario.' }, { title: 'Indipendenza delle dita', detail: 'Tieni le dita vicine alla tastiera e usa un attacco rilassato e uniforme.' }],
     technique: [{ title: 'Pennata alternata', detail: 'Inizia lentamente con il metronomo e aumenta la velocità solo mantenendo note pulite.' }, { title: 'Controllo del legato', detail: 'Esercita hammer-on e pull-off con volume uniforme tra note pizzicate e legate.' }],
     rhythm: [{ title: 'Suddivisioni con metronomo', detail: 'Conta quarti, ottavi e sedicesimi prima di aggiungere sincopi.' }, { title: 'Strumming uniforme', detail: 'Mantieni costante il movimento della mano, anche nei colpi silenziosi.' }],
     harmony: [{ title: 'Mappa delle note dell’accordo', detail: 'Trova fondamentale, terza e quinta prima di costruire una frase improvvisata.' }, { title: 'Movimento delle triadi', detail: 'Collega forme di triade vicine invece di saltare tra posizioni lontane.' }],
@@ -56,7 +56,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
     learning: [{ title: 'Ascolto attivo', detail: 'Annota una tecnica, frase o idea da provare subito dopo il video.' }, { title: 'Note di riferimento', detail: 'Conserva un breve insegnamento per ogni corso, video o sessione di teoria.' }],
   },
   fr: {
-    warmup: [{ title: 'Échauffement chromatique', detail: 'Jouez 1-2-3-4 sur chaque corde, puis répétez le motif en sens inverse.' }, { title: 'Indépendance des doigts', detail: 'Gardez les doigts près du manche et utilisez une attaque détendue et régulière.' }],
+    chromatic: [{ title: 'Échauffement chromatique', detail: 'Jouez 1-2-3-4 sur chaque corde, puis répétez le motif en sens inverse.' }, { title: 'Indépendance des doigts', detail: 'Gardez les doigts près du manche et utilisez une attaque détendue et régulière.' }],
     technique: [{ title: 'Aller-retour', detail: 'Commencez lentement avec le métronome et accélérez seulement si chaque note reste nette.' }, { title: 'Contrôle du legato', detail: 'Travaillez les hammer-ons et pull-offs avec un volume égal entre les notes.' }],
     rhythm: [{ title: 'Subdivisions au métronome', detail: 'Comptez les noires, croches et doubles-croches avant d’ajouter des syncopes.' }, { title: 'Régularité du mouvement', detail: 'Gardez la main en mouvement de façon régulière, même pendant les coups silencieux.' }],
     harmony: [{ title: 'Carte des notes d’accord', detail: 'Repérez fondamentale, tierce et quinte avant de construire une phrase improvisée.' }, { title: 'Mouvement des triades', detail: 'Reliez des formes de triades proches au lieu de sauter entre les positions.' }],
@@ -67,7 +67,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
 }
 
 const suppliedFiles: Record<string, string> = {
-  warmup: '/default-exercises/warmup/Warmup.pdf',
+  chromatic: '/default-exercises/chromatic/Warmup.pdf',
   learning: '/default-exercises/learning/Solo-On-Guitar-The-Improvisers-Toolkit-PDF.pdf',
 }
 

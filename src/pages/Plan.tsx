@@ -6,6 +6,9 @@ import type { Database } from '../lib/database.types'
 import { formatDateRange, localeForLanguage } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { isPlanWeekDirty, requestWeekChange, resolveWeekChange, settlePendingWeekChange, settleWeekLoad, type PendingWeekChange, type PlanWeekDraft, type WeekLoadResult } from '../lib/planWeekDirty'
+import BlockGallery from '../components/BlockGallery'
+import { createOtherBlock, loadActiveCatalog, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadProgramsWithBlockMode, readProgramBlockMode, replacePlanWeekBlocks, replaceProgramBlocks, setProgramBlockMode, type CatalogBlock, type ProgramBlockMode } from '../lib/catalogApi'
+import { queryWeekSongsWithSortOrder } from '../lib/weekSongsApi'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -158,6 +161,17 @@ export default function Plan() {
   const navigate = useNavigate()
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [programs, setPrograms] = useState<Program[]>([])
+  const [legacyProgramSchema, setLegacyProgramSchema] = useState(false)
+  const [catalogBlocks, setCatalogBlocks] = useState<CatalogBlock[]>([])
+  const [compositionMode, setCompositionMode] = useState<ProgramBlockMode>('legacy_unconfigured')
+  const [programBlockKeys, setProgramBlockKeys] = useState<string[]>([])
+  const [weekBlockKeys, setWeekBlockKeys] = useState<string[]>([])
+  const [compositionLoading, setCompositionLoading] = useState(false)
+  const [compositionSaving, setCompositionSaving] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [compositionError, setCompositionError] = useState<string | null>(null)
+  const [compositionMessage, setCompositionMessage] = useState<string | null>(null)
+  const [compositionRetry, setCompositionRetry] = useState(0)
   const [week, setWeek] = useState<ScheduledPlanWeek | null>(null)
   const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -170,7 +184,11 @@ export default function Plan() {
   const [weekStartDate, setWeekStartDate] = useState('')
   const [weekEndDate, setWeekEndDate] = useState('')
   const [todos, setTodos] = useState<EditableTodo[]>([])
-  const [songText, setSongText] = useState('')
+  const [repertoireSongs, setRepertoireSongs] = useState<Song[]>([])
+  const [selectedSongIds, setSelectedSongIds] = useState<string[]>([])
+  const [newSongName, setNewSongName] = useState('')
+  const [repertoireLoading, setRepertoireLoading] = useState(true)
+  const [repertoireError, setRepertoireError] = useState<string | null>(null)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [rangeCalendarOpen, setRangeCalendarOpen] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
@@ -187,8 +205,9 @@ export default function Plan() {
   const weekPickerButtonRef = useRef<HTMLButtonElement | null>(null)
   const requestedWeekParam = searchParams.get('week')
   const handledWeekParamRef = useRef(requestedWeekParam)
-  const isDirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText })
+  const isDirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
   const rangePickerRef = useRef<HTMLDivElement | null>(null)
+  const translate = useEffectEvent((key: string) => t(key))
 
   const coveredDates = useMemo(() => {
     const availableDates = new Set<string>()
@@ -215,6 +234,73 @@ export default function Plan() {
     // The loader is intentionally run once when the Plan route mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setRepertoireLoading(true)
+    void (async () => {
+      try {
+        const { data, error: songsError } = await supabase.from('songs').select('*').order('name', { ascending: true })
+        if (cancelled) return
+        if (songsError) {
+          setRepertoireError(translate('Song selection is unavailable until the database is updated.'))
+          return
+        }
+        setRepertoireSongs((data ?? []) as Song[])
+        setRepertoireError(null)
+      } finally {
+        if (!cancelled) setRepertoireLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    const program = programs.find((item) => item.id === selectedProgramId)
+    if (!program) {
+      setProgramBlockKeys([])
+      setWeekBlockKeys([])
+      setCompositionMode('legacy_unconfigured')
+      setCompositionError(null)
+      setCatalogError(null)
+      return
+    }
+
+    let cancelled = false
+    if (legacyProgramSchema) {
+      setProgramBlockKeys([])
+      setWeekBlockKeys([])
+      setCompositionMode('legacy_unconfigured')
+      setCompositionError(null)
+      setCatalogError(null)
+      setCompositionLoading(false)
+      return
+    }
+
+    setCompositionLoading(true)
+    setCatalogError(null)
+    const mode = readProgramBlockMode(program.block_set_mode)
+    void Promise.all([
+      loadActiveCatalog(),
+      loadProgramBlockKeys(program.id),
+      mode === 'varies_by_week' && week?.program_id === program.id && selectedWeekId
+        ? loadPlanWeekBlockKeys(selectedWeekId)
+        : Promise.resolve([] as string[]),
+    ]).then(([blocks, sharedKeys, selectedWeekKeys]) => {
+      if (cancelled) return
+      setCatalogBlocks(blocks)
+      setProgramBlockKeys(sharedKeys)
+      setWeekBlockKeys(selectedWeekKeys)
+      setCompositionMode(mode)
+    }).catch((loadError: unknown) => {
+      if (cancelled) return
+      setCatalogError(loadError instanceof Error ? loadError.message : translate('Could not load block composition.'))
+    }).finally(() => {
+      if (!cancelled) setCompositionLoading(false)
+    })
+
+    return () => { cancelled = true }
+  }, [programs, legacyProgramSchema, selectedProgramId, selectedWeekId, week?.program_id, compositionRetry])
 
   useEffect(() => {
     if (!week) {
@@ -333,10 +419,16 @@ export default function Plan() {
     const nextWeeks = ((weeksData ?? []) as PlanWeek[]).filter(isScheduledWeek)
     setWeeks(nextWeeks)
 
-    const { data: programsData, error: programsError } = await supabase
-      .from('programs')
-      .select('id, name, status, total_weeks, created_at, updated_at, user_id')
-      .order('name', { ascending: true })
+    const { programs: programsData, error: programsError, legacySchema } = await loadProgramsWithBlockMode<Pick<Program, 'id' | 'name' | 'status' | 'total_weeks' | 'created_at' | 'updated_at' | 'user_id'>>(
+      async (includeBlockSetMode) => {
+        const projection = 'id, name, status, total_weeks, created_at, updated_at, user_id'
+        const { data, error } = await supabase
+          .from('programs')
+          .select(includeBlockSetMode ? `${projection}, block_set_mode` : projection)
+          .order('name', { ascending: true })
+        return { data: data as unknown[] | null, error }
+      },
+    )
 
     if (programsError) {
       setError(programsError.message)
@@ -344,7 +436,8 @@ export default function Plan() {
       return
     }
 
-    setPrograms((programsData ?? []) as Program[])
+    setLegacyProgramSchema(legacySchema)
+    setPrograms(programsData as Program[])
 
     const today = new Date().toISOString().slice(0, 10)
     const requestedWeekId = searchParams.get('week')
@@ -363,12 +456,74 @@ export default function Plan() {
       setFocus('')
       setTasks('')
       setTodos([])
-      setSongText('')
+      setSelectedSongIds([])
       setLoading(false)
       return
     }
 
     await loadWeek(currentWeekId)
+  }
+
+  async function saveProgramComposition() {
+    const program = programs.find((item) => item.id === selectedProgramId)
+    if (!program || compositionMode === 'legacy_unconfigured') return
+    const currentMode = readProgramBlockMode(program.block_set_mode)
+    if ((compositionMode === 'same_every_week' || currentMode === 'legacy_unconfigured') && programBlockKeys.length === 0) {
+      setCompositionError(t('Select at least one block.'))
+      return
+    }
+
+    setCompositionSaving(true)
+    setCompositionError(null)
+    setCompositionMessage(null)
+    try {
+      if (currentMode === compositionMode) {
+        if (compositionMode === 'same_every_week') await replaceProgramBlocks(program.id, programBlockKeys)
+      } else {
+        await setProgramBlockMode(
+          program.id,
+          compositionMode,
+          compositionMode === 'same_every_week' || currentMode === 'legacy_unconfigured' ? programBlockKeys : undefined,
+        )
+      }
+      setPrograms((current) => current.map((item) => item.id === program.id ? { ...item, block_set_mode: compositionMode } : item))
+      setCompositionMessage(t('Block composition saved.'))
+    } catch (saveError) {
+      setCompositionError(saveError instanceof Error ? saveError.message : t('Could not save block composition.'))
+    } finally {
+      setCompositionSaving(false)
+    }
+  }
+
+  async function saveWeekComposition() {
+    if (!selectedWeekId || !week || week.program_id !== selectedProgramId || compositionMode !== 'varies_by_week') return
+    if (weekBlockKeys.length === 0) {
+      setCompositionError(t('Select at least one block.'))
+      return
+    }
+
+    setCompositionSaving(true)
+    setCompositionError(null)
+    setCompositionMessage(null)
+    try {
+      await replacePlanWeekBlocks(selectedWeekId, weekBlockKeys)
+      setCompositionMessage(t('Block composition saved.'))
+    } catch (saveError) {
+      setCompositionError(saveError instanceof Error ? saveError.message : t('Could not save block composition.'))
+    } finally {
+      setCompositionSaving(false)
+    }
+  }
+
+  async function addCustomBlock(label: string) {
+    const block = await createOtherBlock(label)
+    setCatalogBlocks((current) => current.some((item) => item.key === block.key) ? current : [...current, block])
+    return block
+  }
+
+  function toggleBlockKey(setter: (update: (current: string[]) => string[]) => void, key: string) {
+    setter((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key])
+    setCompositionMessage(null)
   }
 
   async function fetchWeek(weekId: string): Promise<WeekLoadResult<ScheduledPlanWeek>> {
@@ -389,10 +544,13 @@ export default function Plan() {
         .select('*')
         .eq('week_id', loadedWeek.id)
         .order('sort_order', { ascending: true }),
-      supabase
-        .from('week_songs')
-        .select('song_id, songs(*)')
-        .eq('week_id', loadedWeek.id),
+      queryWeekSongsWithSortOrder(async (orderBySortOrder) => {
+        const query = supabase
+          .from('week_songs')
+          .select('song_id, songs(*)')
+          .eq('week_id', loadedWeek.id)
+        return orderBySortOrder ? query.order('sort_order', { ascending: true }) : query
+      }),
     ])
 
     if (todosError) return { ok: false, error: todosError.message }
@@ -404,10 +562,7 @@ export default function Plan() {
       done: todo.done,
     }))
 
-    const loadedSongs = ((weekSongsData ?? []) as Array<{ songs?: Song | null }>).flatMap((entry) => {
-      const name = entry.songs?.name?.trim()
-      return name ? [name] : []
-    })
+    const loadedSongIds = ((weekSongsData ?? []) as Array<{ song_id: string }>).map((entry) => entry.song_id)
 
     return {
       ok: true,
@@ -419,7 +574,7 @@ export default function Plan() {
         endDate: loadedWeek.end_date,
         tasks: loadedWeek.tasks ?? '',
         todos: loadedTodos,
-        songText: loadedSongs.join('\n'),
+        songText: loadedSongIds.join('\n'),
       },
     }
   }
@@ -446,7 +601,7 @@ export default function Plan() {
     setWeekStartDate(draft.startDate)
     setWeekEndDate(draft.endDate)
     setTodos(draft.todos)
-    setSongText(draft.songText)
+    setSelectedSongIds(draft.songText ? draft.songText.split('\n') : [])
     setLoadedDraft(baseline)
     setPendingChange((current) => settlePendingWeekChange(current, { kind: 'baseline', baseline }))
     restoreWeekParam(loadedWeek.id)
@@ -512,6 +667,29 @@ export default function Plan() {
 
   function removeTodo(index: number) {
     setTodos((current) => current.filter((_, todoIndex) => todoIndex !== index))
+  }
+
+  async function createRepertoireSong() {
+    const name = newSongName.trim()
+    if (!name || repertoireLoading) return
+    setRepertoireLoading(true)
+    setRepertoireError(null)
+    const { data, error: insertError } = await supabase.from('songs').insert({
+      name,
+      status: 'planned',
+      notes: null,
+      tuning: null,
+    }).select('*').single()
+    if (insertError || !data) {
+      setRepertoireError(insertError?.message ?? t('Could not create the song.'))
+      setRepertoireLoading(false)
+      return
+    }
+    const createdSong = data as Song
+    setRepertoireSongs((current) => [...current, createdSong].sort((left, right) => left.name.localeCompare(right.name)))
+    setSelectedSongIds((current) => current.includes(createdSong.id) ? current : [...current, createdSong.id])
+    setNewSongName('')
+    setRepertoireLoading(false)
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -618,72 +796,13 @@ export default function Plan() {
       }
     }
 
-    const songNames = Array.from(new Set(
-      songText
-        .split(/\n|,/) 
-        .map((song) => song.trim())
-        .filter(Boolean)
-    ))
-
-    const { data: existingSongs, error: existingSongsError } = await supabase.from('songs').select('*')
-    if (existingSongsError) {
-      setError(existingSongsError.message)
-      setSaving(false)
-      return
-    }
-
-    const songIdLookup = new Map<string, string>()
-    for (const song of existingSongs ?? []) {
-      songIdLookup.set(song.name.trim().toLowerCase(), song.id)
-    }
-
-    const songIds: string[] = []
-    for (const songName of songNames) {
-      const normalizedName = songName.toLowerCase()
-      const existingSongId = songIdLookup.get(normalizedName)
-      if (existingSongId) {
-        songIds.push(existingSongId)
-        continue
-      }
-
-      const { data: insertedSong, error: songInsertError } = await supabase
-        .from('songs')
-        .insert({
-          name: songName,
-          status: 'planned',
-          notes: null,
-          tuning: null,
-        })
-        .select()
-        .single()
-
-      if (songInsertError || !insertedSong) {
-        setError(songInsertError?.message ?? t('Could not save the song list.'))
-        setSaving(false)
-        return
-      }
-
-      songIdLookup.set(normalizedName, insertedSong.id)
-      songIds.push(insertedSong.id)
-    }
-
-    const { error: weekSongDeleteError } = await supabase.from('week_songs').delete().eq('week_id', week.id)
-    if (weekSongDeleteError) {
-      setError(weekSongDeleteError.message)
-      setSaving(false)
-      return
-    }
-
-    if (songIds.length > 0) {
-      const { error: weekSongInsertError } = await supabase.from('week_songs').insert(
-        songIds.map((songId) => ({
-          week_id: week.id,
-          song_id: songId,
-        }))
-      )
-
-      if (weekSongInsertError) {
-        setError(weekSongInsertError.message)
+    if (loadedDraft?.songText !== selectedSongIds.join('\n')) {
+      const { error: repertoireSaveError } = await supabase.rpc('replace_week_repertoire_songs' as never, {
+        p_week_id: week.id,
+        p_song_ids: selectedSongIds,
+      } as never)
+      if (repertoireSaveError) {
+        setError(`${t('Could not save repertoire songs.')} ${repertoireSaveError.message}`)
         setSaving(false)
         return
       }
@@ -937,7 +1056,12 @@ export default function Plan() {
                   <span className="label">{t('Program')}</span>
                   <select
                     value={selectedProgramId}
-                    onChange={(event) => setSelectedProgramId(event.target.value)}
+                    onChange={(event) => {
+                      setSelectedProgramId(event.target.value)
+                      setCompositionError(null)
+                      setCompositionMessage(null)
+                      setCatalogError(null)
+                    }}
                     className="field"
                   >
                     {programs.map((program) => (
@@ -946,6 +1070,68 @@ export default function Plan() {
                     <option value={otherProgramOption}>{t('Other')}</option>
                   </select>
                 </label>
+
+                {selectedProgramId !== otherProgramOption && programs.some((program) => program.id === selectedProgramId) && (
+                  <section className="space-y-3 border-l-2 border-sky-500/50 pl-3" aria-label={t('Block composition')}>
+                    <h3 className="item-title">{t('Block composition')}</h3>
+                    {legacyProgramSchema ? <p role="status" className="meta">{t('Catalog composition is unavailable until the database is updated.')}</p> : <>
+                    <label className="block">
+                      <span className="label">{t('Block composition')}</span>
+                      <select
+                        value={compositionMode}
+                        onChange={(event) => {
+                          const nextMode = readProgramBlockMode(event.target.value)
+                          setCompositionMode(nextMode)
+                          setCompositionMessage(null)
+                          if (nextMode === 'same_every_week' && readProgramBlockMode(programs.find((program) => program.id === selectedProgramId)?.block_set_mode) === 'varies_by_week') setProgramBlockKeys([])
+                        }}
+                        className="field"
+                        disabled={compositionLoading || compositionSaving}
+                      >
+                        <option value="legacy_unconfigured">{t('Not configured')}</option>
+                        <option value="same_every_week">{t('Same every week')}</option>
+                        <option value="varies_by_week">{t('Varies by week')}</option>
+                      </select>
+                    </label>
+                    {compositionMode === 'legacy_unconfigured' && <p className="meta">{t('This program has no configured block set. Choose a mode and select blocks.')}</p>}
+                    {(compositionMode === 'same_every_week' || readProgramBlockMode(programs.find((program) => program.id === selectedProgramId)?.block_set_mode) === 'legacy_unconfigured') && (
+                      <BlockGallery
+                        blocks={catalogBlocks}
+                        selectedKeys={programBlockKeys}
+                        loading={compositionLoading}
+                        error={catalogError}
+                        onRetry={() => setCompositionRetry((value) => value + 1)}
+                        onSelect={(block) => toggleBlockKey(setProgramBlockKeys, block.key)}
+                        onCreateOther={addCustomBlock}
+                      />
+                    )}
+                    {compositionMode === 'varies_by_week' && week?.program_id === selectedProgramId && (
+                      <>
+                        <h4 className="item-title">{t('Week blocks')}</h4>
+                        <BlockGallery
+                          blocks={catalogBlocks}
+                          selectedKeys={weekBlockKeys}
+                          loading={compositionLoading}
+                          error={catalogError}
+                          onRetry={() => setCompositionRetry((value) => value + 1)}
+                          onSelect={(block) => toggleBlockKey(setWeekBlockKeys, block.key)}
+                          onCreateOther={addCustomBlock}
+                        />
+                        <button type="button" onClick={() => void saveWeekComposition()} disabled={compositionLoading || compositionSaving} className="btn btn-secondary">
+                          {compositionSaving ? t('Saving composition…') : t('Save composition')}
+                        </button>
+                      </>
+                    )}
+                    {compositionMode !== 'legacy_unconfigured' && (
+                      <button type="button" onClick={() => void saveProgramComposition()} disabled={compositionLoading || compositionSaving} className="btn btn-secondary">
+                        {compositionSaving ? t('Saving composition…') : t('Save composition')}
+                      </button>
+                    )}
+                    {compositionError && <p role="alert" className="msg-error">{compositionError}</p>}
+                    {compositionMessage && <p role="status" className="msg-success">{compositionMessage}</p>}
+                    </>}
+                  </section>
+                )}
 
                 {selectedProgramId === otherProgramOption && (
                   <label className="block">
@@ -1065,17 +1251,41 @@ export default function Plan() {
                   </div>
                 </div>
 
-                <label className="block">
-                  <span className="label">{t('Songs')}</span>
-                  <textarea
-                    rows={6}
-                    value={songText}
-                    onChange={(event) => setSongText(event.target.value)}
-                    className="field"
-                    placeholder={t('Add one song per line')}
-                  />
-                  <span className="mt-1 block text-xs text-slate-400">{t('Separate songs with line breaks or commas.')}</span>
-                </label>
+                <section className="space-y-3" aria-label={t('Repertoire')}>
+                  <h3 className="item-title">{t('Repertoire')}</h3>
+                  <fieldset className="min-w-0 space-y-1">
+                    <legend className="label">{t('Songs for this week')}</legend>
+                    {repertoireLoading && <p role="status" className="meta">{t('Loading songs…')}</p>}
+                    {!repertoireLoading && repertoireSongs.length === 0 && <p className="meta">{t('No songs in your repertoire yet.')}</p>}
+                    {repertoireSongs.map((song) => (
+                      <label key={song.id} className="flex min-h-11 items-center gap-3 rounded px-2 text-sm text-slate-200 hover:bg-slate-900">
+                        <input
+                          type="checkbox"
+                          checked={selectedSongIds.includes(song.id)}
+                          onChange={(event) => setSelectedSongIds((current) => event.target.checked
+                            ? current.includes(song.id) ? current : [...current, song.id]
+                            : current.filter((id) => id !== song.id))}
+                          className="h-5 w-5 shrink-0 rounded border-slate-700 bg-slate-950"
+                        />
+                        <span className="min-w-0 break-words">{song.name}</span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={newSongName}
+                      onChange={(event) => setNewSongName(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }}
+                      className="field min-w-0 flex-1"
+                      placeholder={t('Song name')}
+                      aria-label={t('Song name')}
+                    />
+                    <button type="button" onClick={() => void createRepertoireSong()} disabled={repertoireLoading || !newSongName.trim()} className="btn btn-secondary">
+                      {repertoireLoading ? t('Saving…') : t('Create song')}
+                    </button>
+                  </div>
+                  {repertoireError && <p role="alert" className="msg-error">{repertoireError}</p>}
+                </section>
               </fieldset>
             </div>
 

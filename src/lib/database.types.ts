@@ -52,33 +52,78 @@ export type Database = {
       }
       block_templates: {
         Row: {
+          archived_at: string | null
+          category_key: string
           description: string | null
           id: string
+          is_selectable: boolean
           key: string
           label: string
           phase: string
           sort_order: number
-          target_minutes: number
+          target_minutes: number | null
+          user_id: string | null
         }
         Insert: {
+          archived_at?: string | null
+          category_key?: string
           description?: string | null
           id?: string
+          is_selectable?: boolean
           key: string
           label: string
           phase: string
           sort_order?: number
-          target_minutes: number
+          target_minutes?: number | null
+          user_id?: string | null
         }
         Update: {
+          archived_at?: string | null
+          category_key?: string
           description?: string | null
           id?: string
+          is_selectable?: boolean
           key?: string
           label?: string
           phase?: string
           sort_order?: number
-          target_minutes?: number
+          target_minutes?: number | null
+          user_id?: string | null
         }
         Relationships: []
+      }
+      program_blocks: {
+        Row: {
+          block_key: string
+          program_id: string
+          sort_order: number
+        }
+        Insert: {
+          block_key: string
+          program_id: string
+          sort_order: number
+        }
+        Update: {
+          block_key?: string
+          program_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_blocks_block_key_fkey"
+            columns: ["block_key"]
+            isOneToOne: false
+            referencedRelation: "block_templates"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "program_blocks_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       plan_weeks: {
         Row: {
@@ -122,6 +167,39 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_week_blocks: {
+        Row: {
+          block_key: string
+          sort_order: number
+          week_id: string
+        }
+        Insert: {
+          block_key: string
+          sort_order: number
+          week_id: string
+        }
+        Update: {
+          block_key?: string
+          sort_order?: number
+          week_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_week_blocks_block_key_fkey"
+            columns: ["block_key"]
+            isOneToOne: false
+            referencedRelation: "block_templates"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "plan_week_blocks_week_id_fkey"
+            columns: ["week_id"]
+            isOneToOne: false
+            referencedRelation: "plan_weeks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       programs: {
         Row: {
           created_at: string
@@ -131,6 +209,7 @@ export type Database = {
           status: string
           total_weeks: number
           is_default: boolean
+          block_set_mode: string
           updated_at: string
           user_id: string
         }
@@ -142,6 +221,7 @@ export type Database = {
           status?: string
           total_weeks?: number
           is_default?: boolean
+          block_set_mode?: string
           updated_at?: string
           user_id?: string
         }
@@ -153,6 +233,7 @@ export type Database = {
           status?: string
           total_weeks?: number
           is_default?: boolean
+          block_set_mode?: string
           updated_at?: string
           user_id?: string
         }
@@ -305,14 +386,17 @@ export type Database = {
       week_songs: {
         Row: {
           song_id: string
+          sort_order: number
           week_id: string
         }
         Insert: {
           song_id: string
+          sort_order: number
           week_id: string
         }
         Update: {
           song_id?: string
+          sort_order?: number
           week_id?: string
         }
         Relationships: [
@@ -346,6 +430,22 @@ export type Database = {
           week_id: string | null
         }[]
       }
+      create_other_block: {
+        Args: { p_label: string }
+        Returns: string
+      }
+      set_program_block_mode: {
+        Args: { p_mode: string; p_program_id: string; p_shared_block_keys?: string[] | null }
+        Returns: undefined
+      }
+      replace_program_blocks: {
+        Args: { p_block_keys: string[]; p_program_id: string }
+        Returns: undefined
+      }
+      replace_plan_week_blocks: {
+        Args: { p_block_keys: string[]; p_week_id: string }
+        Returns: undefined
+      }
       assign_plan_week_program: {
         Args: { p_program_id: string; p_week_id: string }
         Returns: undefined
@@ -358,6 +458,7 @@ export type Database = {
           p_program_id: string
           p_start_date: string
           p_tasks: string | null
+          p_block_keys?: string[] | null
         }
         Returns: string
       }
@@ -369,6 +470,7 @@ export type Database = {
           p_program_id: string
           p_start_date: string
           p_tasks: string | null
+          p_block_keys?: string[] | null
         }
         Returns: string
       }
@@ -386,6 +488,10 @@ export type Database = {
       }
       reschedule_plan_week: {
         Args: { p_end_date: string; p_start_date: string; p_week_id: string }
+        Returns: undefined
+      }
+      replace_week_repertoire_songs: {
+        Args: { p_song_ids: string[]; p_week_id: string }
         Returns: undefined
       }
       resume_program: {

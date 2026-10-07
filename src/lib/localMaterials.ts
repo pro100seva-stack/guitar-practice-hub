@@ -1,6 +1,7 @@
 export type LocalMaterial = {
   id: string
   blockKey: string
+  songId?: string
   name: string
   type: string
   size: number
@@ -64,16 +65,57 @@ function openDatabase() {
   })
 }
 
-export async function listLocalMaterials(blockKey: string) {
+let warmupMigration: Promise<void> | null = null
+
+export function migrateWarmupMaterialsToChromatic() {
+  if (warmupMigration) return warmupMigration
+  warmupMigration = runWarmupMaterialsMigration().finally(() => { warmupMigration = null })
+  return warmupMigration
+}
+
+async function runWarmupMaterialsMigration() {
+  const database = await openDatabase()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(storeName, 'readwrite')
+    const store = transaction.objectStore(storeName)
+    let failure: Error | null = null
+    transaction.oncomplete = () => {
+      database.close()
+      resolve()
+    }
+    transaction.onabort = transaction.onerror = () => {
+      database.close()
+      reject(failure ?? transaction.error ?? new Error('Could not move local warm-up materials.'))
+    }
+    const request = store.getAll()
+    request.onsuccess = () => {
+      for (const material of request.result as LocalMaterial[]) {
+        if (material.blockKey === 'warmup') store.put({ ...material, blockKey: 'chromatic' })
+      }
+    }
+    request.onerror = () => {
+      failure = request.error ?? new Error('Could not read local warm-up materials.')
+      transaction.abort()
+    }
+  })
+}
+
+export async function listLocalMaterials(blockKey: string, songId?: string) {
+  await migrateWarmupMaterialsToChromatic()
+  return readLocalMaterials(blockKey, songId)
+}
+
+async function readLocalMaterials(blockKey: string, songId?: string) {
   const database = await openDatabase()
   return new Promise<LocalMaterial[]>((resolve, reject) => {
     const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll()
-    request.onsuccess = () => resolve((request.result as LocalMaterial[]).filter((item) => item.blockKey === blockKey))
+    request.onsuccess = () => resolve((request.result as LocalMaterial[]).filter((item) => item.blockKey === blockKey && item.songId === songId))
     request.onerror = () => reject(request.error ?? new Error('Could not load local materials.'))
   })
 }
 
 export async function saveLocalMaterial(material: LocalMaterial) {
+  await migrateWarmupMaterialsToChromatic()
   if (material.source === 'file' && material.blob && 'caches' in window) {
     const database = await openDatabase()
     const metadata = { ...material, blob: undefined, storage: 'cache' as const }
@@ -104,6 +146,7 @@ export async function saveLocalMaterial(material: LocalMaterial) {
 }
 
 export async function loadLocalMaterialBlob(material: LocalMaterial) {
+  await migrateWarmupMaterialsToChromatic()
   if (material.blob) return material.blob
   if (material.storage !== 'cache' || !('caches' in window)) throw new Error('Local material data is unavailable.')
 
@@ -119,7 +162,8 @@ export function normalizeBookmarks(values: number[]) {
   return [...new Set(values.filter((value) => Number.isFinite(value) && value >= 0).map((value) => Number(value.toFixed(1))))].sort((left, right) => left - right)
 }
 
-export async function patchLocalMaterialMetadata(id: string, blockKey: string, patch: MaterialMetadataPatch) {
+export async function patchLocalMaterialMetadata(id: string, blockKey: string, patch: MaterialMetadataPatch, songId?: string) {
+  await migrateWarmupMaterialsToChromatic()
   const name = patch.name?.trim()
   if (name === '') throw new Error('Material name is empty.')
   const database = await openDatabase()
@@ -140,7 +184,7 @@ export async function patchLocalMaterialMetadata(id: string, blockKey: string, p
     const request = store.get(id)
     request.onsuccess = () => {
       const record = request.result as LocalMaterial | undefined
-      if (!record || record.id !== id || record.blockKey !== blockKey) {
+      if (!record || record.id !== id || record.blockKey !== blockKey || record.songId !== songId) {
         failure = new Error('Local material no longer exists in this block.')
         transaction.abort()
         return
@@ -153,14 +197,42 @@ export async function patchLocalMaterialMetadata(id: string, blockKey: string, p
   })
 }
 
-export async function deleteLocalMaterial(id: string) {
+export async function deleteLocalMaterial(id: string, blockKey?: string, songId?: string) {
+  await migrateWarmupMaterialsToChromatic()
   const database = await openDatabase()
+  let shouldDeleteCache = blockKey === undefined
   await new Promise<void>((resolve, reject) => {
-    const request = database.transaction(storeName, 'readwrite').objectStore(storeName).delete(id)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error('Could not delete local material.'))
+    const transaction = database.transaction(storeName, 'readwrite')
+    const store = transaction.objectStore(storeName)
+    let failure: Error | null = null
+    transaction.oncomplete = () => resolve()
+    transaction.onabort = transaction.onerror = () => reject(failure ?? transaction.error ?? new Error('Could not delete local material.'))
+    if (blockKey === undefined) {
+      const request = store.delete(id)
+      request.onerror = () => {
+        failure = request.error ?? new Error('Could not delete local material.')
+        transaction.abort()
+      }
+      return
+    }
+
+    const request = store.get(id)
+    request.onsuccess = () => {
+      const record = request.result as LocalMaterial | undefined
+      if (record?.blockKey !== blockKey || record.songId !== songId) return
+      shouldDeleteCache = true
+      const deleteRequest = store.delete(id)
+      deleteRequest.onerror = () => {
+        failure = deleteRequest.error ?? new Error('Could not delete local material.')
+        transaction.abort()
+      }
+    }
+    request.onerror = () => {
+      failure = request.error ?? new Error('Could not read local material metadata.')
+      transaction.abort()
+    }
   })
-  if ('caches' in window) {
+  if (shouldDeleteCache && 'caches' in window) {
     const cache = await caches.open(mediaCacheName)
     await cache.delete(mediaCacheRequest(id))
   }

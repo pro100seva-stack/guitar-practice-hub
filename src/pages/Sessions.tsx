@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as Reac
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router'
 import { useHeaderSlots } from '../components/headerSlots'
+import BlockGallery from '../components/BlockGallery'
 import { supabase } from '../lib/supabase'
 import { deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
+import { catalogBlockLabel, createOtherBlock, isSelectableCatalogBlock, loadSessionRestorationCatalog, type CatalogBlock } from '../lib/catalogApi'
 import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { getDefaultMaterials } from '../lib/defaultMaterials'
@@ -13,6 +15,7 @@ import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes 
 import { getPracticedDates } from '../lib/sessionActivity'
 import { resolvePracticeDeepLink } from '../lib/practiceDeepLink'
 import { getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock } from '../lib/sessionEditorState'
+import { queryWeekSongsWithSortOrder } from '../lib/weekSongsApi'
 import { activateBlockTimer, completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, toggleBlockTimer } from '../lib/sessionBlockTimer'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
 import MetronomeIcon from '../components/icons/MetronomeIcon'
@@ -25,7 +28,7 @@ import LocalVideoPracticePlayer from '../components/LocalVideoPracticePlayer'
 type MaterialFeedback = { error: string | null; notice: string | null; saveState: 'idle' | 'saving' | 'saved' }
 const emptyMaterialFeedback: MaterialFeedback = { error: null, notice: null, saveState: 'idle' }
 
-type BlockTemplate = Database['public']['Tables']['block_templates']['Row']
+type BlockTemplate = CatalogBlock
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
 type Todo = Database['public']['Tables']['todos']['Row']
@@ -37,6 +40,11 @@ type ScheduledPlanWeek = PlanWeek & {
 type SessionBlock = Database['public']['Tables']['session_blocks']['Row']
 type SessionWithBlocks = Database['public']['Tables']['sessions']['Row'] & {
   session_blocks: SessionBlock[]
+}
+type WeekSong = { id: string; name: string }
+
+function localMaterialScopeKey(blockKey: string, songId?: string) {
+  return songId ? `${blockKey}:song:${songId}` : blockKey
 }
 
 function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
@@ -114,7 +122,12 @@ export default function Sessions() {
   const headerSlots = useHeaderSlots()
   const [searchParams, setSearchParams] = useSearchParams()
   const [templates, setTemplates] = useState<BlockTemplate[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
   const [planWeek, setPlanWeek] = useState<ScheduledPlanWeek | null>(null)
+  const [weekSongs, setWeekSongs] = useState<WeekSong[]>([])
+  const [weekSongsLoading, setWeekSongsLoading] = useState(false)
+  const [weekSongsError, setWeekSongsError] = useState<string | null>(null)
   const [programName, setProgramName] = useState<string | null>(null)
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
@@ -160,7 +173,7 @@ export default function Sessions() {
   const [activeMaterialUrl, setActiveMaterialUrl] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const playbackBlockedRef = useRef(new Set<string>())
-  const [materialRename, setMaterialRename] = useState<{ id: string; blockKey: string; draft: string; saving: boolean; error: string | null } | null>(null)
+  const [materialRename, setMaterialRename] = useState<{ id: string; blockKey: string; songId?: string; draft: string; saving: boolean; error: string | null } | null>(null)
   const materialFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -181,6 +194,7 @@ export default function Sessions() {
   const materialsRequestTrackerRef = useRef(createRequestTracker())
   const materialNavigationRef = useRef(0)
   const materialsMountedRef = useRef(false)
+  const weekSongsRequestRef = useRef(0)
   const dayStripRef = useRef<HTMLDivElement | null>(null)
   const blocksSectionRef = useRef<HTMLElement | null>(null)
   const addBlockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -226,17 +240,51 @@ export default function Sessions() {
     if (id) setActiveDefaultMaterial(null)
   }
 
-  async function loadBlockMaterials(blockKey: string) {
-    const requestId = materialsRequestTrackerRef.current.begin(blockKey)
+  async function loadWeekSongs(weekId: string | null) {
+    const requestId = ++weekSongsRequestRef.current
+    setWeekSongs([])
+    setWeekSongsLoading(Boolean(weekId))
+    setWeekSongsError(null)
+    if (!weekId) return
+
+    const { data, error: songsError } = await queryWeekSongsWithSortOrder(async (orderBySortOrder) => {
+      const query = supabase
+        .from('week_songs')
+        .select('song_id, songs(name)')
+        .eq('week_id', weekId)
+      return orderBySortOrder ? query.order('sort_order', { ascending: true }) : query
+    })
+    if (requestId !== weekSongsRequestRef.current) return
+    if (songsError) {
+      setWeekSongsError(t('Could not load this week’s repertoire.'))
+      setWeekSongsLoading(false)
+      return
+    }
+    setWeekSongs(((data ?? []) as Array<{ song_id: string; songs?: { name: string } | null }>).flatMap((entry) => {
+      const name = entry.songs?.name?.trim()
+      return name ? [{ id: entry.song_id, name }] : []
+    }))
+    setWeekSongsLoading(false)
+  }
+
+  async function loadBlockMaterials(blockKey: string, songId?: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    const requestId = materialsRequestTrackerRef.current.begin(scopeKey)
     try {
-      const materials = await listLocalMaterials(blockKey)
-      if (!materialsRequestTrackerRef.current.isCurrent(blockKey, requestId)) return
-      setMaterialsByBlock((current) => setBlockMaterials(current, blockKey, materials))
+      const materials = await listLocalMaterials(blockKey, songId)
+      if (!materialsRequestTrackerRef.current.isCurrent(scopeKey, requestId)) return
+      setMaterialsByBlock((current) => setBlockMaterials(current, scopeKey, materials))
       setLocalStorageEstimate(await estimateLocalStorage())
     } catch (loadError) {
-      patchMaterialFeedback(blockKey, { error: loadError instanceof Error ? loadError.message : t('Could not load local materials.') })
+      patchMaterialFeedback(scopeKey, { error: loadError instanceof Error ? loadError.message : t('Could not load local materials.') })
     }
   }
+
+  const hasSelectedRepertoireBlock = selectedBlocks.some((block) => block.key === 'repertoire')
+  useEffect(() => {
+    if (hasSelectedRepertoireBlock) return
+    weekSongs.forEach((song) => { void loadBlockMaterials('repertoire', song.id) })
+  }, [hasSelectedRepertoireBlock, weekSongs])
 
   const activeMaterialRecord = findActiveMaterial(materialsByBlock, activeMaterial)
   const bookmarks = normalizeBookmarks(activeMaterialRecord?.bookmarks ?? [])
@@ -305,26 +353,27 @@ export default function Sessions() {
     }
   }, [activeMaterialId, activeMaterialSource, activeMaterialStorage, activeMaterialSourceUrl, activeMaterialHasBlob])
 
-  async function handleLocalMaterialUpload(blockKey: string, file: File | undefined) {
+  async function handleLocalMaterialUpload(blockKey: string, file: File | undefined, songId?: string) {
     if (!file) return
-    patchMaterialFeedback(blockKey, { error: null, notice: null, saveState: 'saving' })
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    patchMaterialFeedback(scopeKey, { error: null, notice: null, saveState: 'saving' })
     const detectedType = detectMaterialType(file.name, file.type)
     if (!isAllowedMaterialType(detectedType)) {
-      patchMaterialFeedback(blockKey, { error: t('Use a PDF, image, text, audio, or video file.'), saveState: 'idle' })
+      patchMaterialFeedback(scopeKey, { error: t('Use a PDF, image, text, audio, or video file.'), saveState: 'idle' })
       return
     }
     const storageEstimate = await estimateLocalStorage()
     if (storageEstimate.quota != null && storageEstimate.usage != null) {
       const availableBytes = storageEstimate.quota - storageEstimate.usage
       if (file.size > availableBytes) {
-        patchMaterialFeedback(blockKey, { error: t('This file is larger than the browser storage currently available on this device.'), saveState: 'idle' })
+        patchMaterialFeedback(scopeKey, { error: t('This file is larger than the browser storage currently available on this device.'), saveState: 'idle' })
         return
       }
     }
 
     const mediaKind = practiceMediaKind(detectedType)
     if (mediaKind && !document.createElement(mediaKind).canPlayType(detectedType)) {
-      patchMaterialFeedback(blockKey, {
+      patchMaterialFeedback(scopeKey, {
         notice: mediaKind === 'video'
           ? t('This browser may not decode this video format. H.264/AAC MP4 or WebM/Opus is usually the most compatible.')
           : t('This browser may not decode this audio format. MP3, AAC (M4A) or Ogg/Opus is usually the most compatible.'),
@@ -336,6 +385,7 @@ export default function Sessions() {
       await saveLocalMaterial({
         id: materialId,
         blockKey,
+        songId,
         name: file.name,
         type: detectedType,
         size: file.size,
@@ -343,24 +393,25 @@ export default function Sessions() {
         blob: file,
         createdAt: new Date().toISOString(),
       })
-      await loadBlockMaterials(blockKey)
-      setActiveMaterial(blockKey, materialId)
-      patchMaterialFeedback(blockKey, { saveState: 'saved' })
-      window.setTimeout(() => patchMaterialFeedback(blockKey, { saveState: 'idle' }), 2500)
+      await loadBlockMaterials(blockKey, songId)
+      setActiveMaterial(scopeKey, materialId)
+      patchMaterialFeedback(scopeKey, { saveState: 'saved' })
+      window.setTimeout(() => patchMaterialFeedback(scopeKey, { saveState: 'idle' }), 2500)
     } catch (uploadError) {
       const isQuotaError = uploadError instanceof DOMException && uploadError.name === 'QuotaExceededError'
-      patchMaterialFeedback(blockKey, {
+      patchMaterialFeedback(scopeKey, {
         error: isQuotaError ? t('The browser storage quota was reached. Remove local materials or use another device.') : uploadError instanceof Error ? uploadError.message : t('Could not save the local material.'),
         saveState: 'idle',
       })
     }
   }
 
-  async function addMaterialUrl(blockKey: string) {
-    const value = (materialUrlInputs[blockKey] ?? '').trim()
+  async function addMaterialUrl(blockKey: string, songId?: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    const value = (materialUrlInputs[scopeKey] ?? '').trim()
     if (!value) return
     const navigation = materialNavigationRef.current
-    patchMaterialFeedback(blockKey, { error: null, saveState: 'saving' })
+    patchMaterialFeedback(scopeKey, { error: null, saveState: 'saving' })
     try {
       const youTubeEmbedUrl = toYouTubeEmbedUrl(value)
       if (!youTubeEmbedUrl && isYouTubeHostLink(value)) throw new Error(t('This YouTube link is not valid.'))
@@ -378,6 +429,7 @@ export default function Sessions() {
       await saveLocalMaterial({
         id: materialId,
         blockKey,
+        songId,
         name,
         type: 'text/uri-list',
         size: 0,
@@ -386,46 +438,48 @@ export default function Sessions() {
         createdAt: new Date().toISOString(),
       })
       if (!materialsMountedRef.current) return
-      setMaterialUrlInputs((current) => ({ ...current, [blockKey]: '' }))
-      patchMaterialFeedback(blockKey, { error: null, notice: null, saveState: 'idle' })
-      await loadBlockMaterials(blockKey)
-      if (materialsMountedRef.current && navigation === materialNavigationRef.current) setActiveMaterial(blockKey, materialId)
+      setMaterialUrlInputs((current) => ({ ...current, [scopeKey]: '' }))
+      patchMaterialFeedback(scopeKey, { error: null, notice: null, saveState: 'idle' })
+      await loadBlockMaterials(blockKey, songId)
+      if (materialsMountedRef.current && navigation === materialNavigationRef.current) setActiveMaterial(scopeKey, materialId)
     } catch (urlError) {
-      if (materialsMountedRef.current) patchMaterialFeedback(blockKey, { error: urlError instanceof Error ? urlError.message : t('Enter a valid web URL.'), saveState: 'idle' })
+      if (materialsMountedRef.current) patchMaterialFeedback(scopeKey, { error: urlError instanceof Error ? urlError.message : t('Enter a valid web URL.'), saveState: 'idle' })
     }
   }
 
   async function saveMaterialName() {
     if (!materialRename || materialRename.saving) return
-    const { id, blockKey, draft } = materialRename
+    const { id, blockKey, draft, songId } = materialRename
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
     if (!draft.trim()) {
       setMaterialRename((current) => current?.id === id ? { ...current, error: t('Enter a material name.') } : current)
       return
     }
     setMaterialRename((current) => current?.id === id ? { ...current, saving: true, error: null } : current)
-    materialsRequestTrackerRef.current.begin(blockKey)
+    materialsRequestTrackerRef.current.begin(scopeKey)
     try {
-      const updated = await patchLocalMaterialMetadata(id, blockKey, { name: draft })
+      const updated = await patchLocalMaterialMetadata(id, blockKey, { name: draft }, songId)
       if (!materialsMountedRef.current) return
-      materialsRequestTrackerRef.current.begin(blockKey)
-      setMaterialsByBlock((current) => updateBlockMaterial(current, blockKey, id, { name: updated.name }))
+      materialsRequestTrackerRef.current.begin(scopeKey)
+      setMaterialsByBlock((current) => updateBlockMaterial(current, scopeKey, id, { name: updated.name }))
       setMaterialRename((current) => current?.id === id ? null : current)
     } catch {
       if (materialsMountedRef.current) setMaterialRename((current) => current?.id === id ? { ...current, saving: false, error: t('Could not save material changes.') } : current)
     }
   }
 
-  async function removeLearningMaterial(blockKey: string, id: string) {
-    const commitDeletion = materialsRequestTrackerRef.current.beginDeletion(blockKey)
+  async function removeLearningMaterial(blockKey: string, id: string, songId?: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    const commitDeletion = materialsRequestTrackerRef.current.beginDeletion(scopeKey)
     try {
-      await deleteLocalMaterial(id)
+      await deleteLocalMaterial(id, blockKey, songId)
       commitDeletion()
-      setMaterialsByBlock((current) => removeBlockMaterial(current, blockKey, id))
+      setMaterialsByBlock((current) => removeBlockMaterial(current, scopeKey, id))
       setMaterialRename((current) => current?.id === id ? null : current)
-      setActiveMaterialState((current) => closeDeletedMaterial(current, blockKey, id))
+      setActiveMaterialState((current) => closeDeletedMaterial(current, scopeKey, id))
       setLocalStorageEstimate(await estimateLocalStorage())
     } catch (removeError) {
-      patchMaterialFeedback(blockKey, { error: removeError instanceof Error ? removeError.message : t('Could not remove the local material.') })
+      patchMaterialFeedback(scopeKey, { error: removeError instanceof Error ? removeError.message : t('Could not remove the local material.') })
     }
   }
 
@@ -435,12 +489,13 @@ export default function Sessions() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  async function saveMaterialBookmarks(blockKey: string, id: string, next: number[]) {
-    materialsRequestTrackerRef.current.begin(blockKey)
-    const updated = await patchLocalMaterialMetadata(id, blockKey, { bookmarks: next })
+  async function saveMaterialBookmarks(blockKey: string, id: string, next: number[], songId?: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    materialsRequestTrackerRef.current.begin(scopeKey)
+    const updated = await patchLocalMaterialMetadata(id, blockKey, { bookmarks: next }, songId)
     if (!materialsMountedRef.current) return
-    materialsRequestTrackerRef.current.begin(blockKey)
-    setMaterialsByBlock((current) => updateBlockMaterial(current, blockKey, id, { bookmarks: updated.bookmarks }))
+    materialsRequestTrackerRef.current.begin(scopeKey)
+    setMaterialsByBlock((current) => updateBlockMaterial(current, scopeKey, id, { bookmarks: updated.bookmarks }))
   }
 
   function getExternalMediaKind(material: LocalMaterial) {
@@ -451,6 +506,74 @@ export default function Sessions() {
     if (/\.(png|jpe?g|gif|webp|avif)$/.test(pathname)) return 'image'
     if (/\.pdf$/.test(pathname)) return 'pdf'
     return 'page'
+  }
+
+  function renderSongMaterials(song: WeekSong, blockKey: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, song.id)
+    const songMaterials = materialsByBlock[scopeKey] ?? []
+    const songFeedback = materialFeedback[scopeKey] ?? emptyMaterialFeedback
+
+    return (
+      <article key={song.id} className="space-y-2 border-b border-slate-800 pb-3 last:border-0">
+        <h5 className="break-words text-sm font-medium text-slate-100">{song.name}</h5>
+        <p className="text-xs text-slate-400">{t('Song materials stay on this device.')}</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={() => materialFileInputRefs.current[scopeKey]?.click()}
+            className="inline-flex min-h-11 items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500"
+          >
+            {t('Choose file')}
+          </button>
+          <input
+            ref={(element) => { materialFileInputRefs.current[scopeKey] = element }}
+            id={`song-material-file-${song.id}`}
+            type="file"
+            accept={materialFileAccept}
+            onChange={(event) => { void handleLocalMaterialUpload(blockKey, event.target.files?.[0], song.id); event.currentTarget.value = '' }}
+            className="sr-only"
+          />
+          {songFeedback.saveState !== 'idle' && <span className="text-sm text-slate-400">{songFeedback.saveState === 'saving' ? t('Saving locally…') : t('Saved on this device')}</span>}
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="url"
+            value={materialUrlInputs[scopeKey] ?? ''}
+            disabled={songFeedback.saveState === 'saving'}
+            onChange={(event) => setMaterialUrlInputs((current) => ({ ...current, [scopeKey]: event.target.value }))}
+            placeholder={t('Material URL')}
+            aria-label={t('Material URL for {song}', { song: song.name })}
+            className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
+          />
+          <button type="button" onClick={() => { void addMaterialUrl(blockKey, song.id) }} disabled={songFeedback.saveState === 'saving'} className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300">
+            {t('Add URL')}
+          </button>
+        </div>
+        {songMaterials.map((material) => (
+          <div key={material.id} className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-sm">
+            {materialRename?.id === material.id && materialRename.blockKey === blockKey && materialRename.songId === song.id ? (
+              <form className="flex w-full flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); void saveMaterialName() }}>
+                <input autoFocus aria-label={t('Material name')} value={materialRename.draft} disabled={materialRename.saving} onChange={(event) => setMaterialRename((current) => current ? { ...current, draft: event.target.value, error: null } : current)} className="min-h-11 w-full rounded border border-slate-600 bg-slate-950 px-3 text-slate-200" />
+                <button type="submit" disabled={materialRename.saving} className="min-h-11 rounded border border-slate-600 px-3 text-sky-300 disabled:opacity-40">{t('Save name')}</button>
+                <button type="button" disabled={materialRename.saving} onClick={() => setMaterialRename(null)} className="min-h-11 px-3 text-slate-300 disabled:opacity-40">{t('Cancel')}</button>
+                {materialRename.error && <p role="alert" className="w-full text-rose-300">{materialRename.error}</p>}
+              </form>
+            ) : <>
+              <button type="button" onClick={() => setActiveMaterial(scopeKey, material.id)} className={`min-h-11 min-w-0 flex-1 truncate text-left hover:text-sky-200 ${activeMaterial?.blockKey === scopeKey && activeMaterial.id === material.id ? 'text-sky-200' : 'text-sky-300'}`}>
+                {material.name}
+              </button>
+              <button type="button" aria-label={t('Rename {name}', { name: material.name })} onClick={() => setMaterialRename({ id: material.id, blockKey, songId: song.id, draft: material.name, saving: false, error: null })} className="min-h-11 min-w-11 shrink-0 px-2 text-slate-300">{t('Rename')}</button>
+              <button type="button" onClick={() => { void removeLearningMaterial(blockKey, material.id, song.id) }} className="min-h-11 min-w-11 shrink-0 px-2 text-rose-300">{t('Remove')}</button>
+            </>}
+          </div>
+        ))}
+        {activeMaterial?.blockKey === scopeKey && activeMaterialUrl && activeMaterialRecord && (
+          <a href={activeMaterialUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">{t('Open in browser')}</a>
+        )}
+        {songFeedback.error && <p role="alert" className="break-words text-sm text-rose-300">{songFeedback.error}</p>}
+        {songFeedback.notice && <p role="status" className="break-words text-sm text-amber-300">{songFeedback.notice}</p>}
+      </article>
+    )
   }
 
   useEffect(() => {
@@ -530,6 +653,8 @@ export default function Sessions() {
   async function loadData(keep?: { date: string; weekId: string | null }, linkedWeekId?: string | null) {
     if (!keep) setLoading(true)
     setError(null)
+    setCatalogLoading(true)
+    setCatalogError(null)
 
     const today = toLocalIsoDate()
 
@@ -544,10 +669,9 @@ export default function Sessions() {
         .lte('start_date', today)
         .gte('end_date', today)
         .maybeSingle(),
-      supabase
-        .from('block_templates')
-        .select('*')
-        .order('sort_order', { ascending: true }),
+      loadSessionRestorationCatalog()
+        .then((data) => ({ data, error: null as Error | null }))
+        .catch((loadError: unknown) => ({ data: null, error: loadError instanceof Error ? loadError : new Error(t('Could not load the block catalog.')) })),
       supabase
         .from('sessions')
         .select('*, session_blocks(*)')
@@ -555,6 +679,7 @@ export default function Sessions() {
       supabase.from('programs').select('*'),
       supabase.from('todos').select('*').order('sort_order', { ascending: true }),
     ])
+    setCatalogLoading(false)
 
     if (weeksResult.error) {
       setError(weeksResult.error.message)
@@ -569,6 +694,7 @@ export default function Sessions() {
     }
 
     if (templatesResult.error) {
+      setCatalogError(t('Could not load the block catalog.'))
       setError(templatesResult.error.message)
       setLoading(false)
       return
@@ -601,7 +727,7 @@ export default function Sessions() {
 
     const dedupedTemplates = allTemplates.filter((template, index, array) => {
       return index === array.findIndex((candidate) => candidate.key === template.key)
-    }).map((template) => ({ ...template, label: normalizeBlockLabel(template.label) }))
+    }).map((template) => ({ ...template, label: catalogBlockLabel(template, t) }))
 
     const defaultDate = keep?.date ?? linked?.date ?? getDefaultDateForWeek(currentWeek ?? allWeeks[0] ?? null)
     const loadedSessions = (sessionsResult.data as SessionWithBlocks[]) ?? []
@@ -609,6 +735,7 @@ export default function Sessions() {
 
     setWeeks(allWeeks)
     setPlanWeek(currentWeek)
+    void loadWeekSongs(currentWeek?.id ?? null)
     setTodos(currentWeek ? ((todosResult.data ?? []) as Todo[]).filter((todo) => todo.week_id === currentWeek.id) : [])
     setProgramName((programsResult.data as Program[] | null)?.find((program) => program.id === currentWeek?.program_id)?.name ?? null)
     setSelectedWeekIndex(currentWeekIndex >= 0 ? currentWeekIndex : 0)
@@ -672,6 +799,7 @@ export default function Sessions() {
 
   function handleSelectWeek(week: ScheduledPlanWeek) {
     setPlanWeek(week)
+    void loadWeekSongs(week.id)
     void loadTodos(week.id)
     const nextDate = getDefaultDateForWeek(week)
     const editorState = getSessionEditorState(nextDate, templates, sessions)
@@ -703,6 +831,7 @@ export default function Sessions() {
 
     if (nextWeek) {
       setPlanWeek(nextWeek)
+      void loadWeekSongs(nextWeek.id)
       void loadTodos(nextWeek.id)
       setSelectedWeekIndex(sessionWeekIndex)
     }
@@ -737,6 +866,7 @@ export default function Sessions() {
       if (activeMaterial && activeMaterial.blockKey !== blockKey) setActiveMaterialState(null)
       if (activeDefaultMaterial && activeDefaultMaterial.blockKey !== blockKey) setActiveDefaultMaterial(null)
       void loadBlockMaterials(blockKey)
+      if (blockKey === 'repertoire') weekSongs.forEach((song) => { void loadBlockMaterials(blockKey, song.id) })
     }
   }
 
@@ -823,8 +953,9 @@ export default function Sessions() {
   }
 
   function addBlock(template: BlockTemplate) {
-    if (selectedBlocks.some((block) => block.id === template.id)) return
+    if (!isSelectableCatalogBlock(template) || selectedBlocks.some((block) => block.id === template.id)) return
 
+    setTemplates((current) => current.some((item) => item.id === template.id) ? current : [...current, template])
     setSelectedBlocks((current) => [
       ...current,
       {
@@ -1403,7 +1534,8 @@ export default function Sessions() {
   const savedForDate = hasSavedSession(date, sessions)
   const isDirty = isSessionEditorDirty(getSessionEditorState(date, templates, sessions), { comment, timers: displayTimers, selectedBlocks })
   const canSave = selectedBlocks.length > 0 || savedForDate
-  const availableTemplates = templates.filter((template) => !selectedBlocks.some((block) => block.id === template.id))
+  const selectableTemplates = templates.filter(isSelectableCatalogBlock)
+  const availableTemplates = selectableTemplates.filter((template) => !selectedBlocks.some((block) => block.id === template.id))
   const todosDone = todos.filter((todo) => todo.done).length
 
   function confirmDiscard(action: () => void) {
@@ -1416,22 +1548,27 @@ export default function Sessions() {
 
   function renderBlockPicker(options: BlockTemplate[]) {
     return (
-      <ul aria-label={t('Practice blocks')} className="mt-3 space-y-2">
-        {options.map((template) => (
-          <li key={template.id}>
-            <button
-              type="button"
-              onClick={() => addBlock(template)}
-              className="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950 px-4 text-left text-base text-slate-100 transition hover:border-sky-500"
-            >
-              <span className="min-w-0">{template.label}</span>
-              {template.target_minutes != null && (
-                <span className="shrink-0 text-sm text-slate-400">{t('{minutes} min', { minutes: template.target_minutes })}</span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <BlockGallery
+        blocks={options}
+        selectedKeys={selectedBlocks.map((block) => block.key)}
+        selectionBehavior="add"
+        loading={catalogLoading}
+        error={catalogError}
+        onRetry={() => {
+          setCatalogLoading(true)
+          setCatalogError(null)
+          void loadSessionRestorationCatalog().then((blocks) => setTemplates(blocks.map((block) => ({ ...block, label: catalogBlockLabel(block, t) })))).catch((loadError: unknown) => {
+            setCatalogError(loadError instanceof Error ? loadError.message : t('Could not load the block catalog.'))
+          }).finally(() => setCatalogLoading(false))
+        }}
+        onSelect={(block) => addBlock({ ...block, label: catalogBlockLabel(block, t) })}
+        onCreateOther={async (label) => {
+          const block = await createOtherBlock(label)
+          const localized = { ...block, label: catalogBlockLabel(block, t) }
+          setTemplates((current) => current.some((item) => item.key === localized.key) ? current : [...current, localized])
+          return localized
+        }}
+      />
     )
   }
 
@@ -1872,7 +2009,7 @@ export default function Sessions() {
             <p className="mt-1 text-sm text-slate-400">
               {isPastDay && !savedForDate ? t('No practice was logged for this day.') : t('Choose what to practice first.')}
             </p>
-            {renderBlockPicker(templates)}
+            {renderBlockPicker(selectableTemplates)}
           </div>
         )}
 
@@ -1990,6 +2127,15 @@ export default function Sessions() {
                             className="h-11 w-16 rounded border border-slate-700 bg-slate-950 px-2 text-center font-mono text-base text-slate-200"
                           />
                         </fieldset>
+                        {template.key === 'repertoire' && (
+                          <section className="mt-3 space-y-3 border-t border-slate-800 pt-3" aria-label={t('Week repertoire')}>
+                            <h4 className="item-title">{t('Week repertoire')}</h4>
+                            {weekSongsLoading && <p role="status" className="text-sm text-slate-400">{t('Loading week repertoire…')}</p>}
+                            {weekSongsError && <p role="status" className="text-sm text-amber-300">{weekSongsError}</p>}
+                            {weekSongs.length === 0 && !weekSongsError && !weekSongsLoading && <p className="text-sm text-slate-400">{t('No songs assigned to this week.')}</p>}
+                            {weekSongs.map((song) => renderSongMaterials(song, template.key))}
+                          </section>
+                        )}
                         {includeDefaultExercises && defaultMaterials.length > 0 && (
                           <div className="mt-3 space-y-1 border-t border-slate-800 pt-3">
                             <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{t('Default references')}</p>
@@ -2177,6 +2323,16 @@ export default function Sessions() {
                 </div>
               )
             })}
+            {(weekSongs.length > 0 || weekSongsError) && !selectedBlocks.some((block) => block.key === 'repertoire') && (
+              <section className="mt-3 border-t border-slate-800 py-3" aria-label={t('Legacy repertoire')}>
+                <h3 className="item-title">{t('Legacy repertoire')}</h3>
+                <p className="mt-1 text-sm text-slate-400">{t('This week has songs but no Repertoire practice block. They remain visible here without changing the session.')}</p>
+                {weekSongsError && <p role="status" className="mt-2 text-sm text-amber-300">{weekSongsError}</p>}
+                <div className="mt-2 space-y-3">
+                  {weekSongs.map((song) => renderSongMaterials(song, 'repertoire'))}
+                </div>
+              </section>
+            )}
           </div>
         <div aria-live="polite">
           {removedBlock && (

@@ -1,10 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { deleteLocalMaterial, listLocalMaterials, patchLocalMaterialMetadata, normalizeBookmarks, saveLocalMaterial, type LocalMaterial } from '../src/lib/localMaterials'
+import { getDefaultMaterials } from '../src/lib/defaultMaterials'
+import { deleteLocalMaterial, listLocalMaterials, loadLocalMaterialBlob, patchLocalMaterialMetadata, normalizeBookmarks, saveLocalMaterial, type LocalMaterial } from '../src/lib/localMaterials'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial } from '../src/lib/materialScope'
 
 function material(id: string, blockKey: string): LocalMaterial {
   return { id, blockKey, name: id, type: 'text/uri-list', size: 0, source: 'url', url: `https://example.com/${id}`, createdAt: '2026-01-01T00:00:00Z' }
 }
+
+describe('default warm-up materials', () => {
+  it('shows the supplied warm-up references under Chromatic in every language', () => {
+    for (const language of ['en', 'ru', 'it', 'fr'] as const) {
+      expect(getDefaultMaterials(language, 'warmup')).toEqual([])
+      expect(getDefaultMaterials(language, 'chromatic')[0].filePath).toBe('/default-exercises/chromatic/Warmup.pdf')
+      expect(getDefaultMaterials(language, 'chromatic')).toHaveLength(2)
+    }
+  })
+})
 
 describe('materialScope', () => {
   it('keeps materials per block and drops foreign entries', () => {
@@ -93,8 +104,8 @@ describe('materialScope', () => {
 
 type Row = Record<string, unknown> & { id: string }
 
-function installFakeIndexedDb() {
-  const rows = new Map<string, Row>()
+function installFakeIndexedDb(initialRows: Row[] = []) {
+  const rows = new Map(initialRows.map((row) => [row.id, row]))
   let previous = Promise.resolve()
   let holdCompletion = false
   const completions: (() => void)[] = []
@@ -119,13 +130,13 @@ function installFakeIndexedDb() {
         if (holdCompletion) completions.push(finish)
         else finish()
       }
-      const transaction: { oncomplete?: () => void; onabort?: () => void; objectStore: () => typeof store; abort: () => void } = {
+      const transaction: { oncomplete?: () => void; onabort?: () => void; onerror?: () => void; objectStore: () => typeof store; abort: () => void } = {
         objectStore: () => store,
         abort: () => { aborted = true; queueMicrotask(complete) },
       }
       const request = <T,>(operation: () => T) => {
         pending++
-        const result: { result?: T; error: null; onsuccess?: () => void } = { error: null }
+        const result: { result?: T; error: null; onsuccess?: () => void; onerror?: () => void } = { error: null }
         void wait.then(() => {
           if (!aborted) {
             result.result = operation()
@@ -155,6 +166,8 @@ function installFakeIndexedDb() {
   }
   globals.window = {}
   return {
+    seed: (row: Row) => rows.set(row.id, row),
+    snapshot: () => [...rows.values()],
     cleanup: () => { delete globals.indexedDB; delete globals.window },
     hold: () => { holdCompletion = true },
     finish: () => { holdCompletion = false; completions.splice(0).forEach((complete) => complete()) },
@@ -166,13 +179,87 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
   beforeEach(() => { database = installFakeIndexedDb() })
   afterEach(() => database.cleanup())
 
-  it('lists only the materials saved under the requested block key', async () => {
+  it('moves warm-up materials to Chromatic once while keeping other blocks unchanged', async () => {
     await saveLocalMaterial(material('w1', 'warmup'))
     await saveLocalMaterial(material('l1', 'learning'))
     await saveLocalMaterial(material('w2', 'warmup'))
-    expect((await listLocalMaterials('warmup')).map((item) => item.id).sort()).toEqual(['w1', 'w2'])
+    expect(await listLocalMaterials('warmup')).toEqual([])
+    expect((await listLocalMaterials('chromatic')).map((item) => item.id).sort()).toEqual(['w1', 'w2'])
     expect((await listLocalMaterials('learning')).map((item) => item.id)).toEqual(['l1'])
     expect(await listLocalMaterials('rhythm')).toEqual([])
+  })
+
+  it('waits for migration before returning a local blob and preserves its record metadata', async () => {
+    const blob = new Blob(['unchanged bytes'], { type: 'application/pdf' })
+    const legacy = {
+      ...material('legacy-pdf', 'warmup'),
+      name: 'Warm-up notes',
+      type: 'application/pdf',
+      size: blob.size,
+      blob,
+      bookmarks: [12.5],
+      storage: 'indexeddb' as const,
+    }
+    const cached = {
+      ...material('legacy-cache', 'warmup'),
+      type: 'application/pdf',
+      size: 42,
+      source: 'file' as const,
+      bookmarks: [4],
+      storage: 'cache' as const,
+    }
+    database.seed(legacy)
+    database.seed(cached)
+    database.hold()
+
+    let resolved = false
+    const load = loadLocalMaterialBlob(legacy).then((result) => {
+      resolved = true
+      return result
+    })
+    for (let turn = 0; turn < 10; turn++) await Promise.resolve()
+    expect(resolved).toBe(false)
+
+    database.finish()
+    expect(await load).toBe(blob)
+    const migrated = await listLocalMaterials('chromatic')
+    expect(migrated).toHaveLength(2)
+    expect(migrated).toEqual(expect.arrayContaining([
+      { ...legacy, blockKey: 'chromatic' },
+      { ...cached, blockKey: 'chromatic' },
+    ]))
+    expect(await listLocalMaterials('warmup')).toEqual([])
+
+    const persistedRows = database.snapshot()
+    database.cleanup()
+    database = installFakeIndexedDb(persistedRows)
+    expect(await listLocalMaterials('chromatic')).toEqual(expect.arrayContaining([
+      { ...legacy, blockKey: 'chromatic' },
+      { ...cached, blockKey: 'chromatic' },
+    ]))
+  })
+
+  it('isolates repertoire materials by song and keeps block-level materials separate', async () => {
+    const firstSongMaterial = { ...material('song-one-file', 'repertoire'), songId: 'song-one' }
+    const secondSongMaterial = { ...material('song-two-file', 'repertoire'), songId: 'song-two' }
+    const blockMaterial = material('repertoire-reference', 'repertoire')
+    await saveLocalMaterial(firstSongMaterial)
+    await saveLocalMaterial(secondSongMaterial)
+    await saveLocalMaterial(blockMaterial)
+
+    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([firstSongMaterial])
+    expect(await listLocalMaterials('repertoire', 'song-two')).toEqual([secondSongMaterial])
+    expect(await listLocalMaterials('repertoire')).toEqual([blockMaterial])
+
+    await patchLocalMaterialMetadata('song-one-file', 'repertoire', { name: 'Updated' }, 'song-one')
+    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, name: 'Updated' }])
+    await expect(patchLocalMaterialMetadata('song-one-file', 'repertoire', { name: 'Leak' }, 'song-two')).rejects.toThrow()
+    await deleteLocalMaterial('song-one-file', 'repertoire', 'song-two')
+    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, name: 'Updated' }])
+    await deleteLocalMaterial('song-two-file', 'repertoire', 'song-two')
+    expect(await listLocalMaterials('repertoire', 'song-one')).toHaveLength(1)
+    expect(await listLocalMaterials('repertoire', 'song-two')).toEqual([])
+    expect(await listLocalMaterials('repertoire')).toEqual([blockMaterial])
   })
 
   it('deletes by id without touching other blocks', async () => {
@@ -186,10 +273,10 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
   it('patches only metadata, trims names and preserves cached/blob fields', async () => {
     const original = { ...material('w1', 'warmup'), storage: 'indexeddb' as const, blob: new Blob(['data']), bookmarks: [12] }
     await saveLocalMaterial(original)
-    await patchLocalMaterialMetadata('w1', 'warmup', { name: '  My lesson  ' })
-    expect(await listLocalMaterials('warmup')).toEqual([{ ...original, name: 'My lesson' }])
-    await patchLocalMaterialMetadata('w1', 'warmup', { bookmarks: [3.14, 3.11, 0, -1, NaN] })
-    expect(await listLocalMaterials('warmup')).toEqual([{ ...original, name: 'My lesson', bookmarks: [0, 3.1] }])
+    await patchLocalMaterialMetadata('w1', 'chromatic', { name: '  My lesson  ' })
+    expect(await listLocalMaterials('chromatic')).toEqual([{ ...original, blockKey: 'chromatic', name: 'My lesson' }])
+    await patchLocalMaterialMetadata('w1', 'chromatic', { bookmarks: [3.14, 3.11, 0, -1, NaN] })
+    expect(await listLocalMaterials('chromatic')).toEqual([{ ...original, blockKey: 'chromatic', name: 'My lesson', bookmarks: [0, 3.1] }])
     await expect(patchLocalMaterialMetadata('w1', 'warmup', { name: '  ' })).rejects.toThrow()
   })
 
@@ -204,10 +291,10 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
   it('preserves another metadata field when updates overlap', async () => {
     await saveLocalMaterial(material('w1', 'warmup'))
     await Promise.all([
-      patchLocalMaterialMetadata('w1', 'warmup', { name: 'Renamed' }),
-      patchLocalMaterialMetadata('w1', 'warmup', { bookmarks: [5] }),
+      patchLocalMaterialMetadata('w1', 'chromatic', { name: 'Renamed' }),
+      patchLocalMaterialMetadata('w1', 'chromatic', { bookmarks: [5] }),
     ])
-    expect((await listLocalMaterials('warmup'))[0]).toMatchObject({ name: 'Renamed', bookmarks: [5] })
+    expect((await listLocalMaterials('chromatic'))[0]).toMatchObject({ name: 'Renamed', bookmarks: [5] })
   })
 
   it('normalizes finite nonnegative bookmarks to tenths', () => {
@@ -220,7 +307,7 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     await Promise.resolve()
     database.hold()
     let resolved = false
-    const update = patchLocalMaterialMetadata('w1', 'warmup', { name: 'Committed' }).then(() => { resolved = true })
+    const update = patchLocalMaterialMetadata('w1', 'chromatic', { name: 'Committed' }).then(() => { resolved = true })
     for (let turn = 0; turn < 10; turn++) await Promise.resolve()
     expect(resolved).toBe(false)
     database.finish()
@@ -242,7 +329,7 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     const original = { ...material('w1', 'warmup'), storage: 'cache' as const, bookmarks: [3] }
     await saveLocalMaterial(original)
     const patch = { name: 'Renamed cache', url: 'https://evil.test', id: 'other', blockKey: 'other', storage: 'indexeddb' }
-    await patchLocalMaterialMetadata('w1', 'warmup', patch)
-    expect(await listLocalMaterials('warmup')).toEqual([{ ...original, name: 'Renamed cache' }])
+    await patchLocalMaterialMetadata('w1', 'chromatic', patch)
+    expect(await listLocalMaterials('chromatic')).toEqual([{ ...original, blockKey: 'chromatic', name: 'Renamed cache' }])
   })
 })

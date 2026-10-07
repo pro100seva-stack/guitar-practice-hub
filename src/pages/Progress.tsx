@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { formatDateRange } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { hasPracticeMinutes } from '../lib/sessionActivity'
+import BlockGallery from '../components/BlockGallery'
+import { createOtherBlock, loadActiveCatalog, loadProgramsWithBlockMode, readProgramBlockMode, type CatalogBlock } from '../lib/catalogApi'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -126,7 +128,13 @@ export default function Progress() {
   const [error, setError] = useState<string | null>(null)
   const [showCompletedWeeks, setShowCompletedWeeks] = useState(true)
   const [openGroupKeys, setOpenGroupKeys] = useState<Set<string>>(new Set())
-  const [programs, setPrograms] = useState<Pick<Program, 'id' | 'name'>[]>([])
+  const [programs, setPrograms] = useState<Pick<Program, 'id' | 'name' | 'block_set_mode'>[]>([])
+  const [legacyProgramSchema, setLegacyProgramSchema] = useState(false)
+  const [catalogBlocks, setCatalogBlocks] = useState<CatalogBlock[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [weekSaveError, setWeekSaveError] = useState<string | null>(null)
+  const [newWeekBlockKeys, setNewWeekBlockKeys] = useState<string[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
   const [addAfterWeekId, setAddAfterWeekId] = useState<string | null>(null)
   const [newProgramId, setNewProgramId] = useState('')
@@ -135,6 +143,7 @@ export default function Progress() {
   const [newFocus, setNewFocus] = useState('')
   const [newTasks, setNewTasks] = useState('')
   const [savingWeek, setSavingWeek] = useState(false)
+  const translate = useEffectEvent((key: string) => t(key))
   const hasLoadedRef = useRef(false)
 
   useEffect(() => {
@@ -143,17 +152,24 @@ export default function Progress() {
     async function loadProgress() {
       setError(null)
 
-      const [{ data: weeksData, error: weeksError }, { data: sessionsData, error: sessionsError }, { data: settingsData, error: settingsError }, { data: programsData, error: programsError }] = await Promise.all([
+      const [{ data: weeksData, error: weeksError }, { data: sessionsData, error: sessionsError }, { data: settingsData, error: settingsError }, programResult] = await Promise.all([
         supabase.from('plan_weeks').select('*').order('start_date', { ascending: true }),
         supabase.from('sessions').select('session_date, total_minutes, week_id').order('session_date', { ascending: true }),
         supabase.from('app_settings').select('show_completed_weeks').maybeSingle(),
-        supabase.from('programs').select('id, name'),
+        loadProgramsWithBlockMode<Pick<Program, 'id' | 'name'>>(
+          async (includeBlockSetMode) => {
+            const { data, error } = await supabase
+              .from('programs')
+              .select(includeBlockSetMode ? 'id, name, block_set_mode' : 'id, name')
+            return { data: data as unknown[] | null, error }
+          },
+        ),
       ])
 
       if (!isMounted) return
 
-      if (weeksError || sessionsError || settingsError || programsError) {
-        setError(weeksError?.message ?? sessionsError?.message ?? settingsError?.message ?? programsError?.message ?? t('Could not load practice progress.'))
+      if (weeksError || sessionsError || settingsError || programResult.error) {
+        setError(weeksError?.message ?? sessionsError?.message ?? settingsError?.message ?? programResult.error?.message ?? translate('Could not load practice progress.'))
         setLoading(false)
         return
       }
@@ -162,8 +178,9 @@ export default function Progress() {
 
       const today = new Date().toISOString().slice(0, 10)
       const sessions = ((sessionsData ?? []) as Session[]).filter(hasPracticeMinutes)
-      const programNameById = new Map((programsData as Pick<Program, 'id' | 'name'>[] | null ?? []).map((program) => [program.id, program.name]))
-      setPrograms((programsData as Pick<Program, 'id' | 'name'>[] | null) ?? [])
+      const programNameById = new Map(programResult.programs.map((program) => [program.id, program.name]))
+      setPrograms(programResult.programs)
+      setLegacyProgramSchema(programResult.legacySchema)
       const nextJourney = ((weeksData ?? []) as PlanWeek[]).filter(isScheduledWeek).map((week) => {
         const weekSessions = sessions.filter((session) => session.week_id === week.id || (
           session.week_id === null && session.session_date >= week.start_date && session.session_date <= week.end_date
@@ -171,7 +188,7 @@ export default function Progress() {
 
         return {
           ...week,
-          programName: programNameById.get(week.program_id) ?? t('Program'),
+          programName: programNameById.get(week.program_id) ?? translate('Program'),
           status: getStatus(week, today, weekSessions.length),
           sessionCount: weekSessions.length,
           totalMinutes: weekSessions.reduce((total, session) => total + Number(session.total_minutes ?? 0), 0),
@@ -210,13 +227,27 @@ export default function Progress() {
     setNewEndDate(addDays(afterWeek.end_date, 7))
     setNewFocus('')
     setNewTasks('')
+    setNewWeekBlockKeys([])
+    setCatalogError(null)
+    setWeekSaveError(null)
+    if (readProgramBlockMode(programs.find((program) => program.id === afterWeek.program_id)?.block_set_mode) === 'varies_by_week') {
+      setCatalogLoading(true)
+      void loadActiveCatalog().then(setCatalogBlocks).catch((loadError: unknown) => {
+        setCatalogError(loadError instanceof Error ? loadError.message : t('Could not load the block catalog.'))
+      }).finally(() => setCatalogLoading(false))
+    }
   }
 
   async function saveNewWeek(afterWeek: JourneyWeek) {
     if (!newProgramId || !newStartDate || !newEndDate || !newFocus.trim()) return
+    const mode = readProgramBlockMode(programs.find((program) => program.id === newProgramId)?.block_set_mode)
+    if (mode === 'varies_by_week' && newWeekBlockKeys.length === 0) {
+      setWeekSaveError(t('Select at least one block.'))
+      return
+    }
 
     setSavingWeek(true)
-    setError(null)
+    setWeekSaveError(null)
     const { error: insertError } = await supabase.rpc('insert_plan_week', {
       p_start_date: newStartDate,
       p_end_date: newEndDate,
@@ -224,10 +255,11 @@ export default function Progress() {
       p_focus: newFocus.trim(),
       p_tasks: newTasks.trim() || null,
       p_insert_after_week_id: afterWeek.id,
+      ...(mode === 'varies_by_week' ? { p_block_keys: newWeekBlockKeys } : {}),
     })
 
     if (insertError) {
-      setError(insertError.message)
+      setWeekSaveError(insertError.message)
       setSavingWeek(false)
       return
     }
@@ -237,6 +269,12 @@ export default function Progress() {
     setRefreshKey((current) => current + 1)
   }
 
+  async function addCustomBlock(label: string) {
+    const block = await createOtherBlock(label)
+    setCatalogBlocks((current) => current.some((item) => item.key === block.key) ? current : [...current, block])
+    return block
+  }
+
   return (
     <div className="page">
       <div className="pb-4">
@@ -244,6 +282,7 @@ export default function Progress() {
         <p className="meta mt-1">
           {t('A tree-style overview of where you are, what you have done, and what is coming next.')}
         </p>
+        {legacyProgramSchema && <p role="status" className="meta mt-2">{t('Catalog composition is unavailable until the database is updated.')}</p>}
         {error && <p role="alert" className="msg-error mt-2">{error}</p>}
       </div>
 
@@ -308,7 +347,19 @@ export default function Progress() {
                                 <div className="grid gap-3 sm:grid-cols-2">
                                   <label>
                                     <span className="label">{t('Program')}</span>
-                                    <select value={newProgramId} onChange={(event) => setNewProgramId(event.target.value)} className="field" required>
+                                    <select value={newProgramId} onChange={(event) => {
+                                      const programId = event.target.value
+                                      setNewProgramId(programId)
+                                      setNewWeekBlockKeys([])
+                                      setCatalogError(null)
+                                      setWeekSaveError(null)
+                                      if (readProgramBlockMode(programs.find((program) => program.id === programId)?.block_set_mode) === 'varies_by_week') {
+                                        setCatalogLoading(true)
+                                        void loadActiveCatalog().then(setCatalogBlocks).catch((loadError: unknown) => {
+                                          setCatalogError(loadError instanceof Error ? loadError.message : t('Could not load the block catalog.'))
+                                        }).finally(() => setCatalogLoading(false))
+                                      }
+                                    }} className="field" required>
                                       {programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}
                                     </select>
                                   </label>
@@ -329,9 +380,29 @@ export default function Progress() {
                                   <span className="label">{t('Tasks')}</span>
                                   <textarea value={newTasks} onChange={(event) => setNewTasks(event.target.value)} rows={3} placeholder={t('Describe the week plan')} className="field" />
                                 </label>
+                                {readProgramBlockMode(programs.find((program) => program.id === newProgramId)?.block_set_mode) === 'varies_by_week' && (
+                                  <div className="space-y-2">
+                                    <h5 className="item-title">{t('Week blocks')}</h5>
+                                    <BlockGallery
+                                      blocks={catalogBlocks}
+                                      selectedKeys={newWeekBlockKeys}
+                                      loading={catalogLoading}
+                                      error={catalogError}
+                                      onRetry={() => {
+                                        setCatalogLoading(true)
+                                        void loadActiveCatalog().then(setCatalogBlocks).catch((loadError: unknown) => {
+                                          setCatalogError(loadError instanceof Error ? loadError.message : t('Could not load the block catalog.'))
+                                        }).finally(() => setCatalogLoading(false))
+                                      }}
+                                      onSelect={(block) => setNewWeekBlockKeys((current) => current.includes(block.key) ? current.filter((key) => key !== block.key) : [...current, block.key])}
+                                      onCreateOther={addCustomBlock}
+                                    />
+                                  </div>
+                                )}
+                                {weekSaveError && <p role="alert" className="msg-error">{weekSaveError}</p>}
                                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                                   <button type="button" onClick={() => setAddAfterWeekId(null)} className="btn btn-secondary">{t('Cancel')}</button>
-                                  <button type="submit" disabled={savingWeek} className="btn btn-primary">{savingWeek ? t('Saving…') : t('Add week')}</button>
+                                    <button type="submit" disabled={savingWeek || catalogLoading} className="btn btn-primary">{savingWeek ? t('Saving…') : t('Add week')}</button>
                                 </div>
                               </form>
                             )}

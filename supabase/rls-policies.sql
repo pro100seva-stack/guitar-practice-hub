@@ -21,6 +21,9 @@ alter table sessions       enable row level security;
 alter table session_blocks enable row level security;
 alter table app_settings   enable row level security;
 alter table user_profiles enable row level security;
+alter table programs enable row level security;
+alter table program_blocks enable row level security;
+alter table plan_week_blocks enable row level security;
 
 -- ---------- Direct ownership (user_id column present) ----------
 
@@ -69,6 +72,30 @@ create policy "user_profiles_owner_update" on user_profiles
 create policy "user_profiles_owner_delete" on user_profiles
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "programs_owner_select" on programs;
+create policy "programs_owner_select" on programs
+  for select using (auth.uid() = user_id);
+drop policy if exists "programs_owner_insert" on programs;
+create policy "programs_owner_insert" on programs
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "programs_owner_update" on programs;
+create policy "programs_owner_update" on programs
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "programs_owner_delete" on programs;
+create policy "programs_owner_delete" on programs
+  for delete using (auth.uid() = user_id);
+
+drop policy if exists "program_blocks_owner_select" on program_blocks;
+create policy "program_blocks_owner_select" on program_blocks
+  for select using (
+    exists (select 1 from programs p where p.id = program_blocks.program_id and p.user_id = auth.uid())
+  );
+drop policy if exists "plan_week_blocks_owner_select" on plan_week_blocks;
+create policy "plan_week_blocks_owner_select" on plan_week_blocks
+  for select using (
+    exists (select 1 from plan_weeks w where w.id = plan_week_blocks.week_id and w.user_id = auth.uid())
+  );
+
 -- ---------- Indirect ownership (via parent FK, no user_id column) ----------
 
 create policy "todos_owner_select" on todos
@@ -110,24 +137,14 @@ create policy "session_blocks_owner_delete" on session_blocks
   );
 
 -- week_songs: composite-key join table between plan_weeks and songs.
--- Insert requires BOTH sides to already belong to the caller — prevents
--- linking your week to someone else's song row (irrelevant at 1 user,
--- kept for correctness / future-proofing).
+-- Reads are week-owner scoped; membership writes use the validated RPC.
+drop policy if exists "week_songs_owner_insert" on week_songs;
+drop policy if exists "week_songs_owner_delete" on week_songs;
 create policy "week_songs_owner_select" on week_songs
   for select using (
     exists (select 1 from plan_weeks w where w.id = week_songs.week_id and w.user_id = auth.uid())
   );
-create policy "week_songs_owner_insert" on week_songs
-  for insert with check (
-    exists (select 1 from plan_weeks w where w.id = week_songs.week_id and w.user_id = auth.uid())
-    and exists (select 1 from songs s where s.id = week_songs.song_id and s.user_id = auth.uid())
-  );
-create policy "week_songs_owner_delete" on week_songs
-  for delete using (
-    exists (select 1 from plan_weeks w where w.id = week_songs.week_id and w.user_id = auth.uid())
-  );
--- No update policy: junction table has no columns besides the composite
--- key, so an "update" is meaningless — delete + insert covers it.
+-- Membership writes go through replace_week_repertoire_songs only.
 
 -- ---------- Global reference data (no user_id, shared across all users) ----------
 -- block_templates is app-defined reference data, not user data. Any
@@ -135,6 +152,19 @@ create policy "week_songs_owner_delete" on week_songs
 -- client API. Template changes happen via migrations (service_role,
 -- which bypasses RLS entirely), not through the app.
 
-create policy "block_templates_read_all" on block_templates
-  for select using (auth.role() = 'authenticated');
+drop policy if exists "block_templates_read_all" on block_templates;
+drop policy if exists "block_templates_catalog_read" on block_templates;
+create policy "block_templates_catalog_read" on block_templates
+  for select using (
+    (is_selectable or (user_id is null and key = 'warmup'))
+    and archived_at is null
+    and (user_id is null or user_id = auth.uid())
+  );
 -- Deliberately no insert/update/delete policy here.
+
+revoke all on table program_blocks, plan_week_blocks from public, anon, authenticated;
+grant select on table program_blocks, plan_week_blocks to authenticated;
+revoke all on table week_songs from public, anon, authenticated;
+grant select on table week_songs to authenticated;
+revoke all on table block_templates from public, anon, authenticated;
+grant select on table block_templates to authenticated;

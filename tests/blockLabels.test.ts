@@ -55,7 +55,7 @@ describe('block label editor and save integration', () => {
     const stats = readFileSync(new URL('../src/pages/Stats.tsx', import.meta.url), 'utf8')
     const sessions = readFileSync(new URL('../src/pages/Sessions.tsx', import.meta.url), 'utf8')
     expect(stats).toContain('const pieMap = aggregateSessionBlockMinutes(sortedSessions)')
-    expect(sessions).toContain('}).map((template) => ({ ...template, label: normalizeBlockLabel(template.label) }))')
+    expect(sessions).toContain('}).map((template) => ({ ...template, label: catalogBlockLabel(template, t) }))')
     expect(sessions).toContain('setTemplates(dedupedTemplates)')
     expect(sessions).toContain('{normalizeBlockLabel(block.label)}')
   })
