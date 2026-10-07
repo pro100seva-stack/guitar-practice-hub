@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { defaultProgramBlockKeys, defaultProgramCopy } from './default-program.ts'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -50,13 +51,6 @@ function isStrongEnoughPassword(value: unknown): value is string {
 function isLanguage(value: unknown): value is 'en' | 'ru' | 'it' | 'fr' {
   return value === 'en' || value === 'ru' || value === 'it' || value === 'fr'
 }
-
-const defaultProgramCopy = {
-  en: { name: 'Default Practice Program', focuses: ['Warmup and foundation', 'Technique and rhythm', 'Repertoire building', 'Harmony and improvisation', 'Review and integration'], tasks: 'Warmup, Technique, Rhythm, and Improv./Solo practice blocks.' },
-  ru: { name: 'Основная программа практики', focuses: ['Разминка и основа', 'Техника и ритм', 'Развитие репертуара', 'Гармония и импровизация', 'Повторение и интеграция'], tasks: 'Блоки разминки, техники, ритма и импровизации/сольной практики.' },
-  it: { name: 'Programma di pratica predefinito', focuses: ['Riscaldamento e fondamenta', 'Tecnica e ritmo', 'Costruzione del repertorio', 'Armonia e improvvisazione', 'Ripasso e integrazione'], tasks: 'Blocchi di riscaldamento, tecnica, ritmo e improvvisazione/pratica solistica.' },
-  fr: { name: 'Programme de pratique par défaut', focuses: ['Échauffement et bases', 'Technique et rythme', 'Développement du répertoire', 'Harmonie et improvisation', 'Révision et intégration'], tasks: "Blocs d'échauffement, de technique, de rythme et d'improvisation/pratique solo." },
-} as const
 
 function isRateLimited(request: Request, loginName: string, action: string) {
   const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
@@ -140,7 +134,12 @@ Deno.serve(async (request) => {
     }
 
     const copy = defaultProgramCopy[language]
-    const { error: settingsError } = await supabaseAdmin.from('app_settings').insert({ user_id: createdUser.user.id, language, onboarding_tour_pending: true })
+    const { error: settingsError } = await supabaseAdmin.from('app_settings').insert({
+      user_id: createdUser.user.id,
+      language,
+      onboarding_tour_pending: true,
+      show_target_practice_time: false,
+    })
     if (settingsError) {
       console.error('app_settings insert failed', settingsError)
       await supabaseAdmin.from('user_profiles').delete().eq('user_id', createdUser.user.id)
@@ -156,11 +155,27 @@ Deno.serve(async (request) => {
         language,
         is_default: true,
         status: 'active',
+        block_set_mode: 'same_every_week',
       })
       .select('id')
       .single()
     if (programCreateError || !defaultProgram) {
       console.error('default program create failed', programCreateError)
+      await supabaseAdmin.from('user_profiles').delete().eq('user_id', createdUser.user.id)
+      await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id)
+      return json({ error: 'Could not create the default practice program.' }, 500)
+    }
+
+    const { error: programBlocksError } = await supabaseAdmin.from('program_blocks').insert(
+      defaultProgramBlockKeys.map((blockKey, index) => ({
+        program_id: defaultProgram.id,
+        block_key: blockKey,
+        sort_order: index + 1,
+      })),
+    )
+    if (programBlocksError) {
+      console.error('default program blocks insert failed', programBlocksError)
+      await supabaseAdmin.from('programs').delete().eq('id', defaultProgram.id)
       await supabaseAdmin.from('user_profiles').delete().eq('user_id', createdUser.user.id)
       await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id)
       return json({ error: 'Could not create the default practice program.' }, 500)
