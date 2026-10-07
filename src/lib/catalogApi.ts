@@ -31,7 +31,7 @@ const builtInLabelKeys: Record<string, string> = {
   minor_scales: 'Minor scales',
   pentatonic_scales: 'Pentatonic scales',
   notes_fretboard: 'Notes on the fretboard',
-  notes: 'Notes',
+  notes: 'Musical notes',
   intervals: 'Intervals',
   chords: 'Chords',
   repertoire: 'Repertoire',

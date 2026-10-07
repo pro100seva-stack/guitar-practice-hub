@@ -561,6 +561,16 @@ Object.assign(pageTranslations.fr, {
   'Legacy repertoire': 'Ancien répertoire', 'This week has songs but no Repertoire practice block. They remain visible here without changing the session.': 'Cette semaine contient des morceaux mais aucun bloc Répertoire. Ils restent visibles ici sans modifier la séance.',
 })
 
+Object.assign(pageTranslations.en, { 'Musical notes': 'Notes' })
+Object.assign(pageTranslations.ru, { 'Notes': 'Заметки', 'Musical notes': 'Ноты' })
+Object.assign(pageTranslations.it, { 'Musical notes': 'Note' })
+Object.assign(pageTranslations.fr, { 'Musical notes': 'Notes' })
+
+Object.assign(translations.en, pageTranslations.en)
+Object.assign(translations.ru, pageTranslations.ru)
+Object.assign(translations.it, pageTranslations.it)
+Object.assign(translations.fr, pageTranslations.fr)
+
 const I18nContext = createContext<I18nContextValue | null>(null)
 
 export function I18nProvider({ children }: { children: ReactNode }) {
