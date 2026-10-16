@@ -1,126 +1,88 @@
 # Guitar Practice Hub
 
-Guitar Practice Hub is a responsive PWA for tracking guitar practice, managing weekly plans, reviewing progress, and keeping local learning materials beside the `Учебные материалы` practice block. It is built with React, TypeScript, Vite, Tailwind, and Supabase.
+A responsive guitar practice diary for weekly planning, daily sessions, and progress review. Keep practice blocks, repertoire songs, timers, and learning materials together in an installable web app.
 
-## Current product state
+## Release Updates
 
-The core v1 workflow is complete and validated, and the app now includes the Flexible Programs foundation and live program actions. The project is currently in a validated, pivot-ready state.
+**[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
 
-### Working app features
+- **0.4.0 first public beta: prepared on 2026-10-16, not yet published.** Includes configured-block workflows, responsive block-picker dialogs, expanded Help/materials guidance, install artwork, and account-scoped local materials. Final test/lint/build gates remain QA-owned and pending on the frozen release inputs.
+- **Backend prerequisites verified in the approved scope:** the security migration, dedicated limiter key and account-gateway revision 27 are deployed, with grant/RLS and bounded health checks recorded in the [gateway rollout evidence](supabase/functions/account-gateway/README.md#production-evidence-2026-10-16). This is not full production end-to-end acceptance or frontend publication.
+- Earlier **0.3.2** source is already upstream; its exact hosted snapshot is unverified. The version-only Home label already exists in upstream `007e292`, not as a newly introduced 0.4.0 feature. See [beta limitations](#beta-limitations) before inviting users.
 
-- Sessions screen for daily logging, notes, time totals, per-block tracking, and timer support
-- Weekly plan editing for focus, tasks, topics, and songs
-- Program-based week ownership with editable program assignment and prescribed program duration
-- Program-grouped Progress timeline with collapsible contiguous program periods and inline future-week insertion
-- Metronome helper with BPM controls and time-signature options
-- Stats dashboard for weekly/monthly/yearly review and per-block trend analysis
-- Same-day session re-editing and Recent Sessions reopening
-- Tuning presets with continuous local reference tones
-- Device-local learning materials with inline PDF, image, text, video, and YouTube embed viewing
-- Login, account creation, password reset, and five-week default program initialization
-- Account-creation language selection for English, Russian, Italian, and French
-- Persisted interface-language setting in Settings; changing it does not rewrite stored programs, weeks, sessions, or notes
-- Default programs retain the language selected at account creation, including future continuation weeks
-- Default program continuation for logged-in users when a new calendar week should begin
-- Automatic program completion status synchronization after prescribed weeks end
-- Program start, pause, custom start, and resume actions through the Plan screen
-- Live password requirement feedback and security-question lookup during password reset
-- Supabase-backed persistence with auth and RLS policies
-- Installable PWA shell
-- Featured-guitar landing highlight with a right-side historical guitar panel and a compact informational footnote for the current instrument
+## Overview
 
-### Current UI focus
+- Plan weekly focus, tasks, practice blocks, and repertoire songs.
+- Log daily practice with per-block time, notes, and playback helpers.
+- Review program timelines and practice statistics.
+- Use optional built-in exercise guidance and PDFs alongside device-local PDF, image, text, audio, and video files or YouTube/HTTP(S) links. Playback depends on browser codecs and network availability; remote links are not offline downloads.
+- Choose English, Russian, Italian, or French. Interface-language changes do not rewrite stored practice content.
 
-The current UI uses a floating navigation menu and browser-history back button. The authenticated landing screen is the Home entry point for Progress, Plan, Practice, Stats, and Settings. Practice actions remain compact and learning materials stay next to the learning practice block. Uploaded materials stay in browser IndexedDB and are not uploaded to Supabase.
+Account data uses Supabase authentication and row-level security. User-added files, material metadata, and playback bookmarks stay in browser-local storage for that device and origin, not Supabase. Local access is scoped to the authenticated UID and auth epoch; IndexedDB v2 holds owned metadata/bookmarks, while file bytes use owner-scoped cache v2 when CacheStorage and Web Locks are available, or IndexedDB otherwise. Ownerless legacy records and bytes are preserved but hidden, with no automatic claim or legacy fallback. This is application-level isolation, not encryption or protection from OS/browser-profile access. Browser eviction or clearing storage can lose materials; deleting an account does not erase device-local files. Never clear owner/shared storage for QA. The PWA shell does not imply all data or linked media works offline.
 
-The landing screen now includes a featured-guitar callout: a right-side historical guitar image with a short footnote that explains why the current featured instrument matters in guitar history and what it offered technically. This is intentionally structured so the app can rotate to a new famous guitar later without redesigning the layout.
+Built with React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 8, Supabase, and vite-plugin-pwa.
 
-The Sessions screen currently emphasizes:
+## Beta Limitations
 
-- top week-strip navigation
-- selected week summary and description
-- 7-day week view
-- selected-day focus panel
-- vertical stack of practice blocks with timer controls
-- collapsed Recent Sessions section by default
+- Materials belong to an account on one device/browser origin, not a cross-device library. Changing accounts hides the previous account's materials; ownerless legacy bytes stay preserved but hidden. Local isolation does not protect against OS/DevTools access or XSS, and browser eviction or storage clearing can lose files.
+- Security-question recovery retains weak-answer, login-enumeration and quota-exhaustion risks. Durable throttling is not strong authentication; verified-email recovery is not implemented.
+- Plan/session saves span multiple requests and are not fully atomic. A later failure can leave earlier writes saved; review feedback before retrying.
+- Physical Safari/iOS/Android installation and cached-icon updates, the retained PDF's notation readability, and complete real-account save/reload/onboarding acceptance remain manual gaps. Earlier scoped checks do not close them.
+- Guitar rotation remains deferred and is not shipped in this beta.
 
-The Plan screen currently emphasizes:
+## Local Setup
 
-- fixed-height vertical week navigation for long histories
-- covered-date calendar navigation and a current-week shortcut
-- selected-week details and editing controls below the navigator
-- active/paused program badges and resume controls
+Use a Node.js version supported by the package engines: `^22.12.0 || ^24.0.0 || >=26.0.0`.
 
-The app shell currently provides:
+```sh
+npm install
+```
 
-- Home, Progress, Plan, Practice, Stats, and Settings routes
-- a floating menu with active-route highlighting
-- a back button with a landing-screen fallback
+Create a local `.env.local` with the frontend's Supabase settings:
 
-The current implementation includes session-block uniqueness/upsert behavior, owner-scoped account data, program lifecycle handling, and a server-only Supabase Edge Function for account creation and password reset.
+```dotenv
+VITE_SUPABASE_URL=your-supabase-url
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
 
-Language behavior is split deliberately between interface preference and practice content. The language is selected when an account is created and can later be changed from Settings for the interface. Each default program stores its own content language, so changing the interface preference never translates or rewrites existing practice records.
+```sh
+npm run dev
+```
 
-## Tech stack
+Available checks are `npm test`, `npm run lint`, and `npm run build` (TypeScript plus Vite). `npm run preview` serves an existing production build. A frontend build does not provision Supabase, apply migrations, or deploy Edge Functions.
 
-- Frontend: React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 8
-- Backend: Supabase Postgres, Auth, RLS, PostgREST
-- PWA: vite-plugin-pwa
+## Backend And Security
 
-## Local setup
+- The frontend requires only the Supabase URL and publishable key. Never expose service-role credentials, account peppers, or other server secrets through `VITE_*` variables or commit local secrets.
+- Account creation and password reset use the server-only [account-gateway function](supabase/functions/account-gateway/), with its configuration and secrets managed separately.
+- Security-question recovery is retained by owner decision, including weak-answer and login-enumeration risks. The deployed gateway uses a service-only database RPC with HMAC login identifiers: five admissions per login/action and 100 globally per rolling 15 minutes; unavailable prerequisites fail closed with 503, with no in-memory/IP fallback. The approved production check confirmed browser credential-profile CRUD denial; throttling is not strong recovery authentication.
+- [Schema](supabase/schema.sql), [RLS policies](supabase/rls-policies.sql), and ordered [migrations](supabase/migrations/) describe the backend. Frontend/backend compatibility and applied migration history must be checked before a release; local SQL files do not prove remote state.
+- See [local Supabase testing](supabase/LOCAL_TESTING.md) for the isolated backend workflow. Do not apply migrations or reset a live database as part of frontend setup.
 
-1. Install dependencies
-   npm install
-2. Create a local environment file with your Supabase values
-   VITE_SUPABASE_URL=...
-   VITE_SUPABASE_PUBLISHABLE_KEY=...
-3. Run the app locally
-   npm run dev
+## Install Artwork
 
-Useful scripts:
+The SVG tab icon is the source for the regular 192/512 PNGs, a separate opaque safe-zone maskable 512 PNG, and the opaque square Apple touch 180 PNG. Existing installations may retain cached icons; physical iOS/Android installation checks are separate acceptance work. Do not clear existing site data to test updates.
 
-- npm run dev
-- npm run build
-- npm run preview
+Owner clearance covers both the PWA artwork and the separate Home Frankenstrat photograph. The two owner-deleted bundled PDFs are removed from current defaults; Chromatic and Learning retain text guidance, and the author's own two-notes-per-string PDF remains mapped only to `two_notes_per_string`.
 
-## Deployment
+Regenerate or check the artwork using an installed Chrome or Edge and a temporary isolated browser profile:
 
-The Vite frontend can be built and deployed to Cloudflare Pages from the repository. Supabase migrations must be applied in order, including `20260925100000_add_language_and_default_program.sql` and `20260925110000_add_program_language.sql`. The language-aware `account-gateway` Edge Function has been deployed separately with its server-only secrets. Never add Supabase service-role credentials or account peppers to frontend environment variables.
+```sh
+node scripts/generate-install-icons.mjs
+node scripts/generate-install-icons.mjs --check
+```
 
-The production frontend only requires `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+The script uses no additional dependencies. On other installations, set `ICON_BROWSER_PATH` to a Chromium executable. Pixel checks re-render the source SVG with the current browser; rendering can vary between browser versions.
 
-## Admin account deletion
+## Release Command
 
-Apply migration `06-user-delete-cascade.sql` before deleting users from Supabase Authentication. It configures owned `plan_weeks`, `songs`, `sessions`, `app_settings`, and their dependent rows to be removed with the Auth user. User files stored in browser IndexedDB are device-local and are not removed by Supabase account deletion; clear site data on that device separately when needed.
+Use **Release app** with Master Planner or the **/release-app** workspace prompt. The [canonical release workflow](docs/release-workflow.md) covers approved scope, one version bump, single-owner QA gates and a scoped commit/normal upstream push. Discussing the command does not execute it. A push hands off to connected deployment automation; it does not independently verify hosted publication or authorize live backend/provider operations.
 
-## Database and SQL
+## Project Docs
 
-All SQL lives under the supabase folder.
-
-- schema.sql — base schema and tables
-- rls-policies.sql — row-level security rules
-- migrations/ — schema adjustments and live database corrections
-- migrations/20260925100000_add_language_and_default_program.sql — persisted language preference and default-program marker
-- migrations/20260925110000_add_program_language.sql — immutable content language for each program
-- migrations/20260925120000_grant_account_gateway_tables.sql — service-role grants required by account creation
-- migrations/20260925140000_add_default_exercises_preference.sql — persisted default-exercise visibility preference
-- migrations/20260925150000_remove_unused_preferences.sql — removes no-op Settings preferences
-- functions/account-gateway/ — server-only account creation and password-reset boundary
-- seed/plan-weeks.sql — seeded weekly plan data
-- seed/notion-import-sessions.sql — imported historical practice sessions
-- seed/notion-import-blocks.sql — imported historical block data
-- public/default-exercises/ — PDF folders for built-in exercises, organized by practice-block key
-- Supplied default PDFs currently include Warmup and Learning materials; they open inline in Sessions and respect the default-exercises Settings toggle.
-
-## Project docs
-
-- docs/technical.md — architecture and domain model summary
-- docs/project-handoff.md — current continuation notes for other agents
-- docs/guitar-hub-v1-scope-and-backlog.md — backlog and scope truth
-- docs/architecture.md — higher-level system architecture
-
-## Status and next direction
-
-The project has a working, validated core workflow and a reliable Flexible Programs model. Language preference storage, localized default-program data, the language-aware `account-gateway` deployment, and the full UI translation catalog are complete for English, Russian, Italian, and French.
-
-See the backlog document for the live status, decisions, and current product baseline.
+- [Changelog](docs/CHANGELOG.md): recorded version history and unpublished work.
+- [Technical overview](docs/technical.md) and [architecture](docs/architecture.md): implementation and domain model.
+- [Scope and backlog](docs/guitar-hub-v1-scope-and-backlog.md): approved work, acceptance status, and open decisions.
+- [Project handoff](docs/project-handoff.md): continuation notes and release context.
+- [Content maintenance](docs/content-maintenance.md): built-in content maintenance guidance.
+- [Built-in exercises](public/default-exercises/): bundled materials, distinct from browser-local user files.

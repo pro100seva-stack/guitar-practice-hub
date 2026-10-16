@@ -12,6 +12,8 @@ describe('confirmed playback activation', () => {
     const compiled = transpileModule(handler, { compilerOptions: { target: 9 } }).outputText
     const block = { id: 'block', key: 'warmup', done: true }
     const context = {
+      editorRevisionRef: { current: 0 }, materialAccess: {},
+      isLocalMaterialAccessCurrent: () => authorized,
       materialsMountedRef: { current: true }, date: '2026-10-04', planWeek: { id: 'week' },
       expandedBlockIds: new Set(['block']), selectedBlocks: [block],
       activeMaterial: { id: 'material', blockKey: 'warmup' }, activeMaterialRecord: { id: 'material' },
@@ -19,10 +21,14 @@ describe('confirmed playback activation', () => {
       setTimers: (update: (current: ReturnType<typeof toggleBlockTimer>) => ReturnType<typeof toggleBlockTimer>) => { timers = update(timers) },
     }
     const playbackScopeRef = { current: context }
+    let authorized = false
     let timers: ReturnType<typeof toggleBlockTimer> = { block: { isRunning: false, elapsedSeconds: 12 } }
     const create = new Function(...Object.keys(context), 'playbackScopeRef', `${compiled}; return confirmMaterialPlayback`) as (...values: unknown[]) => (date: string, week: string, id: string, key: string, material: string, intent: string) => void
     const confirm = create(...Object.values(context), playbackScopeRef)
     const initial = timers
+    confirm('2026-10-04', 'week', 'block', 'warmup', 'material', 'explicit')
+    expect(timers).toBe(initial)
+    authorized = true
     confirm('2026-10-03', 'week', 'block', 'warmup', 'material', 'explicit')
     confirm('2026-10-04', 'other', 'block', 'warmup', 'material', 'explicit')
     confirm('2026-10-04', 'week', 'removed', 'warmup', 'material', 'explicit')

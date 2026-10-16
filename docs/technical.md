@@ -173,7 +173,9 @@ The interface-language preference is independent from the content language store
 
 ### user_profiles
 
-Stores the user-facing login name and security-question metadata. The answer is stored as a server-generated hash. Row-level security restricts access to the owning user; account gateway service-role access is server-only.
+Stores the login name, security question and server-generated answer hash. These are credential records, not browser-readable profile metadata. `20261016120000_account_gateway_security.sql` removes browser CRUD policies/grants, retains RLS and service CRUD, and exposes limiter admission only through a service-only security-definer RPC. Separately approved Backend evidence on 2026-10-16 confirms the exact migration and production grants/RLS; this audit relies on that evidence, not live queries or local SQL as proof of remote state.
+
+The deployed gateway uses a dedicated server-only HMAC key to identify normalized logins in durable limiter storage: five admissions per login/action plus 100 globally per rolling 15 minutes. There is no in-memory Map or IP fallback; missing prerequisites and dependency failures fail closed with 503. Existing answer pepper/normalization/hash compatibility is unchanged. Security-question recovery remains an owner-accepted weak-answer/enumeration and quota-exhaustion risk, not strong recovery authentication; verified-email recovery is not implemented. The prepared frontend handles structured 429 cooldowns and controlled errors, rejects stale question responses, and does not automatically retry password mutations. See the [gateway guide](../supabase/functions/account-gateway/README.md) for scoped local and production evidence; frontend publication is pending.
 
 ### Default program continuation
 
@@ -185,7 +187,9 @@ Only newly created Default programs receive the owner-approved same-every-week s
 
 ### Local learning materials
 
-Files, URLs, names, and bookmarks are device-local. IndexedDB metadata is scoped to a practice-block key and, for song materials, a song UUID; file bytes remain local, with large media optionally stored in the browser Cache API. Supabase stores song records and week-song associations, not uploaded learning files. Do not clear site data as a QA shortcut.
+Files, URLs, names, and bookmarks are device-local. Opaque `LocalMaterialAccess` tokens bind operations to the authenticated UID/auth epoch, not a caller-supplied owner. IndexedDB database `guitar-practice-hub-local` is v2; `owned-learning-materials` uses compound `[ownerUid,id]` keys and an owner index. APIs revalidate persisted ownership and exact block/song scope. Sign-out/UID changes invalidate pending work, routed state and player callbacks; object URLs are revoked. Same-UID refresh can retain the epoch, while A-to-B-to-A cannot reuse old authority.
+
+File bytes use `guitar-practice-hub-media-v2` with owner-specific request paths when CacheStorage and Web Locks are available, or IndexedDB otherwise. Legacy ownerless `learning-materials` records and old cache bytes are preserved but hidden: no legacy fallback, automatic claim, copy or deletion. Warmup-to-Chromatic reassociation now applies only to owned records. Supabase stores song records and week-song associations, not uploaded learning files. This is application-level isolation, not encryption or protection from OS/browser-profile access; browser eviction remains possible. Never clear owner/shared site data, materials, caches or service workers as a QA shortcut.
 
 ## Environment variables
 
@@ -210,13 +214,15 @@ Required:
 - `app_settings.language` and `programs.is_default` are added by `20260925100000_add_language_and_default_program.sql`.
 - `programs.language` is added by `20260925110000_add_program_language.sql`; existing default programs are backfilled as English.
 - `app_settings.include_default_exercises` is added by `20260925140000_add_default_exercises_preference.sql` and controls visibility of code-owned default exercise guidance.
-- Built-in exercise PDFs belong under `public/default-exercises/{block-key}/`; user-uploaded materials remain device-local and separate.
-- Default PDF references open inline in their material row with an Open in new tab fallback. Large user video files use the browser Cache API with IndexedDB metadata; smaller and legacy local materials remain supported.
+- Built-in exercise PDFs belong under `public/default-exercises/{block-key}/`; user-uploaded materials remain device-local and separate. The owner removed the Chromatic `Warmup.pdf` and Learning `Solo-On-Guitar-The-Improvisers-Toolkit-PDF.pdf` bundles; both blocks retain text guidance without a PDF binding. The owner's `2-notes-per-string.pdf` remains bound only to `two_notes_per_string` in all four languages.
+- Bound default PDFs open inline with an Open in new tab fallback. User files use owner-scoped cache v2 or IndexedDB v2; ownerless legacy files are preserved but no longer exposed.
 - `20260925120000_grant_account_gateway_tables.sql` grants the deployed account gateway the table privileges needed to create account settings and default programs.
-- The language-aware `account-gateway` source has been deployed to the live Supabase project with the Supabase CLI.
+- Approved Backend rollout on `vmeyyhroxlnqahbiogxr` completed the exact security migration (history 24 to 25), configured the previously absent dedicated limiter key from 48 random bytes without changing the answer pepper, and deployed only account-gateway ACTIVE revision 27. Service RPC/RLS/browser denials and four bounded health probes were verified; all 13 aggregate counts stayed unchanged, with no real-user writes. Source/bundle hashes and limits are in the gateway guide. This was a separate Backend operation, not work performed by this documentation audit; it is not full production end-to-end acceptance or frontend publication.
 - Flexible Programs uses nullable scheduling semantics for inactive branches and filters unscheduled rows from visible reads; this is part of the live application contract.
 - `songs.status` and `sessions.source` have validated database `CHECK` constraints from `20261003110000_add_practice_field_domain_constraints.sql`. The catalog migration intentionally removed the old `block_templates.key` domain constraint to allow additional built-in and personal keys; it adds category and custom-block constraints instead. `session_blocks.block_key` remains free text so imported/historical snapshots can be restored.
 - Microphone pitch detection remains deferred. The tuner reference-tone slice is implemented.
 - Mobile pinch zoom is intentionally disabled in `index.html`.
 - The core tracker and approved catalog, Repertoire, and Default-routine implementation are in the worktree. Use the backlog and handoff for current release/acceptance status rather than treating this file as a project-status report.
+- Owner clearance covers PWA artwork and the separate Home Frankenstrat photograph; the retained two-notes PDF is author-owned. Guitar rotation remains deferred, not implemented.
+- Version 0.4.0 is the first public beta prepared on 2026-10-16, not a published frontend. Focused hardening and bounded production evidence are recorded in the gateway guide, not a full release or production end-to-end pass. `PUBLIC-BETA-FULLGATE` remains reserved to QA as sole test/lint/build and dist/compiler owner after inputs freeze. Physical Safari/install/cache behaviour, PDF readability and complete real-account acceptance remain gaps. Plan/session multi-request saves remain non-atomic. This documentation audit executes none of the documented operational commands.
 

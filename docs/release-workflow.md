@@ -1,0 +1,45 @@
+# Release App Workflow
+
+## Trigger And Authorization
+
+The owner can say **Release app** to Master Planner, or invoke **/release-app** in VS Code Chat. This is one release operation, not a shell command. Creating, discussing, quoting, or editing this workflow is not an invocation. Negated requests and questions about the command do not authorize execution.
+
+An actual invocation authorizes, for that run only: audit/document the approved current project changes, select and apply the required version bump, validate the release, create one scoped Conventional Commit, and perform a normal non-force push to the current branch's already configured upstream. No second commit/push confirmation is needed if the scope and upstream are unambiguous and all required gates pass. Explicit exclusions or narrower instructions override the default scope.
+
+This is not blanket future permission. It never authorizes force pushes, rebases/history rewrites, branch changes, remote/upstream changes, dependency installation, credential operations, domain/hosting configuration, manual Cloudflare deployment, live account/database access, migration application/repair, or deletion/reset of user data. Ask for separate scoped approval if any is needed. Setting up this command does not release the existing worktree.
+
+## Ownership And Scope
+
+1. Master Planner coordinates and updates the two status sources of truth: `docs/guitar-hub-v1-scope-and-backlog.md` and `docs/project-handoff.md`. Check implementation, unresolved decisions, acceptance gaps and supplied QA evidence; a release does not invent feature acceptance.
+2. Release Engineer inventories tracked, untracked and staged changes, current branch, configured upstream, existing unpushed commits and remote reachability. Produce an explicit release-file manifest, exclusions and baseline hashes. Approved source/test/assets/docs belong in scope even when created in earlier sessions, but a dirty file alone is not evidence of approval. Include new assets only with clear ownership/authorization and safe content. Stop for unidentified changes, pending decisions affecting release scope, unintended staged files, unexplained commits, missing/ambiguous upstream or divergence. Do not automatically stash, restore, reset, pull, merge, rebase or change branches.
+3. Master Planner assigns Release Engineer the relevant release documentation (normally README, `docs/CHANGELOG.md`, technical/architecture/content guides only where affected), version metadata and explicit release files. Audit all relevant docs; edit only stale or missing content, not every document mechanically. Planner remains the sole writer of backlog/handoff. Do not implement product repairs as part of release execution: route defects to the responsible implementer, then freeze a new snapshot.
+4. Exclude secrets, local environment files, generated build output, caches, local Supabase `.temp`/runtime state and unrelated changes. In particular, never stage or alter the owner-protected `supabase/local-test/supabase/.temp/cli-latest` as part of release. Never use blanket `git add .` or `git add -A`. Preserve excluded changes byte-for-byte; do not hide them by restoring files.
+5. Freeze explicit file/resource ownership before validation: Release Engineer owns version metadata, dependency-lock edits limited to version metadata, staging/commit/push, and the final build artifact unless assigned otherwise. QA Tester coordinates QA and assigns exactly one FULLGATE owner. Do not run overlapping checks against mutable source or overwrite another owner's build. No live verification is implied.
+
+## Version And Release Notes
+
+- Follow the existing pre-1.0 policy, not an invented severity scale: any approved new user-facing functionality or breaking change bumps MINOR and resets PATCH; fixes/performance and documentation/test/refactor/chore/build-only releases bump PATCH. While below 1.0, do not jump to 1.0 automatically. At/after 1.0, breaking changes require MAJOR, features MINOR, fixes PATCH. If classification is ambiguous, stop and ask.
+- Use the highest applicable change category for the whole release and bump once, before the release commit. Explain the reason and old/new versions. Do not bump separately for each modified file or again after a failed push. Use the existing version scripts with no automatic Git tags; preserve lockfile consistency without dependency upgrades or installs.
+- Move only included, implemented changes from Unreleased to the new version's Added/Changed/Fixed sections in `docs/CHANGELOG.md`; keep deferred work under Unreleased. Refresh the README release summary and affected guides/status docs. Do not claim that a version bump, commit or successful build means the app is already deployed. Date a newly prepared release as its preparation date until actual publication evidence exists; never invent historical release dates or GitHub Releases.
+- Record remaining warnings/manual gaps honestly. A prior scoped pass is not a full release gate; unresolved blockers stop the release. No GitHub Release, tag, extra branch or provider-specific release operation is implicit.
+
+## Gates And Delivery
+
+1. After version and documentation preparation, freeze the final input revision/dirty hashes, environment and gate/artifact ownership. Required release gates are `npm test`, `npm run lint` and `npm run build`, including Node-engine compatibility. Reuse tagged evidence only when the applicable input hashes, environment and artifact identity genuinely match; a version/config/asset change invalidates affected build evidence. Never run duplicate broad gates merely for reassurance.
+2. Verify release artifact paths, hashed/lazy chunks, manifest/icons and relevant service-worker exclusions. Check schema/API compatibility from already approved evidence; local migration files do not prove deployed history. If release depends on an unverified migration, block and request separately authorized evidence. Do not query live Supabase automatically.
+3. On failure, stop before commit/push, report the failing command and preserve changes. Assign any fix and rerun affected gates on a new stable snapshot. Do not silently weaken tests or waive a blocker.
+4. Stage the explicit release manifest only. Inspect the complete staged diff, staged file list and whitespace, check no secrets/protected/excluded files entered the index, and ensure inputs did not change after validation. Respect pre-existing staged ownership; stop rather than alter another owner's index. Documentation-only result updates need focused review, not needless repetition of unaffected executable gates.
+5. Create one scoped Conventional Commit whose type reflects the highest applicable release change. Record its hash. Push normally to the already configured upstream and verify the actual remote branch points at the committed hash. If the remote moved or push fails, stop; do not force, automatically pull/rebase, create a second release commit, or bump again. A retry must recognize the existing prepared commit/version and remaining delivery step.
+6. A successful push is the existing automatic Cloudflare deployment handoff, not independent proof of downstream publication. No manual provider deploy or dashboard investigation. A separately approved provider-neutral public read may verify the served app; no authenticated checks are assumed.
+7. Report old/new version and reason, included/excluded scope, documentation updates, commands/exits/warnings and artifact evidence, commit, upstream branch and verified remote hash, leftover worktree changes and manual gaps, and whether production was independently verified. Do not promise a post-commit hash in an artifact built before that commit; CI build identity and local pre-commit artifact identity differ.
+
+## Stop / No-Op Behaviour
+
+- If there are no approved changes and no authorized prepared commit awaiting push, report that there is nothing to release; do not manufacture a version-only commit.
+- An invocation does not authorize silently publishing unknown existing commits. Inspect and establish their scope before delivery.
+- Worktree changes arriving during validation invalidate the affected evidence and must be reassessed; never revert user changes to restore the snapshot.
+- Missing tools/permissions or credentials are blockers to report, not authorization to install/configure them.
+
+## Customization Files
+
+The workflow is referenced by the workspace Master Planner and Release Engineer agents and the thin `.github/prompts/release-app.prompt.md` entry point. The prompt invokes this workflow rather than duplicating it. Agent instructions route execution; this document is the release procedure, not a third backlog/status source. Future chats must load the referenced procedure before executing the trigger.

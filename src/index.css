@@ -66,6 +66,51 @@ body {
   min-height: 100%;
 }
 
+.picker-dialog {
+  max-height: calc(100dvh - 2rem);
+}
+
+.picker-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.picker-dialog::backdrop {
+  background: rgb(2 6 23 / 0.75);
+}
+
+.picker-dialog-content {
+  max-height: calc(100dvh - 8rem);
+}
+
+.picker-gallery[data-step='categories'] .picker-blocks,
+.picker-gallery[data-step='blocks'] .picker-categories {
+  display: none;
+}
+
+.picker-gallery[data-step='blocks'] .picker-blocks {
+  animation: picker-enter 180ms ease-out;
+}
+
+@keyframes picker-enter {
+  from { opacity: 0; transform: translateX(1rem); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (min-width: 640px) {
+  .picker-gallery {
+    display: grid;
+    grid-template-columns: minmax(10rem, 0.8fr) minmax(0, 2fr);
+    gap: 1rem;
+  }
+  .picker-gallery[data-step] .picker-categories { display: flex; }
+  .picker-gallery[data-step] .picker-blocks { display: block; animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picker-gallery[data-step='blocks'] .picker-blocks { animation: none; }
+}
+
 :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid rgb(56 189 248);
   outline-offset: 2px;

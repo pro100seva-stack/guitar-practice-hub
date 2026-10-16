@@ -1,3 +1,5 @@
+import { localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from './localMaterialAccess'
+
 export type LocalMaterial = {
   id: string
   blockKey: string
@@ -42,11 +44,21 @@ export function practiceMediaKind(type: string): 'video' | 'audio' | null {
 }
 
 const databaseName = 'guitar-practice-hub-local'
-const storeName = 'learning-materials'
-const mediaCacheName = 'guitar-practice-hub-media'
+const storeName = 'owned-learning-materials'
+const mediaCacheName = 'guitar-practice-hub-media-v2'
 
-function mediaCacheRequest(id: string) {
-  return new Request(`/__guitar_practice_hub_local_media/${encodeURIComponent(id)}`)
+export type MaterialScope = { blockKey: string; songId?: string }
+export type MaterialRef = MaterialScope & { id: string }
+export type OwnedLocalMaterial = LocalMaterial & { ownerUid: string }
+export type LocalMaterialInput = Omit<LocalMaterial, 'storage'>
+
+function snapshotMaterialRef(ref: MaterialRef): MaterialRef {
+  if (!ref.id || ref.id === '.' || ref.id === '..') throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+  return { id: ref.id, blockKey: ref.blockKey, songId: ref.songId }
+}
+
+function mediaCacheRequest(ownerUid: string, id: string) {
+  return new Request(`${location.origin}/__guitar_practice_hub_local_media/v2/${encodeURIComponent(ownerUid)}/${encodeURIComponent(id)}`)
 }
 
 export type LocalStorageEstimate = {
@@ -56,104 +68,161 @@ export type LocalStorageEstimate = {
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 1)
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(storeName, { keyPath: 'id' })
+    const request = indexedDB.open(databaseName, 2)
+    let blocked = false
+    request.onblocked = () => {
+      blocked = true
+      reject(new Error('LOCAL_MATERIAL_UNAVAILABLE'))
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onupgradeneeded = () => {
+      if (blocked) { request.transaction?.abort(); return }
+      if (!request.result.objectStoreNames.contains('learning-materials')) request.result.createObjectStore('learning-materials', { keyPath: 'id' })
+      if (!request.result.objectStoreNames.contains(storeName)) {
+        request.result.createObjectStore(storeName, { keyPath: ['ownerUid', 'id'] }).createIndex('ownerUid', 'ownerUid')
+      }
+    }
+    request.onsuccess = () => {
+      if (blocked) { request.result.close(); return }
+      request.result.onversionchange = () => request.result.close()
+      resolve(request.result)
+    }
     request.onerror = () => reject(request.error ?? new Error('Could not open local materials storage.'))
   })
 }
 
-let warmupMigration: Promise<void> | null = null
-
-export function migrateWarmupMaterialsToChromatic() {
-  if (warmupMigration) return warmupMigration
-  warmupMigration = runWarmupMaterialsMigration().finally(() => { warmupMigration = null })
-  return warmupMigration
-}
-
-async function runWarmupMaterialsMigration() {
+async function materialTransaction<Result>(access: LocalMaterialAccess, mode: IDBTransactionMode, run: (store: IDBObjectStore, finish: (result: Result) => void, guard: (action: () => void) => void) => void, onCommitted?: () => void): Promise<Result> {
+  localMaterialOwner(access)
   const database = await openDatabase()
-  await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(storeName, 'readwrite')
+  return new Promise<Result>((resolve, reject) => {
+    try { localMaterialOwner(access) } catch (error) { database.close(); reject(error); return }
+    const transaction = database.transaction(storeName, mode)
     const store = transaction.objectStore(storeName)
-    let failure: Error | null = null
-    transaction.oncomplete = () => {
-      database.close()
-      resolve()
-    }
-    transaction.onabort = transaction.onerror = () => {
-      database.close()
-      reject(failure ?? transaction.error ?? new Error('Could not move local warm-up materials.'))
-    }
-    const request = store.getAll()
-    request.onsuccess = () => {
-      for (const material of request.result as LocalMaterial[]) {
-        if (material.blockKey === 'warmup') store.put({ ...material, blockKey: 'chromatic' })
+    let result: Result
+    let failure: unknown
+    const unsubscribe = onLocalMaterialInvalidation(() => {
+      try { localMaterialOwner(access) } catch (error) {
+        failure = error
+        try { transaction.abort() } catch {}
+      }
+    })
+    const close = () => { unsubscribe(); database.close() }
+    const guard = (action: () => void) => {
+      try { localMaterialOwner(access); action() } catch (error) {
+        failure = error
+        transaction.abort()
       }
     }
-    request.onerror = () => {
-      failure = request.error ?? new Error('Could not read local warm-up materials.')
-      transaction.abort()
+    transaction.oncomplete = () => {
+      close()
+      onCommitted?.()
+      try { localMaterialOwner(access); resolve(result) } catch (error) { reject(error) }
     }
+    transaction.onabort = transaction.onerror = () => {
+      close()
+      reject(failure ?? transaction.error ?? new Error('LOCAL_MATERIAL_UNAVAILABLE'))
+    }
+    guard(() => run(store, (value) => { result = value }, guard))
   })
 }
 
-export async function listLocalMaterials(blockKey: string, songId?: string) {
-  await migrateWarmupMaterialsToChromatic()
-  return readLocalMaterials(blockKey, songId)
+function requireRecord(record: OwnedLocalMaterial | undefined, ownerUid: string, ref: MaterialRef): OwnedLocalMaterial {
+  if (!record || record.ownerUid !== ownerUid || record.id !== ref.id || record.blockKey !== ref.blockKey || record.songId !== ref.songId) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+  return record
 }
 
-async function readLocalMaterials(blockKey: string, songId?: string) {
-  const database = await openDatabase()
-  return new Promise<LocalMaterial[]>((resolve, reject) => {
-    const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll()
-    request.onsuccess = () => resolve((request.result as LocalMaterial[]).filter((item) => item.blockKey === blockKey && item.songId === songId))
-    request.onerror = () => reject(request.error ?? new Error('Could not load local materials.'))
-  })
-}
-
-export async function saveLocalMaterial(material: LocalMaterial) {
-  await migrateWarmupMaterialsToChromatic()
-  if (material.source === 'file' && material.blob && 'caches' in window) {
-    const database = await openDatabase()
-    const metadata = { ...material, blob: undefined, storage: 'cache' as const }
-    await new Promise<void>((resolve, reject) => {
-      const request = database.transaction(storeName, 'readwrite').objectStore(storeName).put(metadata)
-      request.onsuccess = () => resolve()
-      request.onerror = () => reject(request.error ?? new Error('Could not save local material metadata.'))
+export async function listLocalMaterials(access: LocalMaterialAccess, scope: MaterialScope) {
+  const ownerUid = localMaterialOwner(access)
+  scope = { blockKey: scope.blockKey, songId: scope.songId }
+  return materialTransaction<OwnedLocalMaterial[]>(access, 'readwrite', (store, finish, guard) => {
+    const request = store.index('ownerUid').getAll(ownerUid)
+    request.onsuccess = () => guard(() => {
+      const owned = (request.result as OwnedLocalMaterial[]).filter((record) => record.ownerUid === ownerUid).map((record) => {
+        if (record.blockKey !== 'warmup') return record
+        const migrated = { ...record, blockKey: 'chromatic' }
+        store.put(migrated)
+        return migrated
+      })
+      finish(owned.filter((record) => record.blockKey === scope.blockKey && record.songId === scope.songId))
     })
+  })
+}
 
+function readOwnedRecord(access: LocalMaterialAccess, ref: MaterialRef) {
+  const ownerUid = localMaterialOwner(access)
+  return materialTransaction<OwnedLocalMaterial>(access, 'readonly', (store, finish, guard) => {
+    const request = store.get([ownerUid, ref.id])
+    request.onsuccess = () => guard(() => finish(requireRecord(request.result, ownerUid, ref)))
+  })
+}
+
+function withMaterialLock<Result>(ownerUid: string, id: string, action: () => Promise<Result>) {
+  return navigator.locks ? navigator.locks.request(`local-material-v2:${ownerUid}:${id}`, action) : action()
+}
+
+export async function saveLocalMaterial(access: LocalMaterialAccess, input: LocalMaterialInput): Promise<OwnedLocalMaterial> {
+  const ownerUid = localMaterialOwner(access)
+  snapshotMaterialRef(input)
+  const material: OwnedLocalMaterial = {
+    id: input.id, blockKey: input.blockKey === 'warmup' ? 'chromatic' : input.blockKey, songId: input.songId,
+    name: input.name, type: input.type, size: input.size, source: input.source, url: input.url,
+    blob: input.source === 'file' ? input.blob : undefined, bookmarks: input.bookmarks ? normalizeBookmarks(input.bookmarks) : undefined,
+    createdAt: input.createdAt, ownerUid, storage: 'indexeddb',
+  }
+  return withMaterialLock(ownerUid, material.id, async () => {
+    localMaterialOwner(access)
+    await materialTransaction<void>(access, 'readonly', (store, finish, guard) => {
+      const request = store.get([ownerUid, material.id])
+      request.onsuccess = () => guard(() => {
+        if (request.result) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+        finish()
+      })
+    })
+    let cache: Cache | undefined
+    let wroteBytes = false
+    let committed = false
+    const cacheRequest = () => mediaCacheRequest(ownerUid, material.id)
     try {
-      const cache = await caches.open(mediaCacheName)
-      await cache.put(mediaCacheRequest(material.id), new Response(material.blob, {
-        headers: { 'Content-Type': material.type },
-      }))
-      return
+      if (material.source === 'file' && material.blob && navigator.locks && 'caches' in globalThis) {
+        cache = await caches.open(mediaCacheName)
+        localMaterialOwner(access)
+        if (await cache.match(cacheRequest())) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+        localMaterialOwner(access)
+        await cache.put(cacheRequest(), new Response(material.blob, { headers: { 'Content-Type': material.type } }))
+        wroteBytes = true
+        localMaterialOwner(access)
+        material.blob = undefined
+        material.storage = 'cache'
+      }
+      await materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish) => {
+        store.add(material)
+        finish(material)
+      }, () => { committed = true })
+      localMaterialOwner(access)
+      return material
     } catch (error) {
-      await deleteLocalMaterial(material.id)
+      if (wroteBytes && !committed) await cache?.delete(cacheRequest()).catch(() => false)
       throw error
     }
-  }
-
-  const database = await openDatabase()
-  return new Promise<void>((resolve, reject) => {
-    const request = database.transaction(storeName, 'readwrite').objectStore(storeName).put(material)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error('Could not save local material.'))
   })
 }
 
-export async function loadLocalMaterialBlob(material: LocalMaterial) {
-  await migrateWarmupMaterialsToChromatic()
-  if (material.blob) return material.blob
-  if (material.storage !== 'cache' || !('caches' in window)) throw new Error('Local material data is unavailable.')
-
-  const cache = await caches.open(mediaCacheName)
-  const response = await cache.match(mediaCacheRequest(material.id))
-  if (!response) throw new Error('Local material data is unavailable.')
-  return response.blob()
+export async function loadLocalMaterialBlob(access: LocalMaterialAccess, ref: MaterialRef): Promise<Blob> {
+  const ownerUid = localMaterialOwner(access)
+  ref = snapshotMaterialRef(ref)
+  return withMaterialLock(ownerUid, ref.id, async () => {
+    const record = await readOwnedRecord(access, ref)
+    localMaterialOwner(access)
+    if (record.blob) return record.blob
+    if (record.storage !== 'cache' || !navigator.locks || !('caches' in globalThis)) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+    const cache = await caches.open(mediaCacheName)
+    localMaterialOwner(access)
+    const response = await cache.match(mediaCacheRequest(ownerUid, ref.id))
+    if (!response) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+    const blob = await response.blob()
+    await readOwnedRecord(access, ref)
+    localMaterialOwner(access)
+    return blob
+  })
 }
 
 export type MaterialMetadataPatch = { name?: string; bookmarks?: number[] }
@@ -162,80 +231,46 @@ export function normalizeBookmarks(values: number[]) {
   return [...new Set(values.filter((value) => Number.isFinite(value) && value >= 0).map((value) => Number(value.toFixed(1))))].sort((left, right) => left - right)
 }
 
-export async function patchLocalMaterialMetadata(id: string, blockKey: string, patch: MaterialMetadataPatch, songId?: string) {
-  await migrateWarmupMaterialsToChromatic()
+export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, ref: MaterialRef, patch: MaterialMetadataPatch) {
+  const ownerUid = localMaterialOwner(access)
+  ref = snapshotMaterialRef(ref)
+  patch = { name: patch.name, bookmarks: patch.bookmarks ? normalizeBookmarks(patch.bookmarks) : undefined }
   const name = patch.name?.trim()
   if (name === '') throw new Error('Material name is empty.')
-  const database = await openDatabase()
-  return new Promise<LocalMaterial>((resolve, reject) => {
-    const transaction = database.transaction(storeName, 'readwrite')
-    const store = transaction.objectStore(storeName)
-    let updated: LocalMaterial | null = null
-    let failure: Error | null = null
-    transaction.oncomplete = () => {
-      database.close()
-      if (updated) resolve(updated)
-      else reject(failure ?? new Error('Local material no longer exists.'))
-    }
-    transaction.onabort = transaction.onerror = () => {
-      database.close()
-      reject(failure ?? transaction.error ?? new Error('Could not update local material metadata.'))
-    }
-    const request = store.get(id)
-    request.onsuccess = () => {
-      const record = request.result as LocalMaterial | undefined
-      if (!record || record.id !== id || record.blockKey !== blockKey || record.songId !== songId) {
-        failure = new Error('Local material no longer exists in this block.')
-        transaction.abort()
-        return
-      }
-      updated = { ...record }
+  return materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish, guard) => {
+    const request = store.get([ownerUid, ref.id])
+    request.onsuccess = () => guard(() => {
+      const updated = { ...requireRecord(request.result, ownerUid, ref) }
       if (name !== undefined) updated.name = name
       if (patch.bookmarks !== undefined) updated.bookmarks = normalizeBookmarks(patch.bookmarks)
       store.put(updated)
-    }
+      finish(updated)
+    })
   })
 }
 
-export async function deleteLocalMaterial(id: string, blockKey?: string, songId?: string) {
-  await migrateWarmupMaterialsToChromatic()
-  const database = await openDatabase()
-  let shouldDeleteCache = blockKey === undefined
-  await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(storeName, 'readwrite')
-    const store = transaction.objectStore(storeName)
-    let failure: Error | null = null
-    transaction.oncomplete = () => resolve()
-    transaction.onabort = transaction.onerror = () => reject(failure ?? transaction.error ?? new Error('Could not delete local material.'))
-    if (blockKey === undefined) {
-      const request = store.delete(id)
-      request.onerror = () => {
-        failure = request.error ?? new Error('Could not delete local material.')
-        transaction.abort()
-      }
-      return
+export async function deleteLocalMaterial(access: LocalMaterialAccess, ref: MaterialRef) {
+  const ownerUid = localMaterialOwner(access)
+  ref = snapshotMaterialRef(ref)
+  return withMaterialLock(ownerUid, ref.id, async () => {
+    const record = await materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish, guard) => {
+      const request = store.get([ownerUid, ref.id])
+      request.onsuccess = () => guard(() => {
+        const owned = requireRecord(request.result, ownerUid, ref)
+        store.delete([ownerUid, ref.id])
+        finish(owned)
+      })
+    })
+    localMaterialOwner(access)
+    if (record.storage === 'cache' && 'caches' in globalThis) {
+      try {
+        const cache = await caches.open(mediaCacheName)
+        localMaterialOwner(access)
+        await cache.delete(mediaCacheRequest(ownerUid, ref.id))
+      } catch { localMaterialOwner(access) }
     }
-
-    const request = store.get(id)
-    request.onsuccess = () => {
-      const record = request.result as LocalMaterial | undefined
-      if (record?.blockKey !== blockKey || record.songId !== songId) return
-      shouldDeleteCache = true
-      const deleteRequest = store.delete(id)
-      deleteRequest.onerror = () => {
-        failure = deleteRequest.error ?? new Error('Could not delete local material.')
-        transaction.abort()
-      }
-    }
-    request.onerror = () => {
-      failure = request.error ?? new Error('Could not read local material metadata.')
-      transaction.abort()
-    }
+    localMaterialOwner(access)
   })
-  if (shouldDeleteCache && 'caches' in window) {
-    const cache = await caches.open(mediaCacheName)
-    await cache.delete(mediaCacheRequest(id))
-  }
 }
 
 export async function estimateLocalStorage(): Promise<LocalStorageEstimate> {

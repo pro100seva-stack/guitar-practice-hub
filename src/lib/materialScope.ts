@@ -1,22 +1,22 @@
-import type { LocalMaterial } from './localMaterials'
+import type { LocalMaterial, MaterialMetadataPatch, MaterialScope } from './localMaterials'
 
 export type MaterialsByBlock = Record<string, LocalMaterial[]>
 
 export type ActiveMaterial = { blockKey: string; id: string }
 
-export function filterMaterialsByBlock(materials: LocalMaterial[], blockKey: string) {
-  return materials.filter((material) => material.blockKey === blockKey)
+export function filterMaterialsByBlock(materials: LocalMaterial[], blockKey: string, songId?: string) {
+  return materials.filter((material) => material.blockKey === blockKey && material.songId === songId)
 }
 
-export function setBlockMaterials(state: MaterialsByBlock, blockKey: string, materials: LocalMaterial[]): MaterialsByBlock {
-  return { ...state, [blockKey]: filterMaterialsByBlock(materials, blockKey) }
+export function setBlockMaterials(state: MaterialsByBlock, blockKey: string, materials: LocalMaterial[], scope: MaterialScope = { blockKey }): MaterialsByBlock {
+  return { ...state, [blockKey]: filterMaterialsByBlock(materials, scope.blockKey, scope.songId) }
 }
 
 export function removeBlockMaterial(state: MaterialsByBlock, blockKey: string, id: string): MaterialsByBlock {
   return { ...state, [blockKey]: (state[blockKey] ?? []).filter((material) => material.id !== id) }
 }
 
-export function updateBlockMaterial(state: MaterialsByBlock, blockKey: string, id: string, updates: Partial<LocalMaterial>): MaterialsByBlock {
+export function updateBlockMaterial(state: MaterialsByBlock, blockKey: string, id: string, updates: MaterialMetadataPatch): MaterialsByBlock {
   return { ...state, [blockKey]: (state[blockKey] ?? []).map((material) => material.id === id ? { ...material, ...updates } : material) }
 }
 

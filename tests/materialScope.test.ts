@@ -1,19 +1,41 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, readdirSync } from 'node:fs'
 import { getDefaultMaterials } from '../src/lib/defaultMaterials'
-import { deleteLocalMaterial, listLocalMaterials, loadLocalMaterialBlob, patchLocalMaterialMetadata, normalizeBookmarks, saveLocalMaterial, type LocalMaterial } from '../src/lib/localMaterials'
-import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial } from '../src/lib/materialScope'
+import * as localApi from '../src/lib/localMaterials'
+import { normalizeBookmarks, type LocalMaterial, type OwnedLocalMaterial } from '../src/lib/localMaterials'
+import { captureLocalMaterialAccess, watchLocalMaterialIdentity, type LocalMaterialAccess } from '../src/lib/localMaterialAccess'
+import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../src/lib/materialScope'
 
-function material(id: string, blockKey: string): LocalMaterial {
-  return { id, blockKey, name: id, type: 'text/uri-list', size: 0, source: 'url', url: `https://example.com/${id}`, createdAt: '2026-01-01T00:00:00Z' }
+const auth = vi.hoisted(() => ({ change: (_event: string, _session: { user: { id: string }; access_token: string } | null) => {} }))
+vi.mock('../src/lib/supabase', () => ({ supabase: { auth: {
+  getSession: async () => ({ data: { session: null }, error: null }),
+  onAuthStateChange: (callback: typeof auth.change) => { auth.change = callback; return { data: { subscription: { unsubscribe: vi.fn() } } } },
+} } }))
+let access: LocalMaterialAccess
+const sessionFor = (id: string) => ({ user: { id }, access_token: `isolated-${id}` })
+const saveLocalMaterial = (input: LocalMaterial) => localApi.saveLocalMaterial(access, input)
+const listLocalMaterials = (blockKey: string, songId?: string) => localApi.listLocalMaterials(access, { blockKey, songId })
+const loadLocalMaterialBlob = (ref: LocalMaterial) => localApi.loadLocalMaterialBlob(access, ref)
+const patchLocalMaterialMetadata = (id: string, blockKey: string, patch: localApi.MaterialMetadataPatch, songId?: string) => localApi.patchLocalMaterialMetadata(access, { id, blockKey, songId }, patch)
+const deleteLocalMaterial = (id: string, blockKey: string, songId?: string) => localApi.deleteLocalMaterial(access, { id, blockKey, songId })
+
+function material(id: string, blockKey: string): OwnedLocalMaterial {
+  return { id, blockKey, ownerUid: 'A', storage: 'indexeddb', name: id, type: 'text/uri-list', size: 0, source: 'url', url: `https://example.com/${id}`, createdAt: '2026-01-01T00:00:00Z' }
 }
 
-describe('default warm-up materials', () => {
-  it('shows the supplied warm-up references under Chromatic in every language', () => {
+describe('default material asset synchronization', () => {
+  it('keeps text guidance without missing PDFs and binds only the owner-retained PDF', () => {
     for (const language of ['en', 'ru', 'it', 'fr'] as const) {
       expect(getDefaultMaterials(language, 'warmup')).toEqual([])
-      expect(getDefaultMaterials(language, 'chromatic')[0].filePath).toBe('/default-exercises/chromatic/Warmup.pdf')
+      expect(getDefaultMaterials(language, 'chromatic')[0].filePath).toBeUndefined()
+      expect(getDefaultMaterials(language, 'learning')[0].filePath).toBeUndefined()
       expect(getDefaultMaterials(language, 'chromatic')).toHaveLength(2)
+      const retained = getDefaultMaterials(language, 'two_notes_per_string')[0].filePath
+      expect(retained).toBe('/default-exercises/2-notes-per-string/2-notes-per-string.pdf')
+      expect(existsSync(`public${retained}`)).toBe(true)
     }
+    const pdfs = readdirSync('public/default-exercises', { recursive: true }).filter((path) => String(path).toLowerCase().endsWith('.pdf'))
+    expect(pdfs.map(String)).toEqual(['2-notes-per-string\\2-notes-per-string.pdf'].map((path) => path.replaceAll('\\', process.platform === 'win32' ? '\\' : '/')))
   })
 })
 
@@ -24,6 +46,12 @@ describe('materialScope', () => {
     const next = setBlockMaterials(state, 'learning', [material('b', 'learning')])
     expect(next.warmup.map((item) => item.id)).toEqual(['a'])
     expect(next.learning.map((item) => item.id)).toEqual(['b'])
+  })
+
+  it('separates exact song scope from its UI collection key and block scope', () => {
+    const rows = [material('block', 'repertoire'), { ...material('song', 'repertoire'), songId: 'one' }, { ...material('foreign', 'repertoire'), songId: 'two' }]
+    expect(setBlockMaterials({}, 'repertoire:song:one', rows, { blockKey: 'repertoire', songId: 'one' })['repertoire:song:one'].map((row) => row.id)).toEqual(['song'])
+    expect(setBlockMaterials({}, 'repertoire', rows).repertoire.map((row) => row.id)).toEqual(['block'])
   })
 
   it('removes and updates only inside the owning block', () => {
@@ -53,7 +81,7 @@ describe('materialScope', () => {
 
   it('drops a late load started during deletion after commit, without affecting another block', async () => {
     const tracker = createRequestTracker()
-    let state = { warmup: [material('a', 'warmup')], learning: [material('b', 'learning')] }
+    let state: MaterialsByBlock = { warmup: [material('a', 'warmup')], learning: [material('b', 'learning')] }
     const commitDeletion = tracker.beginDeletion('warmup')
     const newerLoad = tracker.begin('warmup')
     const otherLoad = tracker.begin('learning')
@@ -102,20 +130,29 @@ describe('materialScope', () => {
   })
 })
 
-type Row = Record<string, unknown> & { id: string }
+type Row = Record<string, unknown> & { id: string; ownerUid?: string }
 
 function installFakeIndexedDb(initialRows: Row[] = []) {
-  const rows = new Map(initialRows.map((row) => [row.id, row]))
+  const key = (row: Row) => JSON.stringify([row.ownerUid, row.id])
+  const rows = new Map(initialRows.map((row) => [key(row), row]))
+  const legacy = new Map<string, Row>()
   let previous = Promise.resolve()
   let holdCompletion = false
+  let failWrite = false
+  let afterCommit: (() => void) | undefined
+  const events: string[] = []
   const completions: (() => void)[] = []
   const database = {
     close: () => {},
-    createObjectStore: () => {},
-    transaction: () => {
+    objectStoreNames: { contains: (name: string) => name === 'learning-materials' },
+    createObjectStore: () => ({ createIndex: () => {} }),
+    transaction: (name: string, mode: string) => {
+      if (name !== 'owned-learning-materials') throw new Error('Legacy store must not be accessed')
       let pending = 0
       let aborted = false
       let completed = false
+      let working: Map<string, Row> | undefined
+      const contents = () => working ??= new Map(rows)
       const wait = previous
       let release: () => void = () => {}
       previous = new Promise<void>((resolve) => { release = resolve })
@@ -123,8 +160,19 @@ function installFakeIndexedDb(initialRows: Row[] = []) {
         if (completed || pending) return
         completed = true
         const finish = () => {
+          if (mode === 'readwrite' && failWrite) { failWrite = false; aborted = true }
           if (aborted) transaction.onabort?.()
-          else transaction.oncomplete?.()
+          else {
+            if (mode === 'readwrite' && working) {
+              rows.clear()
+              for (const [id, row] of working) rows.set(id, row)
+              events.push('metadata-commit')
+              const committed = afterCommit
+              afterCommit = undefined
+              committed?.()
+            }
+            transaction.oncomplete?.()
+          }
           release()
         }
         if (holdCompletion) completions.push(finish)
@@ -139,8 +187,7 @@ function installFakeIndexedDb(initialRows: Row[] = []) {
         const result: { result?: T; error: null; onsuccess?: () => void; onerror?: () => void } = { error: null }
         void wait.then(() => {
           if (!aborted) {
-            result.result = operation()
-            result.onsuccess?.()
+            try { result.result = operation(); result.onsuccess?.() } catch { aborted = true }
           }
           pending--
           queueMicrotask(complete)
@@ -148,10 +195,12 @@ function installFakeIndexedDb(initialRows: Row[] = []) {
         return result
       }
       const store = {
-        put: (row: Row) => request(() => { rows.set(row.id, row) }),
-        get: (id: string) => request(() => rows.get(id)),
-        getAll: () => request(() => [...rows.values()]),
-        delete: (id: string) => request(() => { rows.delete(id) }),
+        put: (row: Row) => request(() => { contents().set(key(row), row) }),
+        add: (row: Row) => request(() => { if (contents().has(key(row))) throw new Error('Duplicate'); contents().set(key(row), row) }),
+        get: (id: string[]) => request(() => contents().get(JSON.stringify(id))),
+        getAll: () => request(() => [...contents().values()]),
+        index: () => ({ getAll: (ownerUid: string) => request(() => [...contents().values()].filter((row) => row.ownerUid === ownerUid)) }),
+        delete: (id: string[]) => request(() => { contents().delete(JSON.stringify(id)) }),
       }
       return transaction
     },
@@ -164,20 +213,267 @@ function installFakeIndexedDb(initialRows: Row[] = []) {
       return request
     },
   }
-  globals.window = {}
+  vi.stubGlobal('window', new EventTarget())
+  vi.stubGlobal('document', new EventTarget())
+  vi.stubGlobal('navigator', {})
   return {
-    seed: (row: Row) => rows.set(row.id, row),
+    events,
+    failNextWrite: () => { failWrite = true },
+    afterNextCommit: (callback: () => void) => { afterCommit = callback },
+    seed: (row: Row) => rows.set(key(row), row),
+    seedLegacy: (row: Row) => legacy.set(row.id, row),
+    legacySnapshot: () => [...legacy.values()],
     snapshot: () => [...rows.values()],
-    cleanup: () => { delete globals.indexedDB; delete globals.window },
+    cleanup: () => { delete globals.indexedDB; vi.unstubAllGlobals() },
     hold: () => { holdCompletion = true },
     finish: () => { holdCompletion = false; completions.splice(0).forEach((complete) => complete()) },
   }
 }
 
+function installFakeCache(events: string[]) {
+  const stores = new Map<string, Map<string, Response>>()
+  const locks = new Map<string, Promise<unknown>>()
+  let failPut = false
+  let failDelete = false
+  let afterPut: (() => void) | undefined
+  const storage = (name: string) => {
+    let store = stores.get(name)
+    if (!store) { store = new Map(); stores.set(name, store) }
+    return store
+  }
+  vi.stubGlobal('location', { origin: 'https://isolated-materials.test' })
+  vi.stubGlobal('navigator', { locks: { request: (name: string, action: () => Promise<unknown>) => {
+    const operation = (locks.get(name) ?? Promise.resolve()).then(action)
+    locks.set(name, operation.catch(() => {}))
+    return operation
+  } } })
+  vi.stubGlobal('caches', { open: vi.fn(async (name: string) => ({
+    match: async (request: Request) => storage(name).get(request.url)?.clone(),
+    put: async (request: Request, response: Response) => {
+      if (failPut) { failPut = false; throw new Error('Cache quota') }
+      events.push('cache-put')
+      storage(name).set(request.url, response.clone())
+      const written = afterPut
+      afterPut = undefined
+      written?.()
+    },
+    delete: async (request: Request) => {
+      if (failDelete) { failDelete = false; throw new Error('Cache unavailable') }
+      events.push('cache-delete')
+      return storage(name).delete(request.url)
+    },
+  })) })
+  return { storage, failPut: () => { failPut = true }, failDelete: () => { failDelete = true }, afterNextPut: (callback: () => void) => { afterPut = callback } }
+}
+
 describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
   let database: ReturnType<typeof installFakeIndexedDb>
-  beforeEach(() => { database = installFakeIndexedDb() })
-  afterEach(() => database.cleanup())
+  let stop: () => void
+  beforeEach(() => {
+    database = installFakeIndexedDb()
+    stop = watchLocalMaterialIdentity(() => {})
+    auth.change('SIGNED_IN', sessionFor('A'))
+    access = captureLocalMaterialAccess()
+  })
+  afterEach(() => { stop(); database.cleanup() })
+
+  it.each(['.', '..'])('rejects dot-segment %s IDs in every ref operation without touching storage', async (id) => {
+    const cache = installFakeCache(database.events)
+    const ref = material(id, 'learning')
+    database.seed(ref)
+    for (const operation of [
+      () => saveLocalMaterial({ ...ref, source: 'file', blob: new Blob(['unsafe']) }),
+      () => loadLocalMaterialBlob(ref),
+      () => patchLocalMaterialMetadata(id, 'learning', { name: 'unsafe' }),
+      () => deleteLocalMaterial(id, 'learning'),
+    ]) await expect(operation()).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    expect(database.snapshot()).toEqual([ref])
+    expect(database.events).toEqual([])
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(0)
+  })
+
+  it('encodes owner and ID as separate cache path segments without double decoding', async () => {
+    const cache = installFakeCache(database.events)
+    auth.change('SIGNED_IN', sessionFor('A/with %?#'))
+    access = captureLocalMaterialAccess()
+    const saved = await saveLocalMaterial({ ...material('../%2e/ ?#', 'learning'), source: 'file', blob: new Blob(['safe']) })
+    expect([...cache.storage('guitar-practice-hub-media-v2').keys()]).toEqual(['https://isolated-materials.test/__guitar_practice_hub_local_media/v2/A%2Fwith%20%25%3F%23/..%2F%252e%2F%20%3F%23'])
+    expect(await (await loadLocalMaterialBlob(saved)).text()).toBe('safe')
+  })
+
+  it('rejects a blocked upgrade, aborts its late upgrade and closes a late success without legacy writes', async () => {
+    const cache = installFakeCache(database.events)
+    const legacy = { ...material('legacy', 'warmup'), ownerUid: undefined, blob: new Blob(['legacy metadata bytes']) }
+    database.seedLegacy(legacy)
+    const legacyCache = cache.storage('guitar-practice-hub-media')
+    legacyCache.set('https://isolated-materials.test/legacy', new Response('legacy cache bytes'))
+    const close = vi.fn()
+    const abort = vi.fn()
+    const createObjectStore = vi.fn()
+    const request: { onblocked?: () => void; onupgradeneeded?: () => void; onsuccess?: () => void; transaction: { abort: () => void }; result: { close: () => void; createObjectStore: typeof createObjectStore } } = {
+      transaction: { abort }, result: { close, createObjectStore },
+    }
+    vi.stubGlobal('indexedDB', { open: () => request })
+    const pending = listLocalMaterials('learning')
+    const rejected = expect(pending).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    request.onblocked?.()
+    await rejected
+    request.onupgradeneeded?.()
+    request.onsuccess?.()
+    expect(abort).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledOnce()
+    expect(createObjectStore).not.toHaveBeenCalled()
+    expect(database.events).toEqual([])
+    expect(database.legacySnapshot()).toEqual([legacy])
+    expect(await legacy.blob.text()).toBe('legacy metadata bytes')
+    expect(await [...legacyCache.values()][0].clone().text()).toBe('legacy cache bytes')
+    expect(legacyCache.size).toBe(1)
+  })
+
+  it('cleans only uncommitted new bytes when cache put is followed by A-B-A invalidation', async () => {
+    const cache = installFakeCache(database.events)
+    const kept = await saveLocalMaterial({ ...material('kept', 'learning'), source: 'file', blob: new Blob(['keep']) })
+    cache.afterNextPut(() => {
+      auth.change('SIGNED_IN', sessionFor('B'))
+      auth.change('SIGNED_IN', sessionFor('A'))
+    })
+    await expect(saveLocalMaterial({ ...material('stale', 'learning'), source: 'file', blob: new Blob(['discard']) })).rejects.toThrow('LOCAL_MATERIAL_ACCESS_DENIED')
+    access = captureLocalMaterialAccess()
+    expect(database.snapshot().map((row) => row.id)).toEqual(['kept'])
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(1)
+    expect(await (await loadLocalMaterialBlob(kept)).text()).toBe('keep')
+  })
+
+  it('retains committed A bytes but rejects the late result when identity changes at commit', async () => {
+    const cache = installFakeCache(database.events)
+    database.afterNextCommit(() => { auth.change('SIGNED_IN', sessionFor('B')) })
+    const input = { ...material('committed', 'learning'), source: 'file' as const, blob: new Blob(['A committed']) }
+    await expect(saveLocalMaterial(input)).rejects.toThrow('LOCAL_MATERIAL_ACCESS_DENIED')
+    access = captureLocalMaterialAccess()
+    expect(await listLocalMaterials('learning')).toEqual([])
+    await expect(loadLocalMaterialBlob(input)).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(1)
+    auth.change('SIGNED_IN', sessionFor('A'))
+    access = captureLocalMaterialAccess()
+    expect(await (await loadLocalMaterialBlob(input)).text()).toBe('A committed')
+  })
+
+  it('snapshots mutable refs, scopes and patch arrays before asynchronous database work', async () => {
+    await saveLocalMaterial({ ...material('fixed', 'learning'), source: 'file', blob: new Blob(['original']) })
+    const scope = { blockKey: 'learning' }
+    const listing = localApi.listLocalMaterials(access, scope)
+    scope.blockKey = 'foreign'
+    expect((await listing).map((row) => row.id)).toEqual(['fixed'])
+    const ref = { id: 'fixed', blockKey: 'learning' }
+    const patch = { bookmarks: [2] }
+    const patching = localApi.patchLocalMaterialMetadata(access, ref, patch)
+    ref.id = 'foreign'; ref.blockKey = 'foreign'; patch.bookmarks.push(99)
+    expect((await patching).bookmarks).toEqual([2])
+    const blobRef = { id: 'fixed', blockKey: 'learning' }
+    const loading = localApi.loadLocalMaterialBlob(access, blobRef)
+    blobRef.id = 'foreign'
+    expect(await (await loading).text()).toBe('original')
+    const deleteRef = { id: 'fixed', blockKey: 'learning' }
+    const deleting = localApi.deleteLocalMaterial(access, deleteRef)
+    deleteRef.id = 'foreign'
+    await deleting
+    expect(await listLocalMaterials('learning')).toEqual([])
+  })
+
+  it('isolates same IDs and all CRUD/blob/patch operations across account switches', async () => {
+    const cache = installFakeCache(database.events)
+    const first = await saveLocalMaterial({ ...material('same', 'learning'), source: 'file', blob: new Blob(['A']) })
+    await saveLocalMaterial(material('only-A', 'learning'))
+    auth.change('SIGNED_IN', sessionFor('B'))
+    access = captureLocalMaterialAccess()
+    expect(await listLocalMaterials('learning')).toEqual([])
+    for (const operation of [
+      () => loadLocalMaterialBlob({ ...first, id: 'only-A', blob: new Blob(['forged']) }),
+      () => patchLocalMaterialMetadata('only-A', 'learning', { name: 'stolen' }),
+      () => deleteLocalMaterial('only-A', 'learning'),
+    ]) await expect(operation()).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    const second = await saveLocalMaterial({ ...material('same', 'learning'), source: 'file', blob: new Blob(['B']) })
+    expect(second.ownerUid).toBe('B')
+    expect(await (await loadLocalMaterialBlob(first)).text()).toBe('B')
+    await expect(patchLocalMaterialMetadata('same', 'repertoire', { name: 'wrong block' })).rejects.toThrow()
+    auth.change('SIGNED_IN', sessionFor('A'))
+    access = captureLocalMaterialAccess()
+    expect(await (await loadLocalMaterialBlob(second)).text()).toBe('A')
+    expect((await listLocalMaterials('learning')).map((row) => row.id)).toEqual(['same', 'only-A'])
+    expect([...cache.storage('guitar-practice-hub-media-v2').keys()]).toEqual(['https://isolated-materials.test/__guitar_practice_hub_local_media/v2/A/same', 'https://isolated-materials.test/__guitar_practice_hub_local_media/v2/B/same'])
+  })
+
+  it('rejects forged blob metadata and duplicate creation without overwriting persisted bytes', async () => {
+    const original = await saveLocalMaterial({ ...material('file', 'learning'), source: 'file', blob: new Blob(['real']) })
+    expect(await (await loadLocalMaterialBlob({ ...original, blob: new Blob(['forged']) })).text()).toBe('real')
+    await expect(saveLocalMaterial({ ...original, blob: new Blob(['replacement']) })).rejects.toThrow()
+    expect(await (await loadLocalMaterialBlob(original)).text()).toBe('real')
+    await expect(localApi.loadLocalMaterialBlob(access, { ...original, songId: 'wrong' })).rejects.toThrow()
+  })
+
+  it('aborts pending owned warm-up reassociation on A-B-A and does not revive the old access', async () => {
+    database.seed(material('old', 'warmup'))
+    database.hold()
+    const oldAccess = access
+    const pending = localApi.listLocalMaterials(oldAccess, { blockKey: 'chromatic' })
+    const rejected = expect(pending).rejects.toThrow()
+    for (let turn = 0; turn < 12; turn++) await Promise.resolve()
+    auth.change('SIGNED_IN', sessionFor('B'))
+    auth.change('SIGNED_IN', sessionFor('A'))
+    database.finish()
+    await rejected
+    expect(database.snapshot()[0].blockKey).toBe('warmup')
+    await expect(localApi.saveLocalMaterial(oldAccess, material('late', 'learning'))).rejects.toThrow()
+    expect(database.snapshot()).toHaveLength(1)
+  })
+
+  it('writes cache bytes before metadata and preserves the original legacy cache byte-for-byte', async () => {
+    const cache = installFakeCache(database.events)
+    const legacyCache = cache.storage('guitar-practice-hub-media')
+    legacyCache.set('https://isolated-materials.test/__guitar_practice_hub_local_media/old', new Response('legacy bytes'))
+    const saved = await saveLocalMaterial({ ...material('cached', 'learning'), source: 'file', blob: new Blob(['new bytes']) })
+    expect(database.events).toEqual(['cache-put', 'metadata-commit'])
+    expect(saved.storage).toBe('cache')
+    expect(await (await loadLocalMaterialBlob(saved)).text()).toBe('new bytes')
+    expect([...cache.storage('guitar-practice-hub-media-v2').keys()]).toEqual(['https://isolated-materials.test/__guitar_practice_hub_local_media/v2/A/cached'])
+    await deleteLocalMaterial('cached', 'learning')
+    expect(database.events.slice(-2)).toEqual(['metadata-commit', 'cache-delete'])
+    expect(await [...legacyCache.values()][0].clone().text()).toBe('legacy bytes')
+    expect(legacyCache.size).toBe(1)
+  })
+
+  it('cleans only new cache bytes on metadata failure and preserves bytes on failed deletion', async () => {
+    const cache = installFakeCache(database.events)
+    const first = await saveLocalMaterial({ ...material('kept', 'learning'), source: 'file', blob: new Blob(['keep']) })
+    database.failNextWrite()
+    await expect(saveLocalMaterial({ ...material('failed', 'learning'), source: 'file', blob: new Blob(['discard']) })).rejects.toThrow()
+    expect(database.snapshot().map((row) => row.id)).toEqual(['kept'])
+    expect([...cache.storage('guitar-practice-hub-media-v2').keys()]).toEqual(['https://isolated-materials.test/__guitar_practice_hub_local_media/v2/A/kept'])
+    database.failNextWrite()
+    await expect(deleteLocalMaterial('kept', 'learning')).rejects.toThrow()
+    expect(await (await loadLocalMaterialBlob(first)).text()).toBe('keep')
+    cache.failPut()
+    await expect(saveLocalMaterial({ ...material('quota', 'learning'), source: 'file', blob: new Blob(['quota']) })).rejects.toThrow()
+    expect(database.snapshot()).toHaveLength(1)
+  })
+
+  it('serializes concurrent same-ID cache saves and does not remove the winning bytes', async () => {
+    installFakeCache(database.events)
+    const input = { ...material('race', 'learning'), source: 'file' as const, blob: new Blob(['winner']) }
+    const results = await Promise.allSettled([saveLocalMaterial(input), saveLocalMaterial({ ...input, blob: new Blob(['loser']) })])
+    expect(results.map((result) => result.status)).toEqual(['fulfilled', 'rejected'])
+    expect(await (await loadLocalMaterialBlob(input)).text()).toBe('winner')
+  })
+
+  it('leaves only inaccessible owned cache orphans if cleanup fails after metadata deletion', async () => {
+    const cache = installFakeCache(database.events)
+    const saved = await saveLocalMaterial({ ...material('orphan', 'learning'), source: 'file', blob: new Blob(['bytes']) })
+    cache.failDelete()
+    await deleteLocalMaterial('orphan', 'learning')
+    expect(await listLocalMaterials('learning')).toEqual([])
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(1)
+    await expect(loadLocalMaterialBlob(saved)).rejects.toThrow()
+  })
 
   it('moves warm-up materials to Chromatic once while keeping other blocks unchanged', async () => {
     await saveLocalMaterial(material('w1', 'warmup'))
@@ -189,9 +485,9 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     expect(await listLocalMaterials('rhythm')).toEqual([])
   })
 
-  it('waits for migration before returning a local blob and preserves its record metadata', async () => {
+  it('preserves and hides legacy rows and bytes; migrates only owned warm-up rows', async () => {
     const blob = new Blob(['unchanged bytes'], { type: 'application/pdf' })
-    const legacy = {
+    const legacy: Row = {
       ...material('legacy-pdf', 'warmup'),
       name: 'Warm-up notes',
       type: 'application/pdf',
@@ -208,35 +504,14 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
       bookmarks: [4],
       storage: 'cache' as const,
     }
-    database.seed(legacy)
+    delete legacy.ownerUid
+    database.seedLegacy(legacy)
     database.seed(cached)
-    database.hold()
-
-    let resolved = false
-    const load = loadLocalMaterialBlob(legacy).then((result) => {
-      resolved = true
-      return result
-    })
-    for (let turn = 0; turn < 10; turn++) await Promise.resolve()
-    expect(resolved).toBe(false)
-
-    database.finish()
-    expect(await load).toBe(blob)
-    const migrated = await listLocalMaterials('chromatic')
-    expect(migrated).toHaveLength(2)
-    expect(migrated).toEqual(expect.arrayContaining([
-      { ...legacy, blockKey: 'chromatic' },
-      { ...cached, blockKey: 'chromatic' },
-    ]))
+    expect(await listLocalMaterials('chromatic')).toEqual([{ ...cached, blockKey: 'chromatic' }])
     expect(await listLocalMaterials('warmup')).toEqual([])
-
-    const persistedRows = database.snapshot()
-    database.cleanup()
-    database = installFakeIndexedDb(persistedRows)
-    expect(await listLocalMaterials('chromatic')).toEqual(expect.arrayContaining([
-      { ...legacy, blockKey: 'chromatic' },
-      { ...cached, blockKey: 'chromatic' },
-    ]))
+    expect(database.legacySnapshot()).toEqual([legacy])
+    expect(await blob.text()).toBe('unchanged bytes')
+    await expect(localApi.loadLocalMaterialBlob(access, { id: legacy.id, blockKey: 'warmup' })).rejects.toThrow()
   })
 
   it('isolates repertoire materials by song and keeps block-level materials separate', async () => {
@@ -254,7 +529,7 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     await patchLocalMaterialMetadata('song-one-file', 'repertoire', { name: 'Updated' }, 'song-one')
     expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, name: 'Updated' }])
     await expect(patchLocalMaterialMetadata('song-one-file', 'repertoire', { name: 'Leak' }, 'song-two')).rejects.toThrow()
-    await deleteLocalMaterial('song-one-file', 'repertoire', 'song-two')
+    await expect(deleteLocalMaterial('song-one-file', 'repertoire', 'song-two')).rejects.toThrow()
     expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, name: 'Updated' }])
     await deleteLocalMaterial('song-two-file', 'repertoire', 'song-two')
     expect(await listLocalMaterials('repertoire', 'song-one')).toHaveLength(1)
@@ -262,16 +537,16 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     expect(await listLocalMaterials('repertoire')).toEqual([blockMaterial])
   })
 
-  it('deletes by id without touching other blocks', async () => {
+  it('deletes by exact ref without touching other blocks', async () => {
     await saveLocalMaterial(material('w1', 'warmup'))
     await saveLocalMaterial(material('l1', 'learning'))
-    await deleteLocalMaterial('w1')
+    await deleteLocalMaterial('w1', 'chromatic')
     expect(await listLocalMaterials('warmup')).toEqual([])
     expect(await listLocalMaterials('learning')).toHaveLength(1)
   })
 
   it('patches only metadata, trims names and preserves cached/blob fields', async () => {
-    const original = { ...material('w1', 'warmup'), storage: 'indexeddb' as const, blob: new Blob(['data']), bookmarks: [12] }
+    const original = { ...material('w1', 'warmup'), source: 'file' as const, storage: 'indexeddb' as const, blob: new Blob(['data']), bookmarks: [12] }
     await saveLocalMaterial(original)
     await patchLocalMaterialMetadata('w1', 'chromatic', { name: '  My lesson  ' })
     expect(await listLocalMaterials('chromatic')).toEqual([{ ...original, blockKey: 'chromatic', name: 'My lesson' }])
@@ -283,7 +558,7 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
   it('does not recreate deleted or foreign-block records', async () => {
     await saveLocalMaterial(material('w1', 'warmup'))
     await expect(patchLocalMaterialMetadata('w1', 'learning', { name: 'Wrong' })).rejects.toThrow()
-    await deleteLocalMaterial('w1')
+    await deleteLocalMaterial('w1', 'chromatic')
     await expect(patchLocalMaterialMetadata('w1', 'warmup', { bookmarks: [1] })).rejects.toThrow()
     expect(await listLocalMaterials('warmup')).toEqual([])
   })
@@ -318,7 +593,7 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
   it('rejects metadata updates queued behind deletion without resurrection', async () => {
     await saveLocalMaterial(material('w1', 'warmup'))
     const results = await Promise.allSettled([
-      deleteLocalMaterial('w1'),
+      deleteLocalMaterial('w1', 'chromatic'),
       patchLocalMaterialMetadata('w1', 'warmup', { name: 'Too late' }),
     ])
     expect(results.map((result) => result.status)).toEqual(['fulfilled', 'rejected'])
@@ -327,8 +602,8 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
 
   it('ignores fields outside the metadata allowlist and leaves cached storage untouched', async () => {
     const original = { ...material('w1', 'warmup'), storage: 'cache' as const, bookmarks: [3] }
-    await saveLocalMaterial(original)
-    const patch = { name: 'Renamed cache', url: 'https://evil.test', id: 'other', blockKey: 'other', storage: 'indexeddb' }
+    database.seed({ ...original, blockKey: 'chromatic' })
+    const patch = { name: 'Renamed cache', url: 'https://evil.test', id: 'other', blockKey: 'other', storage: 'indexeddb', ownerUid: 'B', blob: new Blob(['forged']) }
     await patchLocalMaterialMetadata('w1', 'chromatic', patch)
     expect(await listLocalMaterials('chromatic')).toEqual([{ ...original, blockKey: 'chromatic', name: 'Renamed cache' }])
   })

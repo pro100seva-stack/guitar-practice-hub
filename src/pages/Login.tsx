@@ -1,9 +1,33 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
 import { useI18n } from '../lib/i18n'
 
 type LoginMode = 'sign-in' | 'create-account' | 'reset-password'
+type GatewayAction = Exclude<LoginMode, 'sign-in'> | 'get-recovery-question'
+type GatewayFailure = { key: string; retryAfterSeconds?: number }
+
+async function readGatewayFailure(data: unknown, error: unknown): Promise<GatewayFailure | null> {
+  const response = error && typeof error === 'object' && 'context' in error && error.context instanceof Response ? error.context : null
+  let payload: unknown = data
+  if (response) {
+    try { payload = await response.clone().json() } catch { payload = null }
+  }
+  const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null
+  const code = body && 'code' in body ? body.code : null
+  if (response?.status === 429 || code === 'RATE_LIMITED') {
+    const seconds = body && 'retryAfterSeconds' in body && typeof body.retryAfterSeconds === 'number' && Number.isFinite(body.retryAfterSeconds) ? body.retryAfterSeconds : 0
+    const header = response?.headers.get('Retry-After')
+    const headerSeconds = header ? (/^\d+$/.test(header.trim()) ? Number(header) : (Date.parse(header) - Date.now()) / 1000) : 0
+    return { key: 'auth.rateLimited', retryAfterSeconds: Math.max(1, Math.ceil(seconds), Number.isFinite(headerSeconds) ? Math.ceil(headerSeconds) : 0) }
+  }
+  if (response?.status === 503 || code === 'TEMPORARILY_UNAVAILABLE') return { key: 'auth.unavailable' }
+  if (code === 'RECOVERY_FAILED') return { key: 'auth.recoveryFailed' }
+  if (code === 'INVALID_REQUEST') return { key: 'auth.invalidRequest' }
+  if (response?.status === 400) return { key: 'auth.recoveryFailed' }
+  if (error || !body || 'error' in body) return { key: 'auth.unavailable' }
+  return null
+}
 
 const internalAuthDomain = 'accounts.guitar-practice-hub.invalid'
 
@@ -38,27 +62,68 @@ export default function Login() {
   const [message, setMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [language, setLanguage] = useState<Language>(interfaceLanguage ?? defaultLanguage)
+  const requestRef = useRef(0)
+  const pendingRef = useRef(false)
+  const [cooldowns, setCooldowns] = useState<Record<string, number>>({})
+  const [now, setNow] = useState(Date.now())
+  const budgetKey = (action: GatewayAction) => `${action}:${loginName.trim().toLowerCase()}`
+  const remaining = (action: GatewayAction) => Math.max(0, Math.ceil(((cooldowns[budgetKey(action)] ?? 0) - now) / 1000))
+  const submitCooldown = mode === 'sign-in' ? 0 : remaining(mode)
+  const questionCooldown = mode === 'reset-password' ? remaining('get-recovery-question') : 0
+  const cooldown = Math.max(submitCooldown, questionCooldown)
+  const hasCooldown = Object.values(cooldowns).some((until) => until > now)
+
+  useEffect(() => {
+    if (!hasCooldown) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [hasCooldown])
+  useEffect(() => () => { requestRef.current++; pendingRef.current = false }, [])
+
+  function clearRequestState() {
+    requestRef.current++
+    setNow(Date.now())
+    pendingRef.current = false
+    setLoading(false)
+    setLoadedSecurityQuestion('')
+    setSecurityAnswer('')
+    setError(null)
+    setMessage(null)
+  }
+
+  function showGatewayFailure(failure: GatewayFailure, action: GatewayAction) {
+    if (failure.retryAfterSeconds !== undefined) {
+      const time = Date.now()
+      const retryAfterSeconds = failure.retryAfterSeconds
+      setNow(time)
+      setCooldowns((current) => ({ ...current, [budgetKey(action)]: time + retryAfterSeconds * 1000 }))
+      setError(null)
+    } else setError(t(failure.key))
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (pendingRef.current || submitCooldown > 0) return
+    const request = ++requestRef.current
+    pendingRef.current = true
     setError(null)
     setMessage(null)
     setLoading(true)
 
+    try {
     if (mode === 'sign-in') {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: authEmailForLogin(loginName),
         password,
       })
-      if (signInError) setError(signInError.message)
-      setLoading(false)
+      if (request !== requestRef.current) return
+      if (signInError) setError(t('auth.signInFailed'))
       return
     }
 
     const nextPassword = mode === 'create-account' ? password : newPassword
     if (!isValidPassword(nextPassword, t)) {
       setError(t('Choose a password that meets every requirement.'))
-      setLoading(false)
       return
     }
 
@@ -82,24 +147,18 @@ export default function Login() {
       body: functionPayload,
     })
 
-    if (functionError) {
-      setError(functionError.message)
-      setLoading(false)
-      return
-    }
-
-    if (data?.error) {
-      setError(data.error)
-      setLoading(false)
-      return
-    }
+    if (request !== requestRef.current) return
+    const failure = await readGatewayFailure(data, functionError)
+    if (request !== requestRef.current) return
+    if (failure) { showGatewayFailure(failure, mode); return }
 
     if (mode === 'create-account') {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: authEmailForLogin(loginName),
         password,
       })
-      if (signInError) setError(signInError.message)
+      if (request !== requestRef.current) return
+      if (signInError) setError(t('auth.signInFailed'))
       else setMessage(t('Account created. You are now signed in.'))
     } else {
       setMessage(t('Password reset. You can now sign in.'))
@@ -107,22 +166,38 @@ export default function Login() {
       setPassword(newPassword)
       setNewPassword('')
       setSecurityAnswer('')
+      setLoadedSecurityQuestion('')
     }
-
-    setLoading(false)
+    } catch {
+      if (request === requestRef.current) setError(t(mode === 'sign-in' ? 'auth.signInFailed' : 'auth.unavailable'))
+    } finally {
+      if (request === requestRef.current) { pendingRef.current = false; setLoading(false) }
+    }
   }
 
   async function loadSecurityQuestion() {
+    if (pendingRef.current || questionCooldown > 0) return
+    const request = ++requestRef.current
+    pendingRef.current = true
+    setLoadedSecurityQuestion('')
     setError(null)
     setMessage(null)
     setLoading(true)
-    const { data, error: functionError } = await supabase.functions.invoke('account-gateway', {
-      body: { action: 'get-recovery-question', loginName },
-    })
-    if (functionError) setError(functionError.message)
-    else if (data?.error) setError(data.error)
-    else setLoadedSecurityQuestion(data?.securityQuestion ?? '')
-    setLoading(false)
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('account-gateway', {
+        body: { action: 'get-recovery-question', loginName },
+      })
+      if (request !== requestRef.current) return
+      const failure = await readGatewayFailure(data, functionError)
+      if (request !== requestRef.current) return
+      if (failure) showGatewayFailure(failure, 'get-recovery-question')
+      else if (typeof data?.securityQuestion === 'string') setLoadedSecurityQuestion(data.securityQuestion)
+      else setError(t('auth.unavailable'))
+    } catch {
+      if (request === requestRef.current) setError(t('auth.unavailable'))
+    } finally {
+      if (request === requestRef.current) { pendingRef.current = false; setLoading(false) }
+    }
   }
 
   const isCreateMode = mode === 'create-account'
@@ -130,9 +205,8 @@ export default function Login() {
   const activePassword = isResetMode ? newPassword : password
 
   const switchMode = (nextMode: LoginMode) => {
+    clearRequestState()
     setMode(nextMode)
-    setError(null)
-    setMessage(null)
   }
 
   return (
@@ -160,7 +234,7 @@ export default function Login() {
             type="text"
             autoComplete="username"
             value={loginName}
-            onChange={(e) => setLoginName(e.target.value)}
+            onChange={(e) => { clearRequestState(); setLoginName(e.target.value) }}
             className="field"
             required
           />
@@ -191,7 +265,7 @@ export default function Login() {
         )}
         {isResetMode && (
           <>
-            <button type="button" onClick={() => { void loadSecurityQuestion() }} disabled={loading || !loginName.trim()} className="btn btn-secondary w-full">
+            <button type="button" onClick={() => { void loadSecurityQuestion() }} disabled={loading || questionCooldown > 0 || !loginName.trim()} className="btn btn-secondary w-full">
               {loading ? t('Loading question…') : t('Show security question')}
             </button>
             {loadedSecurityQuestion && <p className="text-sm text-slate-300">{loadedSecurityQuestion}</p>}
@@ -233,8 +307,9 @@ export default function Login() {
           )}
         </div>
         {error && <p role="alert" className="msg-error">{error}</p>}
+        {cooldown > 0 && <p role="status" className="msg-error">{t('auth.rateLimited', { seconds: cooldown })}</p>}
         {message && <p role="status" className="msg-success">{message}</p>}
-        <button type="submit" disabled={loading} className="btn btn-primary w-full">
+        <button type="submit" disabled={loading || submitCooldown > 0} className="btn btn-primary w-full">
           {loading ? t('Working…') : isCreateMode ? t('Create account') : isResetMode ? t('Reset password') : t('Sign in')}
         </button>
         <div className="flex flex-wrap justify-between gap-2">

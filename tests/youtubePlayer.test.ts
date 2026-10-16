@@ -80,6 +80,17 @@ type Element = { type: string; props: Record<string, unknown> }
 type Effect = { dependencies?: unknown[]; setup: () => void | (() => void); cleanup?: () => void }
 
 function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
+  let authEpoch = 1
+  let verified = true
+  const invalidations = new Set<() => void>()
+  const verifications = new Set<(ready: boolean) => void>()
+  const authority = {
+    captureLocalMaterialAccess: () => ({ epoch: authEpoch }),
+    isLocalMaterialAccessCurrent: (token: { epoch: number }) => token.epoch === authEpoch,
+    isLocalMaterialIdentityReady: () => verified,
+    onLocalMaterialVerification: (callback: (ready: boolean) => void) => { verifications.add(callback); return () => verifications.delete(callback) },
+    onLocalMaterialInvalidation: (callback: () => void) => { invalidations.add(callback); return () => invalidations.delete(callback) },
+  }
   const values: unknown[] = []
   const effects = new Map<number, Effect>()
   let cursor = 0
@@ -102,6 +113,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
     currentTime: 0, duration: 60, paused: true, ended: false, playbackRate: 1,
     play: vi.fn(() => { video.paused = false; return Promise.resolve() }),
     pause: vi.fn(() => { video.paused = true }),
+    removeAttribute: vi.fn(), load: vi.fn(),
   }
   const construct = vi.fn(function (_frame: unknown, config: YouTubePlayerOptions) { options = config; return player })
   const load = vi.fn(async () => ({ Player: construct }))
@@ -136,6 +148,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     '../lib/i18n': { useI18n: () => ({ t: (key: string) => key }) },
     '../lib/localMaterials': { normalizeBookmarks },
+    '../lib/localMaterialAccess': authority,
     '../lib/youtubeApi': { loadYouTubeApi: load },
     '../lib/youtube': youtube,
     '../lib/youtubePractice': practice,
@@ -176,6 +189,8 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   const event = (playback: number, position: number) => { state = playback; time = position; options?.events.onStateChange({ target: player, data: playback }) }
   return {
     render, load, player, video, construct, policyAtNavigation, browser,
+    invalidate: () => { authEpoch++; for (const callback of invalidations) callback() },
+    verify: (ready: boolean) => { verified = ready; for (const callback of verifications) callback(ready) },
     native: (name: string) => {
       const handler = tree.find((node) => node.type === 'video' || node.type === 'audio')?.props[name] as ((event: unknown) => void) | undefined
       handler?.({ currentTarget: video })
@@ -190,6 +205,54 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
 
 describe('player lifecycle with a shallow hook/official API mock (no browser playback)', () => {
   beforeEach(() => vi.useFakeTimers())
+
+  it('destroys on identity invalidation and rejects pending loaders and old callbacks', async () => {
+    const pending = playerHarness()
+    pending.render()
+    pending.invalidate()
+    await Promise.resolve()
+    expect(pending.construct).not.toHaveBeenCalled()
+    pending.close()
+    const mounted = playerHarness()
+    const confirm = vi.fn()
+    mounted.render({ onPlaybackConfirmed: confirm })
+    await Promise.resolve()
+    mounted.ready()
+    const callbacks = mounted.staleEvents()
+    mounted.invalidate()
+    expect(mounted.player.destroy).toHaveBeenCalledOnce()
+    callbacks?.onStateChange({ target: mounted.player, data: 1 })
+    expect(confirm).not.toHaveBeenCalled()
+    mounted.close()
+    expect(mounted.player.destroy).toHaveBeenCalledOnce()
+  })
+
+  it('pauses and detaches native media immediately on identity invalidation', () => {
+    const mounted = playerHarness('local')
+    const confirm = vi.fn()
+    mounted.render({ onPlaybackConfirmed: confirm })
+    mounted.invalidate()
+    expect(mounted.video.pause).toHaveBeenCalledOnce()
+    expect(mounted.video.removeAttribute).toHaveBeenCalledWith('src')
+    expect(mounted.video.load).toHaveBeenCalledOnce()
+    mounted.native('onPlaying')
+    expect(confirm).not.toHaveBeenCalled()
+    mounted.close()
+  })
+
+  it('pauses for verification without destroying or reattaching a same-account player', async () => {
+    const mounted = playerHarness()
+    mounted.render()
+    await Promise.resolve()
+    mounted.ready()
+    mounted.verify(false)
+    expect(mounted.player.pauseVideo).toHaveBeenCalledOnce()
+    expect(mounted.player.destroy).not.toHaveBeenCalled()
+    mounted.verify(true)
+    mounted.render()
+    expect(mounted.construct).toHaveBeenCalledOnce()
+    mounted.close()
+  })
 
   it('handles only focused-surface shortcuts, clamps 5/15 second seeks and leaves child controls alone', async () => {
     const harness = playerHarness()

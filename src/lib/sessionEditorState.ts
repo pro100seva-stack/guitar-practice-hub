@@ -42,10 +42,26 @@ export function shouldDeleteClearedSession(existing: boolean, selectedBlockCount
   return existing && selectedBlockCount === 0 && comment.trim() === ''
 }
 
-// A day starts empty unless a session was saved for it; saved blocks keep template order.
-export function getSessionEditorState(date: string, templates: EditorTemplate[], sessions: EditorSession[]): SessionEditorState {
+export function getSessionEditorState(date: string, templates: EditorTemplate[], sessions: EditorSession[], configuredKeys: readonly string[] = []): SessionEditorState {
   const savedSession = sessions.find((session) => session.session_date === date)
-  if (!savedSession) return { comment: '', timers: {}, selectedBlocks: [] }
+  if (!savedSession) {
+    const byKey = new Map(templates.map((template) => [template.key, template]))
+    return {
+      comment: '',
+      timers: {},
+      selectedBlocks: [...new Set(configuredKeys)].flatMap((key) => {
+        const template = byKey.get(key)
+        return template ? [{
+          id: template.id,
+          key: template.key,
+          label: normalizeBlockLabel(template.label),
+          done: false,
+          actualMinutes: '',
+          targetMinutes: template.target_minutes,
+        }] : []
+      }),
+    }
+  }
 
   const savedBlocks = new Map(savedSession.session_blocks.map((block) => [block.block_key, block]))
   const sessionTemplates = templates.filter((template) => savedBlocks.has(template.key))
@@ -87,4 +103,8 @@ export function isSessionEditorDirty(baseline: SessionEditorState, current: Sess
       || saved.actualMinutes !== block.actualMinutes
       || (baseline.timers[block.id]?.elapsedSeconds ?? 0) !== (timer?.elapsedSeconds ?? 0)
   })
+}
+
+export function canInitializeSessionDefaults(requestedWeekId: string, currentWeekId: string | null, saved: boolean, baseline: SessionEditorState, current: SessionEditorState) {
+  return requestedWeekId === currentWeekId && !saved && !isSessionEditorDirty(baseline, current)
 }

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { defaultLanguage, isLanguage, type Language } from './language'
 import { supabase } from './supabase'
+import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, onLocalMaterialInvalidation } from './localMaterialAccess'
 
 type TranslationValues = Record<string, string | number>
 
@@ -20,6 +21,47 @@ const pageTranslations: Record<Language, Record<string, string>> = {
   },
   ru: {}, it: {}, fr: {},
 }
+
+Object.assign(pageTranslations.en, {
+  'materials.accountScope': 'Files for this account on this device',
+  'materials.legacy': 'Older unassigned materials are preserved but temporarily unavailable.',
+  'materials.capacity': 'Device storage capacity: {quota}',
+  'auth.rateLimited': 'Too many requests. Try again in {seconds} seconds.',
+  'auth.unavailable': 'Account recovery and registration are temporarily unavailable. Check your connection and try again later.',
+  'auth.recoveryFailed': 'Recovery failed. Check your login and answer.',
+  'auth.invalidRequest': 'Check the account details and try again.',
+  'auth.signInFailed': 'Could not sign in. Check your login, password and connection.',
+})
+Object.assign(pageTranslations.ru, {
+  'materials.accountScope': 'Файлы этого аккаунта на этом устройстве',
+  'materials.legacy': 'Старые материалы без владельца сохранены, но временно недоступны.',
+  'materials.capacity': 'Объём хранилища устройства: {quota}',
+  'auth.rateLimited': 'Слишком много запросов. Повторите через {seconds} сек.',
+  'auth.unavailable': 'Восстановление и регистрация временно недоступны. Проверьте соединение и повторите позже.',
+  'auth.recoveryFailed': 'Не удалось восстановить доступ. Проверьте логин и ответ.',
+  'auth.invalidRequest': 'Проверьте данные аккаунта и повторите попытку.',
+  'auth.signInFailed': 'Не удалось войти. Проверьте логин, пароль и соединение.',
+})
+Object.assign(pageTranslations.it, {
+  'materials.accountScope': 'File di questo account su questo dispositivo',
+  'materials.legacy': 'I vecchi materiali senza proprietario sono conservati ma temporaneamente non disponibili.',
+  'materials.capacity': 'Capacità di archiviazione del dispositivo: {quota}',
+  'auth.rateLimited': 'Troppe richieste. Riprova tra {seconds} secondi.',
+  'auth.unavailable': 'Recupero e registrazione temporaneamente non disponibili. Controlla la connessione e riprova più tardi.',
+  'auth.recoveryFailed': 'Recupero non riuscito. Controlla il nome di accesso e la risposta.',
+  'auth.invalidRequest': 'Controlla i dati dell’account e riprova.',
+  'auth.signInFailed': 'Accesso non riuscito. Controlla nome, password e connessione.',
+})
+Object.assign(pageTranslations.fr, {
+  'materials.accountScope': 'Fichiers de ce compte sur cet appareil',
+  'materials.legacy': 'Les anciens documents sans propriétaire sont conservés mais temporairement indisponibles.',
+  'materials.capacity': 'Capacité de stockage de l’appareil : {quota}',
+  'auth.rateLimited': 'Trop de demandes. Réessayez dans {seconds} secondes.',
+  'auth.unavailable': 'Récupération et inscription temporairement indisponibles. Vérifiez la connexion et réessayez plus tard.',
+  'auth.recoveryFailed': 'Échec de la récupération. Vérifiez votre identifiant et votre réponse.',
+  'auth.invalidRequest': 'Vérifiez les informations du compte et réessayez.',
+  'auth.signInFailed': 'Connexion impossible. Vérifiez identifiant, mot de passe et connexion.',
+})
 
 Object.assign(pageTranslations.en, {
   'Page unavailable': 'Page unavailable',
@@ -454,24 +496,32 @@ Object.assign(pageTranslations.fr, {
 
   Object.assign(pageTranslations.en, {
     'Technique and Warm-Ups': 'Technique and Warm-Ups', 'Chords and Rhythm': 'Chords and Rhythm', 'Scales and Fretboard Geography': 'Scales and Fretboard Geography', 'Ear Training': 'Ear Training', 'Repertoire and Songwork': 'Repertoire and Songwork', 'Improvisation and Composition': 'Improvisation and Composition',
+    'Replace block': 'Replace block',
+    'Initial week blocks': 'Initial week blocks', 'No scheduled weeks for this program.': 'No scheduled weeks for this program.',
     'Block categories': 'Block categories', 'Blocks in category': 'Blocks in category', 'No blocks in this category.': 'No blocks in this category.', 'Loading blocks…': 'Loading blocks…', '{category}: {count} blocks': '{category}: {count} blocks', '{label} selected': '{label} selected', 'Selected': 'Selected', 'Created {label}. Choose it to add.': 'Created {label}. Choose it to add.', 'Could not create the block.': 'Could not create the block.', 'Custom block name': 'Custom block name', 'Create a custom block': 'Create a custom block', 'Creating…': 'Creating…', 'Create block': 'Create block',
     'Chromatic': 'Chromatic', '2 notes per string': '2 notes per string', 'Technique': 'Technique', 'Alternate picking': 'Alternate picking', 'Legato': 'Legato', 'Rhythm': 'Rhythm', 'Chord changes': 'Chord changes', 'Barre chords': 'Barre chords', 'Strumming patterns': 'Strumming patterns', 'Major scales': 'Major scales', 'Minor scales': 'Minor scales', 'Pentatonic scales': 'Pentatonic scales', 'Notes on the fretboard': 'Notes on the fretboard', 'Notes': 'Notes', 'Intervals': 'Intervals', 'Chords': 'Chords', 'Repertoire': 'Repertoire', 'Learn a new song': 'Learn a new song', 'Evening Practice': 'Evening Practice', 'Harm./Improv.': 'Harm./Improv.', 'Jam to track': 'Jam to track', 'Songwriting': 'Songwriting', 'Learning': 'Learning',
     'Block composition': 'Block composition', 'Same every week': 'Same every week', 'Varies by week': 'Varies by week', 'Not configured': 'Not configured', 'Program blocks': 'Program blocks', 'Week blocks': 'Week blocks', 'Configure program blocks': 'Configure program blocks', 'This program has no configured block set. Choose a mode and select blocks.': 'This program has no configured block set. Choose a mode and select blocks.', 'Catalog composition is unavailable until the database is updated.': 'Catalog composition is unavailable until the database is updated.', 'Choose blocks for this varying week.': 'Choose blocks for this varying week.', 'This program varies by week.': 'This program varies by week.', 'Select at least one block.': 'Select at least one block.', 'Save composition': 'Save composition', 'Saving composition…': 'Saving composition…', 'Could not load block composition.': 'Could not load block composition.', 'Could not save block composition.': 'Could not save block composition.', 'Program mode updated.': 'Program mode updated.', 'Block composition saved.': 'Block composition saved.', 'Retry catalog': 'Retry catalog', 'Choose this week’s blocks': 'Choose this week’s blocks', 'Configure same-every-week blocks': 'Configure same-every-week blocks', 'Configure varying weeks': 'Configure varying weeks', 'Could not load the block catalog.': 'Could not load the block catalog.', 'Could not create the block catalog item.': 'Could not create the block catalog item.',
   })
   Object.assign(pageTranslations.ru, {
     'Technique and Warm-Ups': 'Техника и разминка', 'Chords and Rhythm': 'Аккорды и ритм', 'Scales and Fretboard Geography': 'Гаммы и ориентирование на грифе', 'Ear Training': 'Развитие слуха', 'Repertoire and Songwork': 'Репертуар и работа над песнями', 'Improvisation and Composition': 'Импровизация и сочинение',
+    'Replace block': 'Заменить блок',
+    'Initial week blocks': 'Начальные блоки недель', 'No scheduled weeks for this program.': 'Для этой программы нет запланированных недель.',
     'Block categories': 'Категории блоков', 'Blocks in category': 'Блоки в категории', 'No blocks in this category.': 'В этой категории пока нет блоков.', 'Loading blocks…': 'Загрузка блоков…', '{category}: {count} blocks': '{category}: блоков — {count}', '{label} selected': 'Выбран блок «{label}»', 'Selected': 'Выбрано', 'Created {label}. Choose it to add.': 'Создан блок «{label}». Выберите его, чтобы добавить.', 'Could not create the block.': 'Не удалось создать блок.', 'Custom block name': 'Название своего блока', 'Create a custom block': 'Создать свой блок', 'Creating…': 'Создание…', 'Create block': 'Создать блок',
     'Chromatic': 'Хроматика', '2 notes per string': '2 ноты на струну', 'Technique': 'Техника', 'Alternate picking': 'Переменный штрих', 'Legato': 'Легато', 'Rhythm': 'Ритм', 'Chord changes': 'Смена аккордов', 'Barre chords': 'Баррэ', 'Strumming patterns': 'Ритмические рисунки', 'Major scales': 'Мажорные гаммы', 'Minor scales': 'Минорные гаммы', 'Pentatonic scales': 'Пентатоники', 'Notes on the fretboard': 'Ноты на грифе', 'Notes': 'Ноты', 'Intervals': 'Интервалы', 'Chords': 'Аккорды', 'Repertoire': 'Репертуар', 'Learn a new song': 'Разучить новую песню', 'Evening Practice': 'Вечерняя практика', 'Harm./Improv.': 'Гармония/импровизация', 'Jam to track': 'Джем под трек', 'Songwriting': 'Сочинение песен', 'Learning': 'Обучение',
     'Block composition': 'Состав блоков', 'Same every week': 'Одинаковый каждую неделю', 'Varies by week': 'Разный по неделям', 'Not configured': 'Не настроено', 'Program blocks': 'Блоки программы', 'Week blocks': 'Блоки недели', 'Configure program blocks': 'Настроить блоки программы', 'This program has no configured block set. Choose a mode and select blocks.': 'Для этой программы не настроены блоки. Выберите режим и блоки.', 'Catalog composition is unavailable until the database is updated.': 'Настройка состава блоков недоступна до обновления базы данных.', 'Choose blocks for this varying week.': 'Выберите блоки для этой недели.', 'This program varies by week.': 'Набор блоков программы меняется по неделям.', 'Select at least one block.': 'Выберите хотя бы один блок.', 'Save composition': 'Сохранить состав', 'Saving composition…': 'Сохранение состава…', 'Could not load block composition.': 'Не удалось загрузить состав блоков.', 'Could not save block composition.': 'Не удалось сохранить состав блоков.', 'Program mode updated.': 'Режим программы обновлён.', 'Block composition saved.': 'Состав блоков сохранён.', 'Retry catalog': 'Повторить загрузку каталога', 'Choose this week’s blocks': 'Выбрать блоки этой недели', 'Configure same-every-week blocks': 'Настроить одинаковые блоки на каждую неделю', 'Configure varying weeks': 'Настроить разные недели', 'Could not load the block catalog.': 'Не удалось загрузить каталог блоков.', 'Could not create the block catalog item.': 'Не удалось создать блок каталога.',
   })
   Object.assign(pageTranslations.it, {
     'Technique and Warm-Ups': 'Tecnica e riscaldamento', 'Chords and Rhythm': 'Accordi e ritmo', 'Scales and Fretboard Geography': 'Scale e orientamento sulla tastiera', 'Ear Training': 'Educazione dell’orecchio', 'Repertoire and Songwork': 'Repertorio e studio dei brani', 'Improvisation and Composition': 'Improvvisazione e composizione',
+    'Replace block': 'Sostituisci blocco',
+    'Initial week blocks': 'Blocchi iniziali delle settimane', 'No scheduled weeks for this program.': 'Nessuna settimana pianificata per questo programma.',
     'Block categories': 'Categorie dei blocchi', 'Blocks in category': 'Blocchi nella categoria', 'No blocks in this category.': 'Nessun blocco in questa categoria.', 'Loading blocks…': 'Caricamento dei blocchi…', '{category}: {count} blocks': '{category}: {count} blocchi', '{label} selected': '{label} selezionato', 'Selected': 'Selezionato', 'Created {label}. Choose it to add.': 'Creato {label}. Selezionalo per aggiungerlo.', 'Could not create the block.': 'Impossibile creare il blocco.', 'Custom block name': 'Nome del blocco personalizzato', 'Create a custom block': 'Crea un blocco personalizzato', 'Creating…': 'Creazione…', 'Create block': 'Crea blocco',
     'Chromatic': 'Cromatica', '2 notes per string': '2 note per corda', 'Technique': 'Tecnica', 'Alternate picking': 'Pennata alternata', 'Legato': 'Legato', 'Rhythm': 'Ritmo', 'Chord changes': 'Cambi di accordo', 'Barre chords': 'Accordi barré', 'Strumming patterns': 'Pattern ritmici', 'Major scales': 'Scale maggiori', 'Minor scales': 'Scale minori', 'Pentatonic scales': 'Scale pentatoniche', 'Notes on the fretboard': 'Note sulla tastiera', 'Notes': 'Note', 'Intervals': 'Intervalli', 'Chords': 'Accordi', 'Repertoire': 'Repertorio', 'Learn a new song': 'Impara un nuovo brano', 'Evening Practice': 'Pratica serale', 'Harm./Improv.': 'Armonia/Improv.', 'Jam to track': 'Suona su una traccia', 'Songwriting': 'Composizione', 'Learning': 'Apprendimento',
     'Block composition': 'Composizione dei blocchi', 'Same every week': 'Uguale ogni settimana', 'Varies by week': 'Diversa ogni settimana', 'Not configured': 'Non configurato', 'Program blocks': 'Blocchi del programma', 'Week blocks': 'Blocchi della settimana', 'Configure program blocks': 'Configura i blocchi del programma', 'This program has no configured block set. Choose a mode and select blocks.': 'Questo programma non ha blocchi configurati. Scegli una modalità e seleziona i blocchi.', 'Catalog composition is unavailable until the database is updated.': 'La composizione del catalogo non è disponibile finché il database non viene aggiornato.', 'Choose blocks for this varying week.': 'Scegli i blocchi per questa settimana variabile.', 'This program varies by week.': 'I blocchi del programma variano ogni settimana.', 'Select at least one block.': 'Seleziona almeno un blocco.', 'Save composition': 'Salva composizione', 'Saving composition…': 'Salvataggio della composizione…', 'Could not load block composition.': 'Impossibile caricare la composizione dei blocchi.', 'Could not save block composition.': 'Impossibile salvare la composizione dei blocchi.', 'Program mode updated.': 'Modalità del programma aggiornata.', 'Block composition saved.': 'Composizione dei blocchi salvata.', 'Retry catalog': 'Riprova a caricare il catalogo', 'Choose this week’s blocks': 'Scegli i blocchi di questa settimana', 'Configure same-every-week blocks': 'Configura gli stessi blocchi ogni settimana', 'Configure varying weeks': 'Configura settimane diverse', 'Could not load the block catalog.': 'Impossibile caricare il catalogo dei blocchi.', 'Could not create the block catalog item.': 'Impossibile creare la voce del catalogo.',
   })
   Object.assign(pageTranslations.fr, {
     'Technique and Warm-Ups': 'Technique et échauffements', 'Chords and Rhythm': 'Accords et rythme', 'Scales and Fretboard Geography': 'Gammes et repérage sur le manche', 'Ear Training': 'Formation de l’oreille', 'Repertoire and Songwork': 'Répertoire et travail des morceaux', 'Improvisation and Composition': 'Improvisation et composition',
+    'Replace block': 'Remplacer le bloc',
+    'Initial week blocks': 'Blocs initiaux des semaines', 'No scheduled weeks for this program.': 'Aucune semaine planifiée pour ce programme.',
     'Block categories': 'Catégories de blocs', 'Blocks in category': 'Blocs de la catégorie', 'No blocks in this category.': 'Aucun bloc dans cette catégorie.', 'Loading blocks…': 'Chargement des blocs…', '{category}: {count} blocks': '{category} : {count} blocs', '{label} selected': '{label} sélectionné', 'Selected': 'Sélectionné', 'Created {label}. Choose it to add.': '{label} a été créé. Sélectionnez-le pour l’ajouter.', 'Could not create the block.': 'Impossible de créer le bloc.', 'Custom block name': 'Nom du bloc personnalisé', 'Create a custom block': 'Créer un bloc personnalisé', 'Creating…': 'Création…', 'Create block': 'Créer le bloc',
     'Chromatic': 'Chromatique', '2 notes per string': '2 notes par corde', 'Technique': 'Technique', 'Alternate picking': 'Aller-retour', 'Legato': 'Legato', 'Rhythm': 'Rythme', 'Chord changes': 'Changements d’accords', 'Barre chords': 'Accords barrés', 'Strumming patterns': 'Motifs de rythmiques', 'Major scales': 'Gammes majeures', 'Minor scales': 'Gammes mineures', 'Pentatonic scales': 'Gammes pentatoniques', 'Notes on the fretboard': 'Notes sur le manche', 'Notes': 'Notes', 'Intervals': 'Intervalles', 'Chords': 'Accords', 'Repertoire': 'Répertoire', 'Learn a new song': 'Apprendre un nouveau morceau', 'Evening Practice': 'Pratique du soir', 'Harm./Improv.': 'Harmonie/Improv.', 'Jam to track': 'Jouer sur une piste', 'Songwriting': 'Écriture de chansons', 'Learning': 'Apprentissage',
     'Block composition': 'Composition des blocs', 'Same every week': 'Identique chaque semaine', 'Varies by week': 'Variable selon la semaine', 'Not configured': 'Non configuré', 'Program blocks': 'Blocs du programme', 'Week blocks': 'Blocs de la semaine', 'Configure program blocks': 'Configurer les blocs du programme', 'This program has no configured block set. Choose a mode and select blocks.': 'Ce programme n’a pas de blocs configurés. Choisissez un mode et sélectionnez des blocs.', 'Catalog composition is unavailable until the database is updated.': 'La composition du catalogue est indisponible tant que la base de données n’est pas mise à jour.', 'Choose blocks for this varying week.': 'Choisissez les blocs de cette semaine variable.', 'This program varies by week.': 'Les blocs du programme varient selon la semaine.', 'Select at least one block.': 'Sélectionnez au moins un bloc.', 'Save composition': 'Enregistrer la composition', 'Saving composition…': 'Enregistrement de la composition…', 'Could not load block composition.': 'Impossible de charger la composition des blocs.', 'Could not save block composition.': 'Impossible d’enregistrer la composition des blocs.', 'Program mode updated.': 'Mode du programme mis à jour.', 'Block composition saved.': 'Composition des blocs enregistrée.', 'Retry catalog': 'Réessayer le chargement du catalogue', 'Choose this week’s blocks': 'Choisir les blocs de cette semaine', 'Configure same-every-week blocks': 'Configurer les mêmes blocs chaque semaine', 'Configure varying weeks': 'Configurer des semaines variables', 'Could not load the block catalog.': 'Impossible de charger le catalogue de blocs.', 'Could not create the block catalog item.': 'Impossible de créer l’élément du catalogue.',
@@ -566,6 +616,75 @@ Object.assign(pageTranslations.ru, { 'Notes': 'Заметки', 'Musical notes':
 Object.assign(pageTranslations.it, { 'Musical notes': 'Note' })
 Object.assign(pageTranslations.fr, { 'Musical notes': 'Notes' })
 
+Object.assign(pageTranslations.en, {
+  'Remove this week?': 'Remove this week?',
+  'Later weeks will be renumbered and their dates moved back by this week’s duration.': 'Later weeks will be renumbered and their dates moved back by this week’s duration.',
+  'Open the Frankenstrat note to read about the guitar shown here.': 'Open the Frankenstrat note to read about the guitar shown here.',
+  'After closing this tour, use Help to replay this screen’s cards anytime.': 'After closing this tour, use Help to replay this screen’s cards anytime.',
+  'Choose songs for this week in Repertoire. Save plan stores their selection.': 'Choose songs for this week in Repertoire. Save plan stores their selection.',
+  'Open Practice for the selected week. Unsaved edits ask for your decision first.': 'Open Practice for the selected week. Unsaved edits ask for your decision first.',
+  'Block details': 'Block details', 'Learning materials': 'Learning materials',
+  'Open Details for this block’s timer, optional built-in references and your local materials.': 'Open Details for this block’s timer, optional built-in references and your local materials.',
+  'Use this information button for supported files, links and device-local storage limits.': 'Use this information button for supported files, links and device-local storage limits.',
+  'materials.builtIn': 'Some blocks offer optional built-in guidance and PDFs when Default exercises is enabled in Settings.',
+  'materials.formats': 'Add PDF, image, plain-text (.txt), audio or video files, or save YouTube and other HTTP(S) links.',
+  'materials.local': 'Your added files, saved links and playback bookmarks belong to the current account in this browser on this device. They are not uploaded or synced. Older unassigned materials are preserved but temporarily unavailable. Browser data is not encrypted by the app: account isolation does not protect against OS access, DevTools or malicious scripts. Clearing or eviction of browser data, or changing the site address, can make files unavailable.',
+  'materials.network': 'Saving a link does not download its content. Remote links, YouTube and built-in PDFs need a connection; automatic downloads and remote offline access are not provided.',
+  'materials.browser': 'Audio and video playback depends on browser and codec support. PDFs open inline where supported, with an Open in new tab fallback.',
+  'materials.bookmarks': 'Playback bookmarks mark times in audio, video and YouTube, not PDF pages. Guitar Pro files are not supported.',
+})
+Object.assign(pageTranslations.ru, {
+  'Remove this week?': 'Удалить эту неделю?',
+  'Later weeks will be renumbered and their dates moved back by this week’s duration.': 'Последующие недели будут перенумерованы, а их даты сдвинуты раньше на длительность этой недели.',
+  'Open the Frankenstrat note to read about the guitar shown here.': 'Откройте заметку о Frankenstrat, чтобы узнать об этой гитаре.',
+  'After closing this tour, use Help to replay this screen’s cards anytime.': 'Закрыв тур, нажмите «Помощь», чтобы снова посмотреть карточки этого экрана.',
+  'Choose songs for this week in Repertoire. Save plan stores their selection.': 'Выберите песни на неделю в «Репертуаре». Кнопка «Сохранить план» сохранит выбор.',
+  'Open Practice for the selected week. Unsaved edits ask for your decision first.': 'Откройте практику для выбранной недели. При несохранённых изменениях сначала появится запрос.',
+  'Block details': 'Подробности блока', 'Learning materials': 'Учебные материалы',
+  'Open Details for this block’s timer, optional built-in references and your local materials.': 'Откройте «Подробнее»: здесь таймер блока, необязательные встроенные материалы и ваши локальные файлы.',
+  'Use this information button for supported files, links and device-local storage limits.': 'Эта кнопка расскажет о поддерживаемых файлах, ссылках и ограничениях локального хранения.',
+  'materials.builtIn': 'В некоторых блоках есть необязательные встроенные подсказки и PDF. Они видны, если в настройках включены упражнения по умолчанию.',
+  'materials.formats': 'Добавляйте PDF, изображения, обычный текст (.txt), аудио и видео или сохраняйте ссылки YouTube и другие HTTP(S)-ссылки.',
+  'materials.local': 'Добавленные файлы, ссылки и закладки принадлежат текущему аккаунту в этом браузере на этом устройстве. Они не загружаются на сервер и не синхронизируются. Старые материалы без владельца сохранены, но временно недоступны. Приложение не шифрует данные браузера: разделение аккаунтов не защищает от доступа через ОС, DevTools или вредоносные скрипты. Очистка или автоматическое удаление данных браузера и смена адреса сайта могут сделать файлы недоступными.',
+  'materials.network': 'Сохранение ссылки не скачивает её содержимое. Для внешних ссылок, YouTube и встроенных PDF нужно подключение. Автоматического скачивания и офлайн-доступа к удалённым материалам нет.',
+  'materials.browser': 'Воспроизведение аудио и видео зависит от браузера и кодеков. Если браузер не показывает PDF внутри страницы, используйте «Открыть в новой вкладке».',
+  'materials.bookmarks': 'Закладки отмечают время в аудио, видео и YouTube, а не страницы PDF. Файлы Guitar Pro не поддерживаются.',
+})
+Object.assign(pageTranslations.it, {
+  'Remove this week?': 'Rimuovere questa settimana?',
+  'Later weeks will be renumbered and their dates moved back by this week’s duration.': 'Le settimane successive saranno rinumerate e le loro date anticipate della durata di questa settimana.',
+  'Open the Frankenstrat note to read about the guitar shown here.': 'Apri la nota sulla Frankenstrat per conoscere la chitarra mostrata qui.',
+  'After closing this tour, use Help to replay this screen’s cards anytime.': 'Dopo aver chiuso il tour, usa Aiuto per rivedere le schede di questa schermata.',
+  'Choose songs for this week in Repertoire. Save plan stores their selection.': 'Scegli i brani della settimana in Repertorio. Salva piano memorizza la selezione.',
+  'Open Practice for the selected week. Unsaved edits ask for your decision first.': 'Apri Pratica per la settimana selezionata. Prima ti verrà chiesto come gestire le modifiche non salvate.',
+  'Block details': 'Dettagli del blocco', 'Learning materials': 'Materiali didattici',
+  'Open Details for this block’s timer, optional built-in references and your local materials.': 'Apri Dettagli per il timer del blocco, i riferimenti integrati facoltativi e i tuoi materiali locali.',
+  'Use this information button for supported files, links and device-local storage limits.': 'Questo pulsante informa sui file e link supportati e sui limiti della memoria locale.',
+  'materials.builtIn': 'Alcuni blocchi offrono indicazioni e PDF integrati facoltativi quando gli esercizi predefiniti sono abilitati nelle Impostazioni.',
+  'materials.formats': 'Aggiungi PDF, immagini, testo semplice (.txt), file audio o video, oppure salva link YouTube e altri link HTTP(S).',
+  'materials.local': 'File, link e segnalibri appartengono all’account corrente in questo browser su questo dispositivo. Non vengono caricati né sincronizzati. I vecchi materiali senza proprietario sono conservati ma temporaneamente non disponibili. L’app non cifra i dati del browser: la separazione degli account non protegge dall’accesso tramite sistema operativo, DevTools o script dannosi. La cancellazione o rimozione automatica dei dati del browser e il cambio di indirizzo del sito possono rendere i file inaccessibili.',
+  'materials.network': 'Salvare un link non ne scarica il contenuto. Link remoti, YouTube e PDF integrati richiedono una connessione; non sono previsti download automatici né accesso offline ai contenuti remoti.',
+  'materials.browser': 'La riproduzione audio e video dipende dal browser e dai codec. I PDF si aprono nella pagina se supportati, altrimenti usa Apri in una nuova scheda.',
+  'materials.bookmarks': 'I segnalibri indicano tempi in audio, video e YouTube, non pagine PDF. I file Guitar Pro non sono supportati.',
+})
+Object.assign(pageTranslations.fr, {
+  'Remove this week?': 'Supprimer cette semaine ?',
+  'Later weeks will be renumbered and their dates moved back by this week’s duration.': 'Les semaines suivantes seront renumérotées et leurs dates avancées de la durée de cette semaine.',
+  'Open the Frankenstrat note to read about the guitar shown here.': 'Ouvrez la note sur la Frankenstrat pour découvrir la guitare présentée ici.',
+  'After closing this tour, use Help to replay this screen’s cards anytime.': 'Après avoir fermé cette visite, utilisez Aide pour revoir les fiches de cet écran.',
+  'Choose songs for this week in Repertoire. Save plan stores their selection.': 'Choisissez les morceaux de la semaine dans Répertoire. Enregistrer le plan mémorise la sélection.',
+  'Open Practice for the selected week. Unsaved edits ask for your decision first.': 'Ouvrez Pratique pour la semaine sélectionnée. Une confirmation précède tout abandon des modifications.',
+  'Block details': 'Détails du bloc', 'Learning materials': 'Supports pédagogiques',
+  'Open Details for this block’s timer, optional built-in references and your local materials.': 'Ouvrez Détails pour le minuteur, les références intégrées facultatives et vos documents locaux.',
+  'Use this information button for supported files, links and device-local storage limits.': 'Ce bouton présente les fichiers et liens acceptés et les limites du stockage local.',
+  'materials.builtIn': 'Certains blocs proposent des conseils et PDF intégrés facultatifs lorsque les exercices par défaut sont activés dans les Paramètres.',
+  'materials.formats': 'Ajoutez des PDF, images, textes bruts (.txt), fichiers audio ou vidéo, ou enregistrez des liens YouTube et autres liens HTTP(S).',
+  'materials.local': 'Fichiers, liens et signets appartiennent au compte actuel dans ce navigateur sur cet appareil. Ils ne sont ni envoyés ni synchronisés. Les anciens documents sans propriétaire sont conservés mais temporairement indisponibles. L’application ne chiffre pas les données du navigateur : la séparation des comptes ne protège pas contre l’accès par le système, DevTools ou des scripts malveillants. L’effacement ou l’éviction des données du navigateur et un changement d’adresse du site peuvent rendre les fichiers indisponibles.',
+  'materials.network': 'Enregistrer un lien ne télécharge pas son contenu. Les liens distants, YouTube et PDF intégrés nécessitent une connexion ; aucun téléchargement automatique ni accès hors ligne aux contenus distants n’est proposé.',
+  'materials.browser': 'La lecture audio et vidéo dépend du navigateur et des codecs. Les PDF s’affichent dans la page si possible ; sinon, utilisez Ouvrir dans un nouvel onglet.',
+  'materials.bookmarks': 'Les signets repèrent des instants dans les fichiers audio, vidéo et YouTube, pas des pages PDF. Les fichiers Guitar Pro ne sont pas pris en charge.',
+})
+
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)
 Object.assign(translations.it, pageTranslations.it)
@@ -582,10 +701,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    void supabase.from('app_settings').select('language').maybeSingle().then(({ data }) => {
-      if (mounted && isLanguage(data?.language)) setLanguage(data.language)
-    })
-    return () => { mounted = false }
+    const loadLanguage = () => {
+      let access
+      try { access = captureLocalMaterialAccess() } catch { setLanguage(defaultLanguage); return }
+      void Promise.resolve(supabase.from('app_settings').select('language').maybeSingle()).then(({ data }) => {
+        if (mounted && isLocalMaterialAccessCurrent(access) && isLanguage(data?.language)) setLanguage(data.language)
+      }).catch(() => {})
+    }
+    const unsubscribe = onLocalMaterialInvalidation(loadLanguage)
+    loadLanguage()
+    return () => { mounted = false; unsubscribe() }
   }, [])
 
   function t(key: string, values?: TranslationValues) {

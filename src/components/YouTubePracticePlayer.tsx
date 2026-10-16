@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { isLocalMaterialIdentityReady, onLocalMaterialInvalidation, onLocalMaterialVerification } from '../lib/localMaterialAccess'
 import { useI18n } from '../lib/i18n'
 import { loadYouTubeApi, type YouTubePlayer } from '../lib/youtubeApi'
 import { toYouTubeApiSrc, toYouTubeWatchUrl } from '../lib/youtube'
@@ -72,6 +73,7 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
   }
 
   const sample = useEffectEvent((player: YouTubePlayer, playbackState: number) => {
+    if (!isLocalMaterialIdentityReady()) return
     const time = player.getCurrentTime()
     const length = player.getDuration()
     setPosition(Number.isFinite(time) ? time : 0)
@@ -113,6 +115,17 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
       setState(-1)
       setError(message)
     }
+    const detach = () => {
+      cancelled = true
+      clearTimeout(readyTimer)
+      playerRef.current = null
+      seekingRef.current = null
+      player?.destroy()
+      player = null
+      host.replaceChildren()
+    }
+    const unsubscribe = onLocalMaterialInvalidation(detach)
+    const stopVerification = onLocalMaterialVerification((ready) => { if (!ready) player?.pauseVideo() })
     void loadYouTubeApi().then((api) => {
       if (cancelled) return
       const frame = document.createElement('iframe')
@@ -140,6 +153,7 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
           },
           onStateChange: ({ target, data }) => {
             if (cancelled || failed) return
+            if (!isLocalMaterialIdentityReady()) { if (data === 1) target.pauseVideo(); return }
             setState(data)
             const intent = transitionRef.current.observe(data)
             if (intent) reportPlayback(intent)
@@ -153,12 +167,9 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
       playerRef.current = player
     }).catch(() => fail('YouTube could not load. Check your connection or open on YouTube.'))
     return () => {
-      cancelled = true
-      clearTimeout(readyTimer)
-      playerRef.current = null
-      seekingRef.current = null
-      player?.destroy()
-      host.replaceChildren()
+      unsubscribe()
+      stopVerification()
+      detach()
     }
   }, [materialId, url, retry])
 

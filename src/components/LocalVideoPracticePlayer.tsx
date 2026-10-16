@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
 import { useI18n } from '../lib/i18n'
 import { clampVideoPosition, createPlaybackTransition, loopSeekTarget, validDuration, videoShortcut, type LoopRange, type PlaybackIntent } from '../lib/youtubePractice'
 import VideoPracticeControls from './VideoPracticeControls'
+import { isLocalMaterialIdentityReady, onLocalMaterialInvalidation, onLocalMaterialVerification } from '../lib/localMaterialAccess'
 
 type Props = {
   kind?: 'video' | 'audio'
@@ -32,7 +33,20 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
   const shortcuts = kind === 'audio'
     ? t('Audio shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native audio controls keep their own shortcuts.')
     : t('Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.')
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false } }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    const media = videoRef.current ?? audioRef.current
+    if (media) media.src = url
+    const detach = () => {
+      mountedRef.current = false
+      transitionRef.current.cancelPlay()
+      rangeRef.current = null
+      if (media) { media.pause(); media.removeAttribute('src'); media.load() }
+    }
+    const unsubscribe = onLocalMaterialInvalidation(detach)
+    const stopVerification = onLocalMaterialVerification((ready) => { if (!ready) media?.pause() })
+    return () => { unsubscribe(); stopVerification(); detach() }
+  }, [url, kind])
   useEffect(() => { playbackCallbackRef.current = onPlaybackConfirmed }, [onPlaybackConfirmed])
 
   function mediaElement(): HTMLMediaElement | null {
@@ -41,7 +55,7 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
 
   function play(explicit: boolean) {
     const media = mediaElement()
-    if (!media) return
+    if (!media || !mountedRef.current || !isLocalMaterialIdentityReady()) return
     automaticRestartRef.current = !explicit
     if (explicit) transitionRef.current.requestPlay()
     else transitionRef.current.automaticPlay()
@@ -66,6 +80,7 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
   }
 
   function sample(media: HTMLMediaElement, state: number) {
+    if (!mountedRef.current || !isLocalMaterialIdentityReady()) return
     setPosition(Number.isFinite(media.currentTime) ? media.currentTime : 0)
     const range = rangeRef.current
     const target = loopSeekTarget(range && range.end <= media.duration ? range : null, media.currentTime, state, seekingRef.current)
@@ -84,6 +99,7 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
     onPlay: () => { if (!automaticRestartRef.current) transitionRef.current.requestPlay() },
     onPlaying: () => {
       if (!mountedRef.current) return
+      if (!isLocalMaterialIdentityReady()) { mediaElement()?.pause(); return }
       setPlaying(true)
       const intent = transitionRef.current.observe(1)
       automaticRestartRef.current = false

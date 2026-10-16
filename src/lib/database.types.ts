@@ -421,6 +421,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      consume_account_gateway_budget_v1: {
+        Args: { p_login_hash: string; p_action: string }
+        Returns: { allowed: boolean; retry_after_seconds: number }[]
+      }
       continue_default_program: {
         Args: { p_focuses: string[]; p_language: string; p_tasks: string | null }
         Returns: {

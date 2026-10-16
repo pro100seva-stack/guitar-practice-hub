@@ -8,6 +8,7 @@ export type DefaultMaterial = {
 
 const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
   en: {
+    two_notes_per_string: [{ title: '2 notes per string', detail: 'Two-notes-per-string exercise reference.' }],
     chromatic: [
       { title: 'Easy chromatic pattern', detail: 'Optionally play 1-2-3-4 across the strings, then reverse. Keep it easy and even.' },
       { title: 'Finger independence', detail: 'Keep each finger close to the fretboard and use a relaxed, even attack.' },
@@ -42,6 +43,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
     ],
   },
   ru: {
+    two_notes_per_string: [{ title: '2 ноты на струне', detail: 'Материал для упражнения с двумя нотами на струне.' }],
     chromatic: [{ title: 'Простой хроматический рисунок', detail: 'По желанию сыграйте 1-2-3-4 на струнах, затем в обратном порядке. Играйте легко и ровно.' }, { title: 'Независимость пальцев', detail: 'Держите пальцы близко к грифу и играйте расслабленно и ровно.' }],
     technique: [{ title: 'Переменный штрих', detail: 'Начните медленно с метрономом и ускоряйтесь только при чистом звучании каждой ноты.' }, { title: 'Контроль легато', detail: 'Отрабатывайте хаммер-оны и пулл-оффы с одинаковой громкостью нот.' }],
     rhythm: [{ title: 'Ровный бой знакомого аккорда', detail: 'Играйте бой знакомого аккорда, считая ровный пульс в комфортном темпе.' }, { title: 'Деление под метроном', detail: 'Считайте четверти, восьмые и шестнадцатые, затем добавляйте синкопы.' }, { title: 'Ровный бой', detail: 'Сохраняйте равномерное движение правой руки, включая беззвучные взмахи.' }],
@@ -52,6 +54,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
     learning: [{ title: 'Активное слушание', detail: 'Запишите одну технику, фразу или идею, которую попробуете сразу после просмотра.' }, { title: 'Заметки по материалу', detail: 'Сохраняйте один короткий вывод после каждого курса, видео или занятия теорией.' }],
   },
   it: {
+    two_notes_per_string: [{ title: '2 note per corda', detail: 'Materiale per l’esercizio con due note per corda.' }],
     chromatic: [{ title: 'Schema cromatico semplice', detail: 'Se ti va, suona 1-2-3-4 sulle corde e poi al contrario. Mantieni un ritmo facile e uniforme.' }, { title: 'Indipendenza delle dita', detail: 'Tieni le dita vicine alla tastiera e usa un attacco rilassato e uniforme.' }],
     technique: [{ title: 'Pennata alternata', detail: 'Inizia lentamente con il metronomo e aumenta la velocità solo mantenendo note pulite.' }, { title: 'Controllo del legato', detail: 'Esercita hammer-on e pull-off con volume uniforme tra note pizzicate e legate.' }],
     rhythm: [{ title: 'Accompagnamento regolare', detail: 'Suona un accordo familiare contando un ritmo regolare, a un’andatura confortevole.' }, { title: 'Suddivisioni con metronomo', detail: 'Conta quarti, ottavi e sedicesimi prima di aggiungere sincopi.' }, { title: 'Strumming uniforme', detail: 'Mantieni costante il movimento della mano, anche nei colpi silenziosi.' }],
@@ -62,6 +65,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
     learning: [{ title: 'Ascolto attivo', detail: 'Annota una tecnica, frase o idea da provare subito dopo il video.' }, { title: 'Note di riferimento', detail: 'Conserva un breve insegnamento per ogni corso, video o sessione di teoria.' }],
   },
   fr: {
+    two_notes_per_string: [{ title: '2 notes par corde', detail: 'Support pour l’exercice avec deux notes par corde.' }],
     chromatic: [{ title: 'Motif chromatique simple', detail: 'Si vous le souhaitez, jouez 1-2-3-4 sur les cordes, puis en sens inverse. Restez à l’aise et régulier.' }, { title: 'Indépendance des doigts', detail: 'Gardez les doigts près du manche et utilisez une attaque détendue et régulière.' }],
     technique: [{ title: 'Aller-retour', detail: 'Commencez lentement avec le métronome et accélérez seulement si chaque note reste nette.' }, { title: 'Contrôle du legato', detail: 'Travaillez les hammer-ons et pull-offs avec un volume égal entre les notes.' }],
     rhythm: [{ title: 'Battement régulier sur un accord familier', detail: 'Grattez un accord familier en comptant une pulsation régulière, à votre rythme.' }, { title: 'Subdivisions au métronome', detail: 'Comptez les noires, croches et doubles-croches avant d’ajouter des syncopes.' }, { title: 'Régularité du mouvement', detail: 'Gardez la main en mouvement de façon régulière, même pendant les coups silencieux.' }],
@@ -74,8 +78,7 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
 }
 
 const suppliedFiles: Record<string, string> = {
-  chromatic: '/default-exercises/chromatic/Warmup.pdf',
-  learning: '/default-exercises/learning/Solo-On-Guitar-The-Improvisers-Toolkit-PDF.pdf',
+  two_notes_per_string: '/default-exercises/2-notes-per-string/2-notes-per-string.pdf',
 }
 
 export function getDefaultMaterials(language: Language, blockKey: string) {

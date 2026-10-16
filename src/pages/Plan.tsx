@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
@@ -7,7 +7,9 @@ import { formatDateRange, localeForLanguage } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { isPlanWeekDirty, requestWeekChange, resolveWeekChange, settlePendingWeekChange, settleWeekLoad, type PendingWeekChange, type PlanWeekDraft, type WeekLoadResult } from '../lib/planWeekDirty'
 import BlockGallery from '../components/BlockGallery'
-import { createOtherBlock, loadActiveCatalog, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadProgramsWithBlockMode, readProgramBlockMode, replacePlanWeekBlocks, replaceProgramBlocks, setProgramBlockMode, type CatalogBlock, type ProgramBlockMode } from '../lib/catalogApi'
+import PickerDialog from '../components/PickerDialog'
+import RemoveBlockIcon from '../components/icons/RemoveBlockIcon'
+import { catalogBlockLabel, createOtherBlock, loadActiveCatalog, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadProgramsWithBlockMode, readProgramBlockMode, replacePlanWeekBlocks, replaceProgramBlocks, setProgramBlockMode, type CatalogBlock, type ProgramBlockMode } from '../lib/catalogApi'
 import { queryWeekSongsWithSortOrder } from '../lib/weekSongsApi'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
@@ -26,7 +28,8 @@ type EditableTodo = {
   done: boolean
 }
 
-type WeekChange = { kind: 'load'; weekId: string } | { kind: 'add' } | { kind: 'remove' } | { kind: 'practice' }
+type WeekRemoval = { week: ScheduledPlanWeek; programName: string; draftKey: string; trigger: HTMLElement | null }
+type WeekChange = { kind: 'load'; weekId: string } | { kind: 'add' } | { kind: 'remove'; removal: WeekRemoval } | { kind: 'practice' } | { kind: 'program'; programId: string }
 type WeekChangePrompt = { change: WeekChange; trigger: HTMLElement | null }
 
 function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
@@ -70,6 +73,18 @@ function getMonthGrid(monthDate: Date) {
   }
 
   return cells
+}
+
+function scheduledCompositionWeeks(weeks: readonly PlanWeek[], programId: string) {
+  return weeks.filter(isScheduledWeek).filter(item => item.program_id === programId)
+    .sort((first, second) => first.start_date.localeCompare(second.start_date) || first.week_number - second.week_number || first.id.localeCompare(second.id))
+}
+
+function selectCompositionBlock(current: string[], key: string, replaceKey: string | null) {
+  if (current.includes(key)) return current
+  if (!replaceKey) return [...current, key]
+  if (!current.includes(replaceKey)) return current
+  return current.map((item) => item === replaceKey ? key : item)
 }
 
 const POPOVER_WIDTH = 320
@@ -172,6 +187,15 @@ export default function Plan() {
   const [compositionError, setCompositionError] = useState<string | null>(null)
   const [compositionMessage, setCompositionMessage] = useState<string | null>(null)
   const [compositionRetry, setCompositionRetry] = useState(0)
+  const [compositionBaseline, setCompositionBaseline] = useState<{ mode: ProgramBlockMode; programKeys: string[]; weekKeys: string[] } | null>(null)
+  const [compositionPicker, setCompositionPicker] = useState<{ scope: 'program' | 'week'; replaceKey: string | null; scopeKey: string; revision: number } | null>(null)
+  const compositionHierarchyId = useId()
+  const [compositionProgramExpansion, setCompositionProgramExpansion] = useState<{ programId: string; expanded: boolean } | null>(null)
+  const [compositionWeekExpansion, setCompositionWeekExpansion] = useState<{ scopeKey: string; expanded: boolean } | null>(null)
+  const compositionScopeRef = useRef(0)
+  const savedCompositionModeRef = useRef<{ scope: number; mode: ProgramBlockMode } | null>(null)
+  const compositionAcknowledgementRef = useRef<{ programId: string; weekId: string | null; mode: ProgramBlockMode; retry: number } | null>(null)
+  const weekLoadRequestRef = useRef(0)
   const [week, setWeek] = useState<ScheduledPlanWeek | null>(null)
   const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -197,6 +221,10 @@ export default function Plan() {
     const [otherProgramName, setOtherProgramName] = useState('')
   const [loadedDraft, setLoadedDraft] = useState<PlanWeekDraft | null>(null)
   const [pendingChange, setPendingChange] = useState<PendingWeekChange<WeekChangePrompt> | null>(null)
+  const [removalConfirmation, setRemovalConfirmation] = useState<WeekRemoval | null>(null)
+  const removalSubmittingRef = useRef(false)
+  const submittedRemovalsRef = useRef(new WeakSet<WeekRemoval>())
+  const removalCancelRef = useRef<HTMLButtonElement | null>(null)
   const urlPendingRef = useRef(false)
   const discardPromptRef = useRef<HTMLDivElement | null>(null)
   const weekHeadingRef = useRef<HTMLHeadingElement | null>(null)
@@ -205,9 +233,26 @@ export default function Plan() {
   const weekPickerButtonRef = useRef<HTMLButtonElement | null>(null)
   const requestedWeekParam = searchParams.get('week')
   const handledWeekParamRef = useRef(requestedWeekParam)
-  const isDirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
+  const compositionDirty = compositionBaseline !== null && (
+    compositionMode !== compositionBaseline.mode
+    || JSON.stringify(programBlockKeys) !== JSON.stringify(compositionBaseline.programKeys)
+    || JSON.stringify(weekBlockKeys) !== JSON.stringify(compositionBaseline.weekKeys)
+  )
+  const isDirty = compositionDirty || isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
+  const removalDraftKey = JSON.stringify({ week, selectedWeekId, weeks, loadedDraft, focus, selectedProgramId, otherProgramName, weekStartDate, weekEndDate, tasks, todos, selectedSongIds, newSongName, compositionMode, programBlockKeys, weekBlockKeys, compositionBaseline })
+  const removalContextRef = useRef({ draftKey: removalDraftKey, saving, compositionSaving, loading, weekId: week?.id, weekCount: weeks.length })
+  removalContextRef.current = { draftKey: removalDraftKey, saving, compositionSaving, loading, weekId: week?.id, weekCount: weeks.length }
+
+  useLayoutEffect(() => {
+    if (removalConfirmation && (removalConfirmation.draftKey !== removalDraftKey || saving || compositionSaving || loading)) setRemovalConfirmation(null)
+  }, [removalConfirmation, removalDraftKey, saving, compositionSaving, loading])
+  useEffect(() => {
+    if (removalConfirmation) removalCancelRef.current?.focus({ preventScroll: true })
+  }, [removalConfirmation])
   const rangePickerRef = useRef<HTMLDivElement | null>(null)
   const translate = useEffectEvent((key: string) => t(key))
+  const compositionProgramId = programs.find((item) => item.id === selectedProgramId)?.id
+  const storedCompositionMode = readProgramBlockMode(programs.find((item) => item.id === selectedProgramId)?.block_set_mode)
 
   const coveredDates = useMemo(() => {
     const availableDates = new Set<string>()
@@ -256,13 +301,21 @@ export default function Plan() {
   }, [])
 
   useEffect(() => {
-    const program = programs.find((item) => item.id === selectedProgramId)
-    if (!program) {
+    const acknowledgement = compositionAcknowledgementRef.current
+    compositionAcknowledgementRef.current = null
+    if (acknowledgement && acknowledgement.programId === compositionProgramId && acknowledgement.weekId === selectedWeekId && acknowledgement.mode === storedCompositionMode && acknowledgement.retry === compositionRetry) return
+    compositionScopeRef.current++
+    savedCompositionModeRef.current = null
+    setCompositionPicker(null)
+    setCompositionBaseline(null)
+    setCompositionError(null)
+    if (!compositionProgramId) {
       setProgramBlockKeys([])
       setWeekBlockKeys([])
       setCompositionMode('legacy_unconfigured')
       setCompositionError(null)
       setCatalogError(null)
+      setCompositionLoading(false)
       return
     }
 
@@ -279,11 +332,14 @@ export default function Plan() {
 
     setCompositionLoading(true)
     setCatalogError(null)
-    const mode = readProgramBlockMode(program.block_set_mode)
+    const mode = storedCompositionMode
+    setCompositionMode(mode)
+    setProgramBlockKeys([])
+    setWeekBlockKeys([])
     void Promise.all([
       loadActiveCatalog(),
-      loadProgramBlockKeys(program.id),
-      mode === 'varies_by_week' && week?.program_id === program.id && selectedWeekId
+      loadProgramBlockKeys(compositionProgramId),
+      mode === 'varies_by_week' && week?.program_id === compositionProgramId && selectedWeekId
         ? loadPlanWeekBlockKeys(selectedWeekId)
         : Promise.resolve([] as string[]),
     ]).then(([blocks, sharedKeys, selectedWeekKeys]) => {
@@ -292,6 +348,7 @@ export default function Plan() {
       setProgramBlockKeys(sharedKeys)
       setWeekBlockKeys(selectedWeekKeys)
       setCompositionMode(mode)
+      setCompositionBaseline({ mode, programKeys: sharedKeys, weekKeys: selectedWeekKeys })
     }).catch((loadError: unknown) => {
       if (cancelled) return
       setCatalogError(loadError instanceof Error ? loadError.message : translate('Could not load block composition.'))
@@ -300,7 +357,7 @@ export default function Plan() {
     })
 
     return () => { cancelled = true }
-  }, [programs, legacyProgramSchema, selectedProgramId, selectedWeekId, week?.program_id, compositionRetry])
+  }, [compositionProgramId, storedCompositionMode, legacyProgramSchema, selectedProgramId, selectedWeekId, week?.program_id, compositionRetry])
 
   useEffect(() => {
     if (!week) {
@@ -365,12 +422,22 @@ export default function Plan() {
   function runWeekChange(change: WeekChange) {
     if (change.kind === 'load') void loadWeek(change.weekId)
     else if (change.kind === 'add') void addWeek()
-    else if (change.kind === 'remove') void removeWeek()
+    else if (change.kind === 'remove') {
+      if (change.removal.draftKey !== removalContextRef.current.draftKey) return
+      change.removal.trigger?.focus({ preventScroll: true })
+      setRemovalConfirmation(change.removal)
+    }
+    else if (change.kind === 'program') {
+      setSelectedProgramId(change.programId)
+      setCompositionPicker(null)
+      setCompositionMessage(null)
+    }
     else if (selectedWeekId) navigate(`/practice?week=${encodeURIComponent(selectedWeekId)}`)
   }
 
   function guardWeekChange(change: WeekChange, trigger: HTMLElement | null, fromUrl = false) {
-    const request = requestWeekChange(isDirty, { change, trigger }, loadedDraft)
+    if (saving || compositionSaving) return
+    const request = requestWeekChange(change.kind === 'program' ? compositionDirty : isDirty, { change, trigger }, loadedDraft)
     if (request.kind === 'run') {
       urlPendingRef.current = false
       setPendingChange(null)
@@ -383,7 +450,7 @@ export default function Plan() {
   }
 
   function resolvePendingChange(choice: 'discard' | 'keep') {
-    const resolution = resolveWeekChange(pendingChange, choice, { saving, baseline: loadedDraft })
+    const resolution = resolveWeekChange(pendingChange, choice, { saving: saving || compositionSaving, baseline: loadedDraft })
     if (resolution.kind === 'blocked') return
     const trigger = pendingChange?.action.trigger ?? null
     setPendingChange(null)
@@ -466,14 +533,22 @@ export default function Plan() {
 
   async function saveProgramComposition() {
     const program = programs.find((item) => item.id === selectedProgramId)
-    if (!program || compositionMode === 'legacy_unconfigured') return
-    const currentMode = readProgramBlockMode(program.block_set_mode)
+    if (!program || compositionMode === 'legacy_unconfigured' || compositionLoading || compositionSaving || catalogError) return
+    const scope = compositionScopeRef.current
+    const currentMode = savedCompositionModeRef.current?.scope === scope ? savedCompositionModeRef.current.mode : readProgramBlockMode(program.block_set_mode)
+    const savesSelectedWeek = compositionMode === 'varies_by_week' && currentMode !== 'legacy_unconfigured' && week?.program_id === program.id && selectedWeekId !== null
     if ((compositionMode === 'same_every_week' || currentMode === 'legacy_unconfigured') && programBlockKeys.length === 0) {
+      setCompositionError(t('Select at least one block.'))
+      return
+    }
+    if (savesSelectedWeek && weekBlockKeys.length === 0) {
       setCompositionError(t('Select at least one block.'))
       return
     }
 
     setCompositionSaving(true)
+    setCompositionPicker(null)
+    setPendingChange(null)
     setCompositionError(null)
     setCompositionMessage(null)
     try {
@@ -485,31 +560,49 @@ export default function Plan() {
           compositionMode,
           compositionMode === 'same_every_week' || currentMode === 'legacy_unconfigured' ? programBlockKeys : undefined,
         )
+        if (scope !== compositionScopeRef.current) return
+        savedCompositionModeRef.current = { scope, mode: compositionMode }
       }
+      if (scope !== compositionScopeRef.current) return
+      if (savesSelectedWeek && selectedWeekId) await replacePlanWeekBlocks(selectedWeekId, weekBlockKeys)
+      if (scope !== compositionScopeRef.current) return
+      const savedWeekKeys = currentMode === 'legacy_unconfigured' && compositionMode === 'varies_by_week' && week?.program_id === program.id ? programBlockKeys : weekBlockKeys
+      setWeekBlockKeys(savedWeekKeys)
+      setCompositionBaseline({ mode: compositionMode, programKeys: programBlockKeys, weekKeys: savedWeekKeys })
+      if (readProgramBlockMode(program.block_set_mode) !== compositionMode) compositionAcknowledgementRef.current = { programId: program.id, weekId: selectedWeekId, mode: compositionMode, retry: compositionRetry }
       setPrograms((current) => current.map((item) => item.id === program.id ? { ...item, block_set_mode: compositionMode } : item))
+      savedCompositionModeRef.current = null
       setCompositionMessage(t('Block composition saved.'))
     } catch (saveError) {
-      setCompositionError(saveError instanceof Error ? saveError.message : t('Could not save block composition.'))
+      if (scope === compositionScopeRef.current) {
+        const failure = saveError instanceof Error ? saveError.message : t('Could not save block composition.')
+        setCompositionError(savedCompositionModeRef.current?.scope === scope ? `${t('Program mode updated.')} ${t('Could not save block composition.')} ${failure}` : failure)
+      }
     } finally {
       setCompositionSaving(false)
     }
   }
 
   async function saveWeekComposition() {
-    if (!selectedWeekId || !week || week.program_id !== selectedProgramId || compositionMode !== 'varies_by_week') return
+    if (!selectedWeekId || !week || week.program_id !== selectedProgramId || compositionMode !== 'varies_by_week' || compositionLoading || compositionSaving || catalogError) return
+    const scope = compositionScopeRef.current
     if (weekBlockKeys.length === 0) {
       setCompositionError(t('Select at least one block.'))
       return
     }
 
     setCompositionSaving(true)
+    setCompositionPicker(null)
+    setPendingChange(null)
     setCompositionError(null)
     setCompositionMessage(null)
     try {
       await replacePlanWeekBlocks(selectedWeekId, weekBlockKeys)
+      if (scope !== compositionScopeRef.current) return
+      setCompositionBaseline((current) => current ? { ...current, weekKeys: weekBlockKeys } : current)
       setCompositionMessage(t('Block composition saved.'))
     } catch (saveError) {
-      setCompositionError(saveError instanceof Error ? saveError.message : t('Could not save block composition.'))
+      if (scope === compositionScopeRef.current) setCompositionError(saveError instanceof Error ? saveError.message : t('Could not save block composition.'))
     } finally {
       setCompositionSaving(false)
     }
@@ -521,9 +614,107 @@ export default function Plan() {
     return block
   }
 
-  function toggleBlockKey(setter: (update: (current: string[]) => string[]) => void, key: string) {
-    setter((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key])
-    setCompositionMessage(null)
+  function renderComposition(scope: 'program' | 'week') {
+    const keys = scope === 'program' ? programBlockKeys : weekBlockKeys
+    const setter = scope === 'program' ? setProgramBlockKeys : setWeekBlockKeys
+    const scopeKey = `${selectedProgramId}:${selectedWeekId}:${compositionMode}:${compositionRetry}`
+    const picker = compositionPicker?.scope === scope && compositionPicker.scopeKey === scopeKey ? compositionPicker : null
+    const openPicker = (replaceKey: string | null) => setCompositionPicker({ scope, replaceKey, scopeKey, revision: compositionScopeRef.current })
+    return <>
+      <ol aria-label={t(scope === 'week' ? 'Week blocks' : 'Block composition')} className="divide-y divide-slate-800">
+        {keys.map((key, index) => {
+          const block = catalogBlocks.find((item) => item.key === key)
+          return <li key={`${scope}:${index}`} className="flex min-h-14 flex-wrap items-center gap-2 py-2">
+            <span className="min-w-0 flex-1 break-words text-base text-slate-100">{block ? catalogBlockLabel(block, t) : key}</span>
+            <button type="button" aria-haspopup="dialog" aria-label={t('Replace block')} title={t('Replace block')} disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => openPicker(key)} className="icon-btn disabled:opacity-50">
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7h-9a6 6 0 0 0-6 6M16 3l4 4-4 4M4 17h9a6 6 0 0 0 6-6M8 13l-4 4 4 4" /></svg>
+            </button>
+            <button type="button" disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => {
+              setter((current) => current.filter((item) => item !== key))
+              setCompositionPicker(null)
+              setCompositionMessage(null)
+            }} aria-label={t('Remove block')} title={t('Remove block')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50"><RemoveBlockIcon /></button>
+          </li>
+        })}
+      </ol>
+      {keys.length === 0 && !compositionLoading && !catalogError && <p className="meta">{t('No blocks yet')}</p>}
+      <button type="button" disabled={compositionLoading || compositionSaving || !!catalogError} aria-haspopup="dialog" aria-expanded={!!picker} onClick={() => openPicker(null)} className="btn btn-secondary min-h-11">{t('Add a block')}</button>
+      {picker && <PickerDialog title={t(picker.replaceKey ? 'Replace block' : 'Add a block')} onClose={() => setCompositionPicker(null)}><BlockGallery
+        key={`${selectedProgramId}:${selectedWeekId}:${scope}:${picker.replaceKey ?? 'add'}`}
+        layout="dialog"
+        blocks={catalogBlocks}
+        selectedKeys={keys}
+        selectionBehavior="add"
+        loading={compositionLoading}
+        error={catalogError}
+        onRetry={() => setCompositionRetry(value => value + 1)}
+        onSelect={(block) => {
+          if (picker.revision !== compositionScopeRef.current || compositionLoading || compositionSaving || catalogError || keys.includes(block.key) || (picker.replaceKey && !keys.includes(picker.replaceKey))) return
+          setter((current) => selectCompositionBlock(current, block.key, picker.replaceKey))
+          setCompositionMessage(null)
+          if (picker.replaceKey) setCompositionPicker(null)
+        }}
+        onCreateOther={addCustomBlock}
+      /></PickerDialog>}
+    </>
+  }
+
+  function renderVaryingComposition() {
+    const program = programs.find(item => item.id === selectedProgramId)
+    if (!program) return null
+    const programWeeks = scheduledCompositionWeeks(weeks, program.id)
+    const expanded = compositionProgramExpansion?.programId === program.id ? compositionProgramExpansion.expanded : true
+    const scopeKey = `${program.id}:${selectedWeekId}`
+    const weekExpanded = compositionWeekExpansion?.scopeKey === scopeKey ? compositionWeekExpansion.expanded : true
+    const initialMode = storedCompositionMode === 'legacy_unconfigured'
+    const weeksId = `${compositionHierarchyId}-weeks`
+    return <div className="min-w-0">
+      <h4>
+        <button type="button" aria-expanded={expanded} aria-controls={weeksId} onClick={() => {
+          setCompositionProgramExpansion({ programId: program.id, expanded: !expanded })
+          setCompositionPicker(null)
+        }} className="flex min-h-11 w-full items-center gap-2 text-left font-semibold">
+          <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-5 w-5 shrink-0 ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2"><path d="m7 4 6 6-6 6" /></svg>
+          <span className="min-w-0 break-words">{program.name}</span>
+        </button>
+      </h4>
+      <div id={weeksId} hidden={!expanded} className="min-w-0 border-l border-slate-700 pl-3">
+        {initialMode && <div className="space-y-3 py-2">
+          <h5 className="item-title">{t('Initial week blocks')}</h5>
+          {renderComposition('program')}
+        </div>}
+        {programWeeks.length === 0 && <p className="state">{t('No scheduled weeks for this program.')}</p>}
+        {programWeeks.map(weekItem => {
+          const active = selectedWeekId === weekItem.id && week?.program_id === program.id
+          const open = active && weekExpanded
+          const blocksId = `${compositionHierarchyId}-week-${weekItem.id}`
+          return <div key={weekItem.id} className="min-w-0 border-t border-slate-800">
+            <h5>
+              <button type="button" aria-expanded={open} aria-controls={blocksId} aria-current={active ? 'true' : undefined} disabled={saving || compositionSaving} onClick={(event) => {
+                if (active) {
+                  setCompositionWeekExpansion({ scopeKey, expanded: !open })
+                  setCompositionPicker(null)
+                } else guardWeekChange({ kind: 'load', weekId: weekItem.id }, event.currentTarget)
+              }} className={`flex min-h-11 w-full items-center gap-2 py-2 text-left disabled:opacity-50 ${active ? 'text-sky-200' : 'text-slate-300'}`}>
+                <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-5 w-5 shrink-0 ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2"><path d="m7 4 6 6-6 6" /></svg>
+                <span className="min-w-0 break-words">
+                  <span className="block font-medium">{t('Week {week}', { week: weekItem.week_number })}</span>
+                  <span className="block text-sm text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date, language)}</span>
+                </span>
+              </button>
+            </h5>
+            <div id={blocksId} hidden={!open} className="min-w-0 space-y-3 border-l border-slate-700 py-2 pl-3">
+              {active && !initialMode && <>
+                {renderComposition('week')}
+                {storedCompositionMode === 'varies_by_week' && <button type="button" onClick={() => void saveWeekComposition()} disabled={compositionLoading || compositionSaving || !!catalogError} className="btn btn-secondary">
+                  {compositionSaving ? t('Saving composition…') : t('Save composition')}
+                </button>}
+              </>}
+            </div>
+          </div>
+        })}
+      </div>
+    </div>
   }
 
   async function fetchWeek(weekId: string): Promise<WeekLoadResult<ScheduledPlanWeek>> {
@@ -580,11 +771,15 @@ export default function Plan() {
   }
 
   async function loadWeek(weekId: string) {
+    const requestId = ++weekLoadRequestRef.current
+    setCompositionPicker(null)
+    setRangeCalendarOpen(false)
     setLoading(true)
     setError(null)
     setMessage(null)
 
     const outcome = settleWeekLoad(await fetchWeek(weekId))
+    if (requestId !== weekLoadRequestRef.current) return
     if (outcome.kind === 'keep') {
       setError(outcome.error)
       setLoading(false)
@@ -595,6 +790,7 @@ export default function Plan() {
     setWeek(loadedWeek)
     setWeeks((current) => current.map((item) => item.id === loadedWeek.id ? loadedWeek : item))
     setSelectedWeekId(loadedWeek.id)
+    setCompositionMessage(null)
     setSelectedProgramId(draft.programId)
     setFocus(draft.focus)
     setTasks(draft.tasks)
@@ -638,23 +834,35 @@ export default function Plan() {
     setSaving(false)
   }
 
-  async function removeWeek() {
-    if (!week || weeks.length <= 1) return
+  function requestWeekRemoval(trigger: HTMLElement) {
+    if (!week || weeks.length <= 1 || loading || removalSubmittingRef.current) return
+    guardWeekChange({ kind: 'remove', removal: { week: { ...week }, programName: programs.find(program => program.id === week.program_id)?.name ?? '', draftKey: removalDraftKey, trigger } }, trigger)
+  }
 
+  async function removeWeek(removal: WeekRemoval) {
+    const context = removalContextRef.current
+    if (removalSubmittingRef.current || submittedRemovalsRef.current.has(removal) || context.saving || context.compositionSaving || context.loading || context.weekCount <= 1 || context.weekId !== removal.week.id || context.draftKey !== removal.draftKey) return
+    submittedRemovalsRef.current.add(removal)
+    removalSubmittingRef.current = true
+    setRemovalConfirmation(null)
     setSaving(true)
     setActionError(null)
     setMessage(null)
-
-    const { data: nextWeekId, error: deleteError } = await supabase.rpc('remove_plan_week', { p_week_id: week.id })
-    if (deleteError || !nextWeekId) {
-      setActionError(deleteError?.message ?? t('Could not remove the week.'))
+    try {
+      const { data: nextWeekId, error: deleteError } = await supabase.rpc('remove_plan_week', { p_week_id: removal.week.id })
+      if (deleteError || !nextWeekId) {
+        setActionError(deleteError?.message ?? t('Could not remove the week.'))
+        return
+      }
+      await loadWeeks()
+      await loadWeek(nextWeekId)
+      setMessage(t('Week removed successfully.'))
+    } catch {
+      setActionError(t('Could not remove the week.'))
+    } finally {
+      removalSubmittingRef.current = false
       setSaving(false)
-      return
     }
-    await loadWeeks()
-    await loadWeek(nextWeekId)
-    setMessage(t('Week removed successfully.'))
-    setSaving(false)
   }
 
   function addTodo() {
@@ -695,7 +903,7 @@ export default function Plan() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
 
-    if (!week) return
+    if (!week || compositionSaving || saving || loading) return
 
     setPendingChange((current) => settlePendingWeekChange(current, { kind: 'save-start' }))
     restoreWeekParam(week.id)
@@ -948,8 +1156,8 @@ export default function Plan() {
               </button>
               <button
                 type="button"
-                onClick={(event) => guardWeekChange({ kind: 'remove' }, event.currentTarget)}
-                disabled={saving || weeks.length <= 1 || !week}
+                onClick={(event) => requestWeekRemoval(event.currentTarget)}
+                disabled={saving || compositionSaving || loading || weeks.length <= 1 || !week}
                 className="btn btn-danger"
               >
                 {t('Remove week')}
@@ -990,6 +1198,7 @@ export default function Plan() {
           </section>
 
           <form onSubmit={handleSubmit} className="section space-y-4 lg:border-t-0 lg:pt-0">
+            <fieldset disabled={loading || saving || compositionSaving} className="min-w-0 space-y-4">
             <div>
               {week ? (
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1001,6 +1210,7 @@ export default function Plan() {
                     {todayRange(week) && <span className="badge badge-info">{t('Current week')}</span>}
                     <button
                       type="button"
+                      data-tour="plan-practice"
                       onClick={(event) => openPractice(event.currentTarget)}
                       disabled={loading || saving}
                       className="btn btn-secondary"
@@ -1056,11 +1266,9 @@ export default function Plan() {
                   <span className="label">{t('Program')}</span>
                   <select
                     value={selectedProgramId}
+                    disabled={compositionSaving}
                     onChange={(event) => {
-                      setSelectedProgramId(event.target.value)
-                      setCompositionError(null)
-                      setCompositionMessage(null)
-                      setCatalogError(null)
+                      guardWeekChange({ kind: 'program', programId: event.target.value }, event.currentTarget)
                     }}
                     className="field"
                   >
@@ -1082,11 +1290,13 @@ export default function Plan() {
                         onChange={(event) => {
                           const nextMode = readProgramBlockMode(event.target.value)
                           setCompositionMode(nextMode)
+                          setCompositionPicker(null)
                           setCompositionMessage(null)
-                          if (nextMode === 'same_every_week' && readProgramBlockMode(programs.find((program) => program.id === selectedProgramId)?.block_set_mode) === 'varies_by_week') setProgramBlockKeys([])
+                          if (nextMode === 'same_every_week' && compositionMode === 'varies_by_week') setProgramBlockKeys(weekBlockKeys)
+                          if (nextMode === 'varies_by_week' && compositionMode === 'same_every_week') setWeekBlockKeys(programBlockKeys)
                         }}
                         className="field"
-                        disabled={compositionLoading || compositionSaving}
+                        disabled={compositionLoading || compositionSaving || !!catalogError}
                       >
                         <option value="legacy_unconfigured">{t('Not configured')}</option>
                         <option value="same_every_week">{t('Same every week')}</option>
@@ -1094,36 +1304,14 @@ export default function Plan() {
                       </select>
                     </label>
                     {compositionMode === 'legacy_unconfigured' && <p className="meta">{t('This program has no configured block set. Choose a mode and select blocks.')}</p>}
-                    {(compositionMode === 'same_every_week' || readProgramBlockMode(programs.find((program) => program.id === selectedProgramId)?.block_set_mode) === 'legacy_unconfigured') && (
-                      <BlockGallery
-                        blocks={catalogBlocks}
-                        selectedKeys={programBlockKeys}
-                        loading={compositionLoading}
-                        error={catalogError}
-                        onRetry={() => setCompositionRetry((value) => value + 1)}
-                        onSelect={(block) => toggleBlockKey(setProgramBlockKeys, block.key)}
-                        onCreateOther={addCustomBlock}
-                      />
+                    {compositionLoading && <p role="status" className="state">{t('Loading blocks…')}</p>}
+                    {catalogError && <div role="alert" className="flex flex-wrap items-center gap-3"><p className="msg-error">{catalogError}</p><button type="button" onClick={() => setCompositionRetry((value) => value + 1)} className="btn btn-secondary">{t('Retry')}</button></div>}
+                    {compositionMode !== 'varies_by_week' && (compositionMode === 'same_every_week' || storedCompositionMode === 'legacy_unconfigured') && (
+                      renderComposition('program')
                     )}
-                    {compositionMode === 'varies_by_week' && week?.program_id === selectedProgramId && (
-                      <>
-                        <h4 className="item-title">{t('Week blocks')}</h4>
-                        <BlockGallery
-                          blocks={catalogBlocks}
-                          selectedKeys={weekBlockKeys}
-                          loading={compositionLoading}
-                          error={catalogError}
-                          onRetry={() => setCompositionRetry((value) => value + 1)}
-                          onSelect={(block) => toggleBlockKey(setWeekBlockKeys, block.key)}
-                          onCreateOther={addCustomBlock}
-                        />
-                        <button type="button" onClick={() => void saveWeekComposition()} disabled={compositionLoading || compositionSaving} className="btn btn-secondary">
-                          {compositionSaving ? t('Saving composition…') : t('Save composition')}
-                        </button>
-                      </>
-                    )}
-                    {compositionMode !== 'legacy_unconfigured' && (
-                      <button type="button" onClick={() => void saveProgramComposition()} disabled={compositionLoading || compositionSaving} className="btn btn-secondary">
+                    {compositionMode === 'varies_by_week' && renderVaryingComposition()}
+                    {compositionMode !== 'legacy_unconfigured' && (compositionMode === 'same_every_week' || compositionMode !== readProgramBlockMode(programs.find((program) => program.id === selectedProgramId)?.block_set_mode)) && (
+                      <button type="button" onClick={() => void saveProgramComposition()} disabled={compositionLoading || compositionSaving || !!catalogError} className="btn btn-secondary">
                         {compositionSaving ? t('Saving composition…') : t('Save composition')}
                       </button>
                     )}
@@ -1251,7 +1439,7 @@ export default function Plan() {
                   </div>
                 </div>
 
-                <section className="space-y-3" aria-label={t('Repertoire')}>
+                <section data-tour={week ? 'plan-repertoire' : undefined} className="space-y-3" aria-label={t('Repertoire')}>
                   <h3 className="item-title">{t('Repertoire')}</h3>
                   <fieldset className="min-w-0 space-y-1">
                     <legend className="label">{t('Songs for this week')}</legend>
@@ -1296,9 +1484,21 @@ export default function Plan() {
               {message && <p role="status" className="msg-success">{message}</p>}
               {week && error && <p role="alert" className="msg-error">{error}</p>}
             </div>
+            </fieldset>
           </form>
         </div>
       )}
+      {removalConfirmation && <PickerDialog title={t('Remove this week?')} onClose={() => setRemovalConfirmation(null)}>
+        <div className="space-y-4">
+          <p className="break-words font-medium">{t('Week {week}', { week: removalConfirmation.week.week_number })} · {removalConfirmation.week.focus}</p>
+          <p className="break-words text-sm text-slate-300">{removalConfirmation.programName} · {formatDateRange(removalConfirmation.week.start_date, removalConfirmation.week.end_date, language)}</p>
+          <p className="text-sm text-slate-300">{t('Later weeks will be renumbered and their dates moved back by this week’s duration.')}</p>
+          <div className="flex flex-wrap gap-3">
+            <button ref={removalCancelRef} type="button" autoFocus onClick={() => setRemovalConfirmation(null)} className="btn btn-secondary">{t('Cancel')}</button>
+            <button type="button" disabled={saving} onClick={() => void removeWeek(removalConfirmation)} className="btn btn-danger">{t('Remove week')}</button>
+          </div>
+        </div>
+      </PickerDialog>}
     </div>
   )
 }

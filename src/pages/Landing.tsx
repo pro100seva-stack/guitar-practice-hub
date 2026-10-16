@@ -132,6 +132,7 @@ export default function Landing() {
           type="button"
           aria-expanded={guitarExpanded}
           aria-controls={guitarRegionId}
+          data-tour="featured-guitar"
           onClick={() => setGuitarExpanded((expanded) => !expanded)}
           className="sticky bottom-0 flex min-h-11 w-full items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-left text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-400"
         >

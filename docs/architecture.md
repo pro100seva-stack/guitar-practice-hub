@@ -45,13 +45,13 @@ The project uses **Backend as a Service** instead of a custom Node.js or Python 
 - **Authentication:** manages user sessions and JWT tokens.
 - **Database:** PostgreSQL with Row Level Security (RLS).
 - **API layer:** PostgREST provides access to database tables.
-- **Server-only account boundary:** `account-gateway` creates accounts and resets passwords using service-role access that never reaches the browser.
+- **Server-only account boundary:** `account-gateway` creates accounts and resets passwords using service-role access that never reaches the browser. Durable admission uses a service-only database RPC with HMAC login identifiers, not IPs or isolate-local counters. Approved Backend evidence on 2026-10-16 confirms the exact security migration, dedicated key and ACTIVE gateway revision 27, including browser CRUD denial on `user_profiles`. This bounded backend verification is not full production end-to-end acceptance or publication of the prepared 0.4.0 frontend.
 - **Language preference:** account creation accepts one of `en`, `ru`, `it`, or `fr`; the preference is persisted in `app_settings` and can later be changed from Settings.
 - **Onboarding tour state:** `app_settings.onboarding_tour_pending` (boolean, default `false`) is set to `true` only by `account-gateway` at account creation. The app reads it once on first entry, clears it immediately, and runs the per-screen tour from in-memory state. Existing accounts keep `false`, so they never see the tour. The per-screen Help button replays one screen's tour and never touches this flag.
 - **Program content language:** programs store a content-language value in `programs.language`. Continuation uses that stored value rather than the current interface preference; immutability is an application convention, not a database-enforced guarantee.
 - **Practice-block catalog and composition:** `block_templates` contains shared and owner-specific catalog entries, category and selectable/archive metadata. `programs.block_set_mode` selects legacy-unconfigured, same-every-week, or varying-week composition; ordered membership lives in `program_blocks` or `plan_week_blocks`. Authenticated RPCs validate composition changes; clients do not write membership tables directly.
 - **Program lifecycle actions:** database RPCs manage program start, pause, resume, continuation, and schedule changes. The currently visible Plan UI focuses on week and composition workflows; the presence of a lifecycle RPC does not imply a start/resume button in the UI.
-- **Local materials:** IndexedDB stores uploaded learning files on the current device; files are not sent to Supabase.
+- **Local materials:** IndexedDB v2 stores owned metadata/bookmarks in `owned-learning-materials`, keyed by `[ownerUid,id]`; file bytes use owner-specific entries in `guitar-practice-hub-media-v2` when CacheStorage and Web Locks are available, or IndexedDB otherwise. Files are not sent to Supabase. The ownerless `learning-materials` store and legacy cache bytes remain unchanged but hidden, with no fallback or automatic ownership assignment.
 
 ## Security
 
@@ -60,6 +60,10 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 2. The client sends requests with the user's JWT.
 3. PostgreSQL evaluates each row policy, typically against `auth.uid()`.
 4. Data is returned only when the policy permits access.
+
+Credential profiles are an exception to browser-owned CRUD: `20261016120000_account_gateway_security.sql` retains RLS but removes browser profile policies/grants and keeps service CRUD. Approved Backend evidence confirms this migration was the only history addition (24 to 25) on `vmeyyhroxlnqahbiogxr`. The limiter's private table is inaccessible directly, including to service role; only the service-only security-definer RPC admits five requests per login/action and 100 globally per rolling 15 minutes. Missing key/RPC, malformed replies and dependency failures return controlled 503 errors with no in-memory/IP fallback. Security questions remain an owner-accepted weak-entropy/enumeration and quota-exhaustion risk; limits do not make them strong recovery authentication. Verified-email recovery is not implemented. See the [gateway contract and rollout evidence](../supabase/functions/account-gateway/README.md).
+
+Local-material authority derives from current authenticated identity through opaque UID/auth-epoch tokens. Sign-out or UID change invalidates old work, including A-to-B-to-A transitions; same-UID token refresh need not change the epoch. AuthGate remounts routed state on UID/epoch change and reconciles identity on storage/focus/resume events. Material APIs recheck persisted ownership and exact block/song scope; stale UI/player callbacks are ignored and object URLs are revoked on invalidation. This application boundary is not encryption or OS/browser-profile security. Browser eviction remains possible; do not clear shared storage, legacy materials or service workers for QA.
 
 ## Data Flow
 
@@ -70,6 +74,8 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 4. The frontend upserts retained blocks into `session_blocks` using `(session_id, block_key)`.
 5. Supabase validates the JWT and RLS policies for each request.
 6. The frontend displays the save result and refreshes local state.
+
+These requests are not one transaction; a later failure can leave earlier writes saved.
 
 ### Program timeline and week insertion
 

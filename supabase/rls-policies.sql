@@ -63,14 +63,18 @@ create policy "app_settings_owner_update" on app_settings
 create policy "app_settings_owner_delete" on app_settings
   for delete using (auth.uid() = user_id);
 
-create policy "user_profiles_owner_select" on user_profiles
-  for select using (auth.uid() = user_id);
-create policy "user_profiles_owner_insert" on user_profiles
-  for insert with check (auth.uid() = user_id);
-create policy "user_profiles_owner_update" on user_profiles
-  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "user_profiles_owner_delete" on user_profiles
-  for delete using (auth.uid() = user_id);
+drop policy if exists "user_profiles_owner_select" on public.user_profiles;
+drop policy if exists "user_profiles_owner_insert" on public.user_profiles;
+drop policy if exists "user_profiles_owner_update" on public.user_profiles;
+drop policy if exists "user_profiles_owner_delete" on public.user_profiles;
+revoke all on table public.user_profiles from public, anon, authenticated;
+grant select, insert, update, delete on table public.user_profiles to service_role;
+
+alter table account_gateway_private.budgets enable row level security;
+revoke all on schema account_gateway_private from public, anon, authenticated, service_role;
+revoke all on table account_gateway_private.budgets from public, anon, authenticated, service_role;
+revoke all on function public.consume_account_gateway_budget_v1(text, text) from public, anon, authenticated;
+grant execute on function public.consume_account_gateway_budget_v1(text, text) to service_role;
 
 drop policy if exists "programs_owner_select" on programs;
 create policy "programs_owner_select" on programs

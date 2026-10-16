@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useMatches, useNavigate, useNavigation } from 'react-router'
-import { supabase } from '../lib/supabase'
+import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, onLocalMaterialInvalidation, signOutLocalMaterialIdentity } from '../lib/localMaterialAccess'
 import { useI18n } from '../lib/i18n'
 import TourOverlay from './tour/TourOverlay'
 import { useScreenTour } from './tour/useScreenTour'
@@ -20,6 +20,7 @@ export default function Layout() {
   const navigation = useNavigation()
   const pageHandle = matches.at(-1)?.handle
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const layoutRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
@@ -27,6 +28,21 @@ export default function Layout() {
   const headerSlots = useMemo(() => ({ actions: actionsSlot, panel: panelSlot }), [actionsSlot, panelSlot])
   const { t } = useI18n()
   const tour = useScreenTour(location.pathname)
+
+  useEffect(() => {
+    const access = captureLocalMaterialAccess()
+    return onLocalMaterialInvalidation(() => {
+      if (isLocalMaterialAccessCurrent(access)) return
+      layoutRef.current?.querySelectorAll('video, audio').forEach((element) => {
+        const media = element as HTMLMediaElement
+        media.pause()
+        media.removeAttribute('src')
+        media.load()
+      })
+      layoutRef.current?.querySelectorAll('iframe').forEach((frame) => frame.removeAttribute('src'))
+      if (layoutRef.current) layoutRef.current.hidden = true
+    })
+  }, [])
 
   useEffect(() => {
     if (isRenderedLazyPageReady(pageHandle, navigation.state)) lazyChunkRecovery.markRouteReady()
@@ -76,7 +92,7 @@ export default function Layout() {
 
   return (
     <HeaderSlotsContext.Provider value={headerSlots}>
-    <div className="min-h-dvh bg-slate-900 text-slate-100">
+    <div ref={layoutRef} className="min-h-dvh bg-slate-900 text-slate-100">
       <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
         <div className="relative mx-auto max-w-6xl px-[var(--page-px)] py-3">
           <div className="grid grid-cols-[5.75rem_minmax(0,1fr)_5.75rem] items-center gap-1 sm:grid-cols-[8rem_minmax(0,1fr)_8rem]">
@@ -118,7 +134,7 @@ export default function Layout() {
                   type="button"
                   aria-label={t('Sign out')}
                   title={t('Sign out')}
-                  onClick={() => void supabase.auth.signOut()}
+                  onClick={() => void signOutLocalMaterialIdentity()}
                   className="flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white sm:w-auto sm:px-3"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -182,9 +198,10 @@ export default function Layout() {
           <footer className="section mt-6 flex justify-center">
             <button
               type="button"
-              hidden={tour.isOpen}
+              data-tour="help"
+              disabled={tour.isOpen}
               title={t('Guided tour')}
-              onClick={tour.replay}
+              onClick={() => { if (!tour.isOpen) tour.replay() }}
               className="btn btn-secondary rounded-lg text-xs"
             >
               {t('Help')}

@@ -165,15 +165,17 @@ describe('Sessions save handler timer regressions', () => {
       state.timers = typeof next === 'function' ? next(state.timers) : next
     })
     const setSaving = vi.fn()
+    const setPendingDiscardAction = vi.fn()
     const setError = vi.fn()
     const setMessage = vi.fn()
     const loadData = vi.fn(async () => {
       expect(setTimers).not.toHaveBeenCalled()
-      expect(timerElapsedSeconds(state.timers.warmup, Date.now())).toBe(390)
+      expect(timerElapsedSeconds(state.timers.warmup, Date.now())).toBe(options.clear ? 270 : 390)
     })
     const context = {
       canSave: true, date: '2026-10-04', timers: initialTimers, templates, selectedBlocks,
       comment: '', planWeek: null,
+      defaultsSuppressedDateRef: { current: null as string | null },
       sessions: [{
         id: 'session', user_id: 'user', session_date: '2026-10-04',
         session_blocks: [{ block_key: 'warmup' }, ...(options.legacy ? [{ block_key: 'legacy' }] : [])],
@@ -181,13 +183,13 @@ describe('Sessions save handler timer regressions', () => {
       supabase: { auth: { getUser }, from },
       snapshotBlockTimers, sessionBlockMinutes, planSessionBlockSave,
       hasUnsupportedSessionBlocks, shouldDeleteClearedSession,
-      setTimers, setSaving, setError, setMessage, loadData, t: (text: string) => text,
+      setTimers, setSaving, setPendingDiscardAction, setError, setMessage, loadData, t: (text: string) => text,
     }
     const createHandler = new Function(...Object.keys(context), `${compiled}\nreturn handleSubmit;`) as
       (...values: unknown[]) => (event: { preventDefault: () => void }) => Promise<void>
     const handleSubmit = createHandler(...Object.values(context))
     return {
-      state, initialTimers, request, payloads, setTimers, setSaving, setError, setMessage, loadData,
+      state, initialTimers, request, payloads, setTimers, setSaving, setPendingDiscardAction, setError, setMessage, loadData,
       save: () => handleSubmit({ preventDefault: vi.fn() }),
     }
   }
@@ -283,6 +285,15 @@ describe('Sessions save handler timer regressions', () => {
     expect(fixture.loadData).toHaveBeenCalledWith({ date: '2026-10-04', weekId: null })
     expect(fixture.setMessage).toHaveBeenLastCalledWith('Session saved successfully.')
     expect(fixture.setSaving).toHaveBeenLastCalledWith(false)
+    expect(fixture.setPendingDiscardAction).toHaveBeenCalledWith(null)
+  })
+
+  it('reloads a deleted cleared session without immediately readding configured defaults', async () => {
+    const fixture = setup({ clear: true })
+    await fixture.save()
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-delete'])
+    expect(fixture.loadData).toHaveBeenCalledWith({ date: '2026-10-04', weekId: null, cleared: true })
+    expect(fixture.setMessage).toHaveBeenLastCalledWith('Empty session deleted successfully.')
   })
 })
 

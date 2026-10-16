@@ -1,33 +1,39 @@
 import { useEffect, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
 import { RouterProvider } from 'react-router/dom'
 import { supabase } from '../lib/supabase'
 import { ensureDefaultProgramContinuation } from '../lib/defaultProgram'
 import { router } from '../router'
 import Login from '../pages/Login'
+import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterialOwner, watchLocalMaterialIdentity } from '../lib/localMaterialAccess'
 
 export default function AuthGate() {
-  const [session, setSession] = useState<Session | null>(null)
+  const [identity, setIdentity] = useState<{ uid: string; epoch: number } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session)
-      if (data.session) {
-        await ensureDefaultProgramContinuation()
-        await supabase.rpc('sync_program_status')
-      }
+    return watchLocalMaterialIdentity((uid, epoch, verified) => {
+      setIdentity((current) => current?.uid === uid && current.epoch === epoch ? current : uid ? { uid, epoch } : null)
+      setReady(verified)
       setLoading(false)
     })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession)
-      if (newSession) {
-        void ensureDefaultProgramContinuation().then(() => supabase.rpc('sync_program_status'))
-      }
-    })
-    return () => listener.subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!identity) return
+    let access
+    try { access = captureLocalMaterialAccess() } catch { return }
+    if (localMaterialOwner(access) !== identity.uid) return
+    void ensureDefaultProgramContinuation().then(() => {
+      if (isLocalMaterialAccessCurrent(access)) return supabase.rpc('sync_program_status')
+    }).catch(() => {})
+  }, [identity])
+
   if (loading) return <div className="min-h-screen bg-slate-900" />
-  return !session ? <Login /> : <RouterProvider router={router} />
+  return <>
+    {!ready && <div className="min-h-screen bg-slate-900" />}
+    <div hidden={!ready} inert={!ready}>
+      {!identity ? <Login /> : <RouterProvider key={`${identity.uid}:${identity.epoch}`} router={router} />}
+    </div>
+  </>
 }
