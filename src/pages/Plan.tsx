@@ -1,9 +1,9 @@
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useBlocker, useNavigate, useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
-import { formatDateRange, localeForLanguage } from '../lib/dateFormat'
+import { formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { isPlanWeekDirty, requestWeekChange, resolveWeekChange, settlePendingWeekChange, settleWeekLoad, type PendingWeekChange, type PlanWeekDraft, type WeekLoadResult } from '../lib/planWeekDirty'
 import BlockGallery from '../components/BlockGallery'
@@ -11,6 +11,7 @@ import PickerDialog from '../components/PickerDialog'
 import RemoveBlockIcon from '../components/icons/RemoveBlockIcon'
 import { catalogBlockLabel, createOtherBlock, loadActiveCatalog, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadProgramsWithBlockMode, readProgramBlockMode, replacePlanWeekBlocks, replaceProgramBlocks, setProgramBlockMode, type CatalogBlock, type ProgramBlockMode } from '../lib/catalogApi'
 import { queryWeekSongsWithSortOrder } from '../lib/weekSongsApi'
+import { duplicateWeekErrorKey, weekListAnchorScrollTop } from '../lib/planWeekList'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -29,7 +30,7 @@ type EditableTodo = {
 }
 
 type WeekRemoval = { week: ScheduledPlanWeek; programName: string; draftKey: string; trigger: HTMLElement | null }
-type WeekChange = { kind: 'load'; weekId: string } | { kind: 'add' } | { kind: 'remove'; removal: WeekRemoval } | { kind: 'practice' } | { kind: 'program'; programId: string }
+type WeekChange = { kind: 'load'; weekId: string } | { kind: 'add' } | { kind: 'duplicate' } | { kind: 'remove'; removal: WeekRemoval } | { kind: 'practice' } | { kind: 'program'; programId: string }
 type WeekChangePrompt = { change: WeekChange; trigger: HTMLElement | null }
 
 function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
@@ -41,6 +42,26 @@ function toIsoDate(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+// Must match Practice's local-date week selection, not UTC.
+function weekContainingLocalDate<T extends { start_date: string; end_date: string }>(weeks: readonly T[], now: Date = new Date()) {
+  const today = toLocalIsoDate(now)
+  return weeks.find((item) => item.start_date <= today && item.end_date >= today) ?? null
+}
+
+function nextWeekSongIds(current: readonly string[], songId: string, selected: boolean): string[] {
+  if (selected) return current.includes(songId) ? [...current] : [...current, songId]
+  return current.filter((id) => id !== songId)
+}
+
+type WeekSongSaveOutcome = { kind: 'stale' } | { kind: 'failed' } | { kind: 'saved'; songIds: string[]; baseline: PlanWeekDraft | null }
+
+// Only the song baseline moves, so other unsaved Plan fields stay dirty; superseded requests are ignored.
+function settleWeekSongSave(baseline: PlanWeekDraft | null, request: { id: number; songIds: string[] }, latestRequestId: number, ok: boolean): WeekSongSaveOutcome {
+  if (request.id !== latestRequestId) return { kind: 'stale' }
+  if (!ok) return { kind: 'failed' }
+  return { kind: 'saved', songIds: request.songIds, baseline: baseline && { ...baseline, songText: request.songIds.join('\n') } }
 }
 
 function parseIsoDate(value: string) {
@@ -210,6 +231,12 @@ export default function Plan() {
   const [todos, setTodos] = useState<EditableTodo[]>([])
   const [repertoireSongs, setRepertoireSongs] = useState<Song[]>([])
   const [selectedSongIds, setSelectedSongIds] = useState<string[]>([])
+  const [pendingSongIds, setPendingSongIds] = useState<string[] | null>(null)
+  const [songSaveStatus, setSongSaveStatus] = useState<string | null>(null)
+  const songSaveRequestRef = useRef(0)
+  const songSaveBusyRef = useRef(false)
+  const songCreateBusyRef = useRef(false)
+  const [songCreating, setSongCreating] = useState(false)
   const [newSongName, setNewSongName] = useState('')
   const [repertoireLoading, setRepertoireLoading] = useState(true)
   const [repertoireError, setRepertoireError] = useState<string | null>(null)
@@ -223,6 +250,8 @@ export default function Plan() {
   const [pendingChange, setPendingChange] = useState<PendingWeekChange<WeekChangePrompt> | null>(null)
   const [removalConfirmation, setRemovalConfirmation] = useState<WeekRemoval | null>(null)
   const removalSubmittingRef = useRef(false)
+  const duplicateSubmittingRef = useRef(false)
+  const weekListManualScrollRef = useRef(false)
   const submittedRemovalsRef = useRef(new WeakSet<WeekRemoval>())
   const removalCancelRef = useRef<HTMLButtonElement | null>(null)
   const urlPendingRef = useRef(false)
@@ -239,6 +268,11 @@ export default function Plan() {
     || JSON.stringify(weekBlockKeys) !== JSON.stringify(compositionBaseline.weekKeys)
   )
   const isDirty = compositionDirty || isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
+  const songSaving = pendingSongIds !== null
+  const shownSongIds = pendingSongIds ?? selectedSongIds
+  const leaveApprovedRef = useRef(false)
+  // Same-path (?week=) changes are already guarded by guardWeekChange.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => isDirty && week !== null && !leaveApprovedRef.current && currentLocation.pathname !== nextLocation.pathname)
   const removalDraftKey = JSON.stringify({ week, selectedWeekId, weeks, loadedDraft, focus, selectedProgramId, otherProgramName, weekStartDate, weekEndDate, tasks, todos, selectedSongIds, newSongName, compositionMode, programBlockKeys, weekBlockKeys, compositionBaseline })
   const removalContextRef = useRef({ draftKey: removalDraftKey, saving, compositionSaving, loading, weekId: week?.id, weekCount: weeks.length })
   removalContextRef.current = { draftKey: removalDraftKey, saving, compositionSaving, loading, weekId: week?.id, weekCount: weeks.length }
@@ -370,26 +404,59 @@ export default function Plan() {
     setCalendarMonth(parseIsoDate(week.start_date))
   }, [weeks, week])
 
-  useEffect(() => {
-    if (!selectedWeekId || !weekListRef.current) return
-
-    const selectedButton = weekListRef.current.querySelector<HTMLButtonElement>(`button[data-week-id="${selectedWeekId}"]`)
-    if (!selectedButton) return
-
+  const anchorSelectedWeek = useEffectEvent(() => {
     const container = weekListRef.current
+    if (!container || !selectedWeekId) return
+    const selectedButton = container.querySelector<HTMLButtonElement>(`button[data-week-id="${selectedWeekId}"]`)
+    if (!selectedButton) return
     const containerRect = container.getBoundingClientRect()
     const buttonRect = selectedButton.getBoundingClientRect()
-    const buttonTop = buttonRect.top - containerRect.top + container.scrollTop
-    const targetScroll = Math.max(0, buttonTop - (container.clientHeight - buttonRect.height) / 2)
+    const top = weekListAnchorScrollTop({
+      containerTop: containerRect.top + container.clientTop,
+      scrollTop: container.scrollTop,
+      clientHeight: container.clientHeight,
+      itemTop: buttonRect.top,
+      itemHeight: buttonRect.height,
+    })
+    if (top !== null) container.scrollTop = top
+  })
 
-    if (buttonTop < container.scrollTop || buttonTop + buttonRect.height > container.scrollTop + container.clientHeight) {
-      container.scrollTo({ top: targetScroll, behavior: 'smooth' })
+  useLayoutEffect(() => {
+    if (loading) return
+    weekListManualScrollRef.current = false
+    anchorSelectedWeek()
+  }, [loading, selectedWeekId, weeks])
+
+  const weekListMounted = !(loading && !week)
+  useEffect(() => {
+    const container = weekListRef.current
+    if (!weekListMounted || !container) return
+    const markManualScroll = () => { weekListManualScrollRef.current = true }
+    const interactions = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
+    for (const type of interactions) container.addEventListener(type, markManualScroll, { passive: true })
+    // Re-anchor on viewport/breakpoint/content size changes until the user scrolls the list.
+    const observer = new ResizeObserver(() => {
+      if (!weekListManualScrollRef.current) anchorSelectedWeek()
+    })
+    observer.observe(container)
+    if (container.firstElementChild) observer.observe(container.firstElementChild)
+    return () => {
+      observer.disconnect()
+      for (const type of interactions) container.removeEventListener(type, markManualScroll)
     }
-  }, [loading, selectedWeekId])
+  }, [weekListMounted])
 
   useEffect(() => {
     if (pendingChange) discardPromptRef.current?.focus()
   }, [pendingChange])
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') discardPromptRef.current?.focus()
+  }, [blocker.state])
+
+  useEffect(() => {
+    if (blocker.state === 'blocked' && !isDirty) blocker.proceed()
+  }, [blocker, isDirty])
 
   useEffect(() => {
     if (!isDirty) return
@@ -422,6 +489,7 @@ export default function Plan() {
   function runWeekChange(change: WeekChange) {
     if (change.kind === 'load') void loadWeek(change.weekId)
     else if (change.kind === 'add') void addWeek()
+    else if (change.kind === 'duplicate') void duplicateWeek()
     else if (change.kind === 'remove') {
       if (change.removal.draftKey !== removalContextRef.current.draftKey) return
       change.removal.trigger?.focus({ preventScroll: true })
@@ -432,7 +500,10 @@ export default function Plan() {
       setCompositionPicker(null)
       setCompositionMessage(null)
     }
-    else if (selectedWeekId) navigate(`/practice?week=${encodeURIComponent(selectedWeekId)}`)
+    else if (selectedWeekId) {
+      leaveApprovedRef.current = true
+      navigate(`/practice?week=${encodeURIComponent(selectedWeekId)}`)
+    }
   }
 
   function guardWeekChange(change: WeekChange, trigger: HTMLElement | null, fromUrl = false) {
@@ -506,10 +577,9 @@ export default function Plan() {
     setLegacyProgramSchema(legacySchema)
     setPrograms(programsData as Program[])
 
-    const today = new Date().toISOString().slice(0, 10)
     const requestedWeekId = searchParams.get('week')
     const currentWeek = nextWeeks.find((item) => item.id === requestedWeekId)
-      ?? nextWeeks.find((item) => item.start_date <= today && item.end_date >= today)
+      ?? weekContainingLocalDate(nextWeeks)
       ?? nextWeeks[0]
       ?? null
     const currentWeekId = currentWeek?.id ?? null
@@ -787,6 +857,10 @@ export default function Plan() {
     }
 
     const { week: loadedWeek, draft, baseline } = outcome
+    songSaveRequestRef.current++
+    songSaveBusyRef.current = false
+    setPendingSongIds(null)
+    setSongSaveStatus(null)
     setWeek(loadedWeek)
     setWeeks((current) => current.map((item) => item.id === loadedWeek.id ? loadedWeek : item))
     setSelectedWeekId(loadedWeek.id)
@@ -834,6 +908,30 @@ export default function Plan() {
     setSaving(false)
   }
 
+  // Copies the saved week server-side; any unsaved draft was already discarded by the guard.
+  async function duplicateWeek() {
+    if (!week || duplicateSubmittingRef.current || saving || compositionSaving || loading) return
+    duplicateSubmittingRef.current = true
+    setSaving(true)
+    setActionError(null)
+    setMessage(null)
+    try {
+      const { data: duplicatedWeekId, error: duplicateError } = await supabase.rpc('duplicate_plan_week', { p_week_id: week.id })
+      if (duplicateError || !duplicatedWeekId) {
+        setActionError(t(duplicateWeekErrorKey(duplicateError)))
+        return
+      }
+      await loadWeeks()
+      await loadWeek(duplicatedWeekId)
+      setMessage(t('plan.weekDuplicated'))
+    } catch {
+      setActionError(t('plan.duplicateFailed'))
+    } finally {
+      duplicateSubmittingRef.current = false
+      setSaving(false)
+    }
+  }
+
   function requestWeekRemoval(trigger: HTMLElement) {
     if (!week || weeks.length <= 1 || loading || removalSubmittingRef.current) return
     guardWeekChange({ kind: 'remove', removal: { week: { ...week }, programName: programs.find(program => program.id === week.program_id)?.name ?? '', draftKey: removalDraftKey, trigger } }, trigger)
@@ -877,33 +975,69 @@ export default function Plan() {
     setTodos((current) => current.filter((_, todoIndex) => todoIndex !== index))
   }
 
-  async function createRepertoireSong() {
-    const name = newSongName.trim()
-    if (!name || repertoireLoading) return
-    setRepertoireLoading(true)
+  async function saveWeekSongs(songIds: string[], failureKey: string) {
+    if (!week || songSaveBusyRef.current || saving || loading) return
+    songSaveBusyRef.current = true
+    const request = { id: ++songSaveRequestRef.current, songIds }
+    const baseline = loadedDraft
+    setPendingSongIds(songIds)
+    setSongSaveStatus(null)
     setRepertoireError(null)
-    const { data, error: insertError } = await supabase.from('songs').insert({
-      name,
-      status: 'planned',
-      notes: null,
-      tuning: null,
-    }).select('*').single()
-    if (insertError || !data) {
-      setRepertoireError(insertError?.message ?? t('Could not create the song.'))
-      setRepertoireLoading(false)
+    const ok = await supabase.rpc('replace_week_repertoire_songs' as never, { p_week_id: week.id, p_song_ids: songIds } as never)
+      .then(({ error: songsError }) => !songsError, () => false)
+    const outcome = settleWeekSongSave(baseline, request, songSaveRequestRef.current, ok)
+    if (outcome.kind === 'stale') return
+    songSaveBusyRef.current = false
+    setPendingSongIds(null)
+    if (outcome.kind === 'failed') {
+      setRepertoireError(t(failureKey))
       return
     }
-    const createdSong = data as Song
-    setRepertoireSongs((current) => [...current, createdSong].sort((left, right) => left.name.localeCompare(right.name)))
-    setSelectedSongIds((current) => current.includes(createdSong.id) ? current : [...current, createdSong.id])
-    setNewSongName('')
-    setRepertoireLoading(false)
+    setSelectedSongIds(outcome.songIds)
+    setLoadedDraft(outcome.baseline)
+    setPendingChange((current) => current && current.baseline === baseline ? { ...current, baseline: outcome.baseline } : current)
+    setSongSaveStatus(t('plan.songsSavedToWeek'))
+  }
+
+  async function createRepertoireSong() {
+    const name = newSongName.trim()
+    if (!name || repertoireLoading || saving || loading || songSaveBusyRef.current || songCreateBusyRef.current) return
+    const weekScope = songSaveRequestRef.current
+    // Held until the link finishes so Save cannot start and make the link step bail out silently.
+    songCreateBusyRef.current = true
+    setSongCreating(true)
+    setRepertoireLoading(true)
+    setRepertoireError(null)
+    setSongSaveStatus(null)
+    try {
+      const { data, error: insertError } = await supabase.from('songs').insert({
+        name,
+        status: 'planned',
+        notes: null,
+        tuning: null,
+      }).select('*').single()
+      if (insertError || !data) {
+        setRepertoireError(insertError?.message ?? t('Could not create the song.'))
+        setRepertoireLoading(false)
+        return
+      }
+      const createdSong = data as Song
+      setRepertoireSongs((current) => [...current, createdSong].sort((left, right) => left.name.localeCompare(right.name)))
+      setNewSongName('')
+      setRepertoireLoading(false)
+      // The shown week changed while the song was being created; never link it to a week the user no longer sees.
+      if (weekScope !== songSaveRequestRef.current) return
+      await saveWeekSongs(nextWeekSongIds(selectedSongIds, createdSong.id, true), 'plan.songCreatedNotLinked')
+    } finally {
+      songCreateBusyRef.current = false
+      setSongCreating(false)
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
 
-    if (!week || compositionSaving || saving || loading) return
+    if (!week || compositionSaving || saving || loading || songSaveBusyRef.current || songCreateBusyRef.current) return
 
     setPendingChange((current) => settlePendingWeekChange(current, { kind: 'save-start' }))
     restoreWeekParam(week.id)
@@ -1026,8 +1160,9 @@ export default function Plan() {
   const locale = localeForLanguage(language)
   const monthLabel = calendarMonth.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
   const weekdayLabels = Array.from({ length: 7 }, (_, index) => new Date(2024, 0, index + 1).toLocaleDateString(locale, { weekday: 'short' }))
-  const today = toIsoDate(new Date())
-  const currentWeek = weeks.find((weekItem) => weekItem.start_date <= today && weekItem.end_date >= today) ?? null
+  const now = new Date()
+  const today = toLocalIsoDate(now)
+  const currentWeek = weekContainingLocalDate(weeks, now)
   const isCurrentWeekSelected = currentWeek?.id === selectedWeekId
 
   const todayRange = (item: { end_date: string; start_date: string }) => item.start_date <= today && item.end_date >= today
@@ -1037,6 +1172,23 @@ export default function Plan() {
   function openPractice(trigger: HTMLElement) {
     if (!selectedWeekId) return
     guardWeekChange({ kind: 'practice' }, trigger)
+  }
+
+  function resolveDiscardPrompt(choice: 'discard' | 'keep') {
+    if (blocker.state !== 'blocked') {
+      resolvePendingChange(choice)
+      return
+    }
+    if (choice === 'discard') {
+      blocker.proceed()
+      return
+    }
+    blocker.reset()
+    if (pendingChange) {
+      resolvePendingChange('keep')
+      return
+    }
+    ;(weekHeadingRef.current ?? weekPickerButtonRef.current)?.focus()
   }
 
   const calendarNav = (
@@ -1077,7 +1229,7 @@ export default function Plan() {
 
       {!initialLoading && (
         <div className="mt-4 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start lg:gap-6">
-          <section className="section lg:sticky lg:top-[calc(var(--app-header-h)+1rem)] lg:max-h-[calc(100dvh-var(--app-header-h)-2rem)] lg:overflow-y-auto">
+          <section className="section lg:sticky lg:top-[calc(var(--app-header-h)+1rem)] lg:flex lg:max-h-[calc(100dvh-var(--app-header-h)-2rem)] lg:flex-col lg:overflow-y-auto">
             <h2 className="section-title">{t('Practice weeks')}</h2>
 
             <div ref={weekPickerRef} className="mt-3">
@@ -1156,6 +1308,14 @@ export default function Plan() {
               </button>
               <button
                 type="button"
+                onClick={(event) => guardWeekChange({ kind: 'duplicate' }, event.currentTarget)}
+                disabled={saving || compositionSaving || loading || !week}
+                className="btn btn-secondary"
+              >
+                {t('plan.duplicateWeek')}
+              </button>
+              <button
+                type="button"
                 onClick={(event) => requestWeekRemoval(event.currentTarget)}
                 disabled={saving || compositionSaving || loading || weeks.length <= 1 || !week}
                 className="btn btn-danger"
@@ -1165,7 +1325,7 @@ export default function Plan() {
             </div>
             {actionError && <p role="alert" className="msg-error mt-3">{actionError}</p>}
 
-            <div ref={weekListRef} data-tour={week ? 'plan-weeks' : undefined} className="plan-week-list mt-3 max-h-[40dvh] overflow-y-auto lg:max-h-none">
+            <div ref={weekListRef} data-tour={week ? 'plan-weeks' : undefined} className="plan-week-list mt-3 max-h-[40dvh] overflow-y-auto lg:max-h-none lg:min-h-48 lg:flex-1">
               <div className="list">
                 {weeks.map((weekItem) => {
                   const isSelected = weekItem.id === selectedWeekId
@@ -1222,14 +1382,14 @@ export default function Plan() {
               ) : (
                 <p className="state">{t("No plan_weeks row covers today's date.")}</p>
               )}
-              {week && pendingChange && (
+              {week && (pendingChange || blocker.state === 'blocked') && (
                 <div ref={discardPromptRef} tabIndex={-1} role="alert" className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 focus:outline-none">
                   <p className="text-sm font-medium text-amber-100">{t('Discard changes?')}</p>
                   <p className="mt-1 text-sm text-slate-300">{t('Unsaved changes will be lost.')}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => resolvePendingChange('discard')}
+                      onClick={() => resolveDiscardPrompt('discard')}
                       disabled={saving}
                       className="min-h-11 rounded bg-slate-100 px-4 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -1237,7 +1397,7 @@ export default function Plan() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => resolvePendingChange('keep')}
+                      onClick={() => resolveDiscardPrompt('keep')}
                       disabled={saving}
                       className="min-h-11 rounded border border-slate-600 px-4 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -1445,20 +1605,44 @@ export default function Plan() {
                     <legend className="label">{t('Songs for this week')}</legend>
                     {repertoireLoading && <p role="status" className="meta">{t('Loading songs…')}</p>}
                     {!repertoireLoading && repertoireSongs.length === 0 && <p className="meta">{t('No songs in your repertoire yet.')}</p>}
-                    {repertoireSongs.map((song) => (
-                      <label key={song.id} className="flex min-h-11 items-center gap-3 rounded px-2 text-sm text-slate-200 hover:bg-slate-900">
-                        <input
-                          type="checkbox"
-                          checked={selectedSongIds.includes(song.id)}
-                          onChange={(event) => setSelectedSongIds((current) => event.target.checked
-                            ? current.includes(song.id) ? current : [...current, song.id]
-                            : current.filter((id) => id !== song.id))}
-                          className="h-5 w-5 shrink-0 rounded border-slate-700 bg-slate-950"
-                        />
-                        <span className="min-w-0 break-words">{song.name}</span>
-                      </label>
-                    ))}
+                    {repertoireSongs.map((song) => {
+                      const selected = shownSongIds.includes(song.id)
+                      return (
+                        <div key={song.id} className="flex flex-wrap items-center gap-x-2 rounded hover:bg-slate-900">
+                          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-2 text-sm text-slate-200">
+                            {/* aria-disabled keeps keyboard focus on the control while the week link saves. */}
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              aria-disabled={songSaving || repertoireLoading || undefined}
+                              onChange={(event) => {
+                                if (songSaving || repertoireLoading) return
+                                void saveWeekSongs(nextWeekSongIds(selectedSongIds, song.id, event.target.checked), 'plan.songSaveFailed')
+                              }}
+                              className="h-5 w-5 shrink-0 rounded border-slate-700 bg-slate-950 aria-disabled:opacity-50"
+                            />
+                            <span className="min-w-0 break-words">{song.name}</span>
+                          </label>
+                          {selected && (
+                            <button
+                              type="button"
+                              aria-label={t('plan.removeSongFromWeekLabel', { song: song.name })}
+                              aria-disabled={songSaving || repertoireLoading || undefined}
+                              onClick={(event) => {
+                                if (songSaving || repertoireLoading) return
+                                event.currentTarget.parentElement?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.focus()
+                                void saveWeekSongs(nextWeekSongIds(selectedSongIds, song.id, false), 'plan.songSaveFailed')
+                              }}
+                              className="btn btn-ghost min-h-11 shrink-0"
+                            >
+                              {t('plan.removeSongFromWeek')}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
                   </fieldset>
+                  {shownSongIds.length > 0 && <p className="meta">{t('plan.removeSongHint')}</p>}
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <input
                       value={newSongName}
@@ -1468,17 +1652,18 @@ export default function Plan() {
                       placeholder={t('Song name')}
                       aria-label={t('Song name')}
                     />
-                    <button type="button" onClick={() => void createRepertoireSong()} disabled={repertoireLoading || !newSongName.trim()} className="btn btn-secondary">
+                    <button type="button" onClick={() => void createRepertoireSong()} disabled={repertoireLoading || songSaving || !newSongName.trim()} className="btn btn-secondary">
                       {repertoireLoading ? t('Saving…') : t('Create song')}
                     </button>
                   </div>
+                  {(songSaving || songSaveStatus) && <p role="status" className={songSaving ? 'meta' : 'msg-success'}>{songSaving ? t('Saving…') : songSaveStatus}</p>}
                   {repertoireError && <p role="alert" className="msg-error">{repertoireError}</p>}
                 </section>
               </fieldset>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" data-tour={week ? 'plan-save' : undefined} disabled={saving || !week} className="btn btn-primary w-full sm:w-auto">
+              <button type="submit" data-tour={week ? 'plan-save' : undefined} disabled={saving || songSaving || songCreating || !week} className="btn btn-primary w-full sm:w-auto">
                 {saving ? t('Saving…') : t('Save plan')}
               </button>
               {message && <p role="status" className="msg-success">{message}</p>}

@@ -86,17 +86,36 @@ export function watchLocalMaterialIdentity(onIdentity: (uid: string | null, epoc
   const resume = () => {
     reconcile()
   }
-  const visibility = () => { if (document.visibilityState === 'visible') resume() }
-  window.addEventListener('focus', resume)
+  // Focus moving between this page and an embedded player iframe is not an app resume; re-verifying would pause playback.
+  let focusInFrame = false
+  let blurCheck: ReturnType<typeof setTimeout> | undefined
+  const blur = () => {
+    clearTimeout(blurCheck)
+    blurCheck = setTimeout(() => { focusInFrame = active && document.visibilityState === 'visible' && document.activeElement?.tagName === 'IFRAME' })
+  }
+  const focus = () => {
+    clearTimeout(blurCheck)
+    const returningFromFrame = focusInFrame && document.visibilityState === 'visible'
+    focusInFrame = false
+    if (!returningFromFrame) resume()
+  }
+  const visibility = () => {
+    if (document.visibilityState !== 'visible') { focusInFrame = false; return }
+    resume()
+  }
+  window.addEventListener('blur', blur)
+  window.addEventListener('focus', focus)
   window.addEventListener('pageshow', resume)
   window.addEventListener('storage', resume)
   document.addEventListener('visibilitychange', visibility)
   reconcile()
   return () => {
     active = false
+    clearTimeout(blurCheck)
     unsubscribe()
     data.subscription.unsubscribe()
-    window.removeEventListener('focus', resume)
+    window.removeEventListener('blur', blur)
+    window.removeEventListener('focus', focus)
     window.removeEventListener('pageshow', resume)
     window.removeEventListener('storage', resume)
     document.removeEventListener('visibilitychange', visibility)

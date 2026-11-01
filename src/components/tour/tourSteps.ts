@@ -19,7 +19,7 @@ export const tourSteps: Record<string, TourStep[]> = {
     { target: '[data-tour="help"]', title: 'Help', body: 'After closing this tour, use Help to replay this screen’s cards anytime.' },
   ],
   '/progress': [
-    { target: '[data-tour="progress-timeline"]', title: 'Your timeline', body: 'Tap a program to open its weeks. View week opens it in Plan; Practice starts that week.' },
+    { target: '[data-tour="progress-timeline"]', title: 'Your timeline', body: 'Tap a program to open its weeks. Tap a week to open it in Plan; Practice starts that week.' },
     { target: '[data-tour="stats-link"]', title: 'Stats shortcut', body: 'Open Stats for totals, streaks and charts.' },
   ],
   '/plan': [

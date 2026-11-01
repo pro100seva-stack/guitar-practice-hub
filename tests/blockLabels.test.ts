@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { aggregateSessionBlockMinutes, normalizeBlockLabel } from '../src/lib/blockLabels'
+import { aggregateSessionBlockMinutes, countedSessionBlocks, normalizeBlockLabel } from '../src/lib/blockLabels'
 import { planSessionBlockSave } from '../src/lib/sessionBlockSavePlan'
 import { getSessionEditorState, isSessionEditorDirty } from '../src/lib/sessionEditorState'
 import { findActiveMaterial, setBlockMaterials } from '../src/lib/materialScope'
@@ -54,7 +54,7 @@ describe('block label editor and save integration', () => {
   it('wires Stats aggregation, template reads and recent-session display to the shared helpers', () => {
     const stats = readFileSync(new URL('../src/pages/Stats.tsx', import.meta.url), 'utf8')
     const sessions = readFileSync(new URL('../src/pages/Sessions.tsx', import.meta.url), 'utf8')
-    expect(stats).toContain('const pieMap = aggregateSessionBlockMinutes(sortedSessions)')
+    expect(stats).toContain('aggregateCategoryMinutes(filteredSessions, categoryState.index)')
     expect(sessions).toContain('}).map((template) => ({ ...template, label: catalogBlockLabel(template, t) }))')
     expect(sessions).toContain('setTemplates(dedupedTemplates)')
     expect(sessions).toContain('{normalizeBlockLabel(block.label)}')
@@ -103,13 +103,34 @@ describe('aggregateSessionBlockMinutes', () => {
     expect([...result.values()].reduce((sum, minutes) => sum + minutes, 0)).toBe(51)
   })
 
-  it('keeps fractional fallback, excludes unfinished blocks and leaves custom categories alone', () => {
+  it('keeps fractional fallback, excludes untouched blocks and leaves custom categories alone', () => {
     const sessions = [{ total_minutes: 10, session_blocks: [
-      block('Warmup', null), block('Warm-up', null), block(' Custom ', null), block('Hand./Impr.', 99, 'harmony', false),
+      block('Warmup', null), block('Warm-up', null), block(' Custom ', null), block('Hand./Impr.', 0, 'harmony', false), block('Evening practice', null, 'evening', false),
     ] }]
     const result = aggregateSessionBlockMinutes(sessions)
     expect([...result]).toEqual([['Warm-up', 20 / 3], [' Custom ', 10 / 3]])
     expect([...result.values()].reduce((sum, minutes) => sum + minutes, 0)).toBe(10)
+  })
+
+  it('counts timed blocks that were not ticked done alongside done blocks', () => {
+    const sessions = [{ total_minutes: 25, session_blocks: [
+      block('Warmup', 10, 'warmup', false), block('Hand./Impr.', 15, 'harmony'), block('Evening practice', null, 'evening', false),
+    ] }]
+    const original = structuredClone(sessions)
+    expect([...aggregateSessionBlockMinutes(sessions)]).toEqual([['Warm-up', 10], ['Harm./Improv.', 15]])
+    expect(sessions).toEqual(original)
+  })
+
+  it('splits the fallback only over counted blocks when no block has explicit minutes', () => {
+    expect([...aggregateSessionBlockMinutes([{ total_minutes: 9, session_blocks: [
+      block('Warmup', 0), block('Hand./Impr.', null), block('Evening practice', 0, 'evening', false),
+    ] }])]).toEqual([['Warm-up', 4.5], ['Harm./Improv.', 4.5]])
+  })
+
+  it('selects counted blocks by minutes > 0 or done', () => {
+    const blocks = [block('a', 0, 'a', false), block('b', null, 'b', false), block('c', 0.5, 'c', false), block('d', null, 'd', true), block('e', -1, 'e', false)]
+    expect(countedSessionBlocks(blocks).map((item) => item.block_key)).toEqual(['c', 'd'])
+    expect(countedSessionBlocks(null)).toEqual([])
   })
 
   it('does not allocate fallback to null blocks when any done block has positive explicit minutes', () => {
@@ -118,10 +139,10 @@ describe('aggregateSessionBlockMinutes', () => {
     ] }])]).toEqual([['Warm-up', 4], ['Evening Practice', 0]])
   })
 
-  it('retains empty-label key fallback and ignores sessions without done blocks', () => {
+  it('retains empty-label key fallback and ignores sessions without counted blocks', () => {
     expect([...aggregateSessionBlockMinutes([
       { total_minutes: 6, session_blocks: [block('', 2, 'legacy-key'), block(null, 4, 'custom-key')] },
-      { total_minutes: 10, session_blocks: [block('Warmup', 10, 'warmup', false)] },
+      { total_minutes: 10, session_blocks: [block('Warmup', 0, 'warmup', false), block('Legato', null, 'legato', false)] },
       { total_minutes: 10, session_blocks: null },
     ])]).toEqual([['legacy-key', 2], ['custom-key', 4]])
   })

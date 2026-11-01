@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../src/lib/sessionBlockSavePlan'
+import { hasUnsupportedSessionBlocks, isPracticedSessionBlock, planSessionBlockSave, selectPracticedSessionBlocks, sessionBlockMinutes } from '../src/lib/sessionBlockSavePlan'
 import { getSessionEditorState, isSessionEditorDirty, shouldDeleteClearedSession } from '../src/lib/sessionEditorState'
 
 describe('legacy block save preflight', () => {
@@ -51,6 +51,39 @@ describe('legacy block save preflight', () => {
     expect(guard).toBeLessThan(submit.indexOf('const saveTimers ='))
     expect(guard).toBeLessThan(submit.indexOf('setSaving(true)'))
     expect(submit.slice(guard, parentDelete)).toMatch(/setError\(t\('Cannot save this session[^\r\n]+\r?\n\s+return\r?\n\s+}/)
+  })
+})
+
+describe('selectPracticedSessionBlocks', () => {
+  const block = (overrides: Partial<{ done: boolean; actualMinutes: string; elapsedSeconds: number }>) => ({
+    key: 'k', label: 'K', targetMinutes: null, done: false, actualMinutes: '', ...overrides,
+  })
+
+  it.each([
+    [{}, false],
+    [{ actualMinutes: '0' }, false],
+    [{ actualMinutes: 'abc' }, false],
+    [{ elapsedSeconds: 0 }, false],
+    [{ elapsedSeconds: 29 }, false],
+    [{ elapsedSeconds: 30 }, true],
+    [{ actualMinutes: '7' }, true],
+    [{ actualMinutes: '0.5' }, true],
+    [{ done: true }, true],
+    [{ done: true, actualMinutes: '0' }, true],
+  ])('treats %o as practiced=%s', (overrides, practiced) => {
+    expect(isPracticedSessionBlock(block(overrides))).toBe(practiced)
+  })
+
+  it('keeps order and drops untouched pre-filled blocks', () => {
+    const blocks = [
+      { ...block({}), key: 'warmup' },
+      { ...block({ elapsedSeconds: 300 }), key: 'technique' },
+      { ...block({ done: true }), key: 'chords' },
+      { ...block({ actualMinutes: '' }), key: 'repertoire' },
+    ]
+    expect(selectPracticedSessionBlocks(blocks).map((b) => b.key)).toEqual(['technique', 'chords'])
+    expect(planSessionBlockSave('s', selectPracticedSessionBlocks(blocks)).blockKeysToKeep).toEqual(['technique', 'chords'])
+    expect(selectPracticedSessionBlocks([block({})])).toEqual([])
   })
 })
 

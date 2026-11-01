@@ -39,7 +39,7 @@ The floating navigation menu exposes Home, Progress, Plan, Practice, Stats, and 
 
 Files: `src/pages/Sessions.tsx`, `src/lib/database.types.ts`.
 
-Practice resolves the selected week/day and active catalog, saves session rows and selected `session_blocks`, displays recent activity and week-scoped Repertoire songs, and runs timers/metronome/tuner tools. Materials can be attached to blocks; Repertoire materials can additionally be scoped to a song.
+Practice resolves the selected week/day and active catalog, saves session rows and practiced `session_blocks` (minutes above zero or done; untouched pre-filled blocks are not stored and re-saving removes unpracticed rows), displays recent activity and week-scoped Repertoire songs, and runs timers/metronome/tuner tools. Metronome volume is stored per device in localStorage, not `app_settings`. Major/Minor scales blocks show an unsaved random key. Week arrows move between scheduled weeks. Materials can be attached to blocks; Repertoire materials can additionally be scoped to a song.
 
 ### Plan screen
 
@@ -54,7 +54,8 @@ Responsibilities:
 - edit week ToDo items and the week-scoped Repertoire song list
 - compose program/week block sets through the catalog gallery
 - persist week data, ToDos, and songs through their respective APIs/RPCs
-- add and remove weeks through transactional owner-scoped RPCs
+- add, duplicate (`duplicate_plan_week`) and remove weeks through transactional owner-scoped RPCs
+- save Repertoire song links immediately on create/tick/untick/remove, and guard in-app navigation with other unsaved edits (`useBlocker`)
 - expose current week assignment, insertion, removal, and rescheduling controls; backend lifecycle RPCs do not imply visible start/resume buttons
 - hide unscheduled program weeks until they are re-activated
 
@@ -124,7 +125,7 @@ Key fields:
 
 ### songs and week_songs
 
-The song catalog remains separate from the ordered per-week link table. The Plan editor and Practice Repertoire block present the same week-scoped song associations; saving associations uses the authenticated `replace_week_repertoire_songs` RPC. Unlinking a song does not delete the user's song record. Per-song learning materials stay local and are scoped by the song UUID plus the `repertoire` block key.
+The song catalog remains separate from the ordered per-week link table. The Plan editor and Practice Repertoire block present the same week-scoped song associations; Plan saves associations immediately on each Repertoire change through the authenticated `replace_week_repertoire_songs` RPC, and Practice refreshes them on focus/visibility/page restore. Unlinking a song does not delete the user's song record. Per-song learning materials stay local and are scoped by the song UUID plus the `repertoire` block key.
 
 - songs: library of songs
 - week_songs: relationship between a week and a song
@@ -187,7 +188,7 @@ Only newly created Default programs receive the owner-approved same-every-week s
 
 ### Local learning materials
 
-Files, URLs, names, and bookmarks are device-local. Opaque `LocalMaterialAccess` tokens bind operations to the authenticated UID/auth epoch, not a caller-supplied owner. IndexedDB database `guitar-practice-hub-local` is v2; `owned-learning-materials` uses compound `[ownerUid,id]` keys and an owner index. APIs revalidate persisted ownership and exact block/song scope. Sign-out/UID changes invalidate pending work, routed state and player callbacks; object URLs are revoked. Same-UID refresh can retain the epoch, while A-to-B-to-A cannot reuse old authority.
+Files, URLs, names, and bookmarks are device-local. Bookmarks are stored as `{ seconds, name? }` (name up to 60 characters, defaulting to the timestamp); legacy numeric bookmarks still load and are rewritten only when that material's bookmarks change. Removal retries cache cleanup and blocks late writes from resurrecting a removed item; uploads time out after 120 seconds with cancel/retry. Opaque `LocalMaterialAccess` tokens bind operations to the authenticated UID/auth epoch, not a caller-supplied owner. IndexedDB database `guitar-practice-hub-local` is v2; `owned-learning-materials` uses compound `[ownerUid,id]` keys and an owner index. APIs revalidate persisted ownership and exact block/song scope. Sign-out/UID changes invalidate pending work, routed state and player callbacks; object URLs are revoked. Same-UID refresh can retain the epoch, while A-to-B-to-A cannot reuse old authority.
 
 File bytes use `guitar-practice-hub-media-v2` with owner-specific request paths when CacheStorage and Web Locks are available, or IndexedDB otherwise. Legacy ownerless `learning-materials` records and old cache bytes are preserved but hidden: no legacy fallback, automatic claim, copy or deletion. Warmup-to-Chromatic reassociation now applies only to owned records. Supabase stores song records and week-song associations, not uploaded learning files. This is application-level isolation, not encryption or protection from OS/browser-profile access; browser eviction remains possible. Never clear owner/shared site data, materials, caches or service workers as a QA shortcut.
 
@@ -209,6 +210,7 @@ Required:
 - Selected week dates are editable in Plan; `20260924160000_reschedule_plan_week.sql` pushes conflicting later weeks forward while preserving their durations.
 - Program ownership and prescribed durations use `20260924120000_program_based_plan_weeks.sql` and `20260924130000_require_program_week_sequence.sql`; `20260924140000_sync_program_completion.sql` marks an active program completed after its prescribed sequence ends, while pause/resume actions preserve paused state.
 - Program reassignment uses `20260924180000_assign_plan_week_program.sql`; Progress inline insertion uses `20260924190000_insert_plan_week_without_pausing.sql`.
+- Duplicate week uses `20261101120000_duplicate_plan_week.sql` (`duplicate_plan_week(p_week_id) returns uuid`, authenticated-only, security definer); the built-in Arpeggios block is seeded by `20261101121000_arpeggios_block.sql`. Both are verified locally only and need separately approved production apply; until then the Plan button reports that duplication is unavailable.
 - Visible date ranges use `src/lib/dateFormat.ts` with compact same-month, same-year, and cross-year formats.
 - `app_settings` retains only active persisted preferences; obsolete reminder, compact-card, and collapsed-note preferences were removed by `20260925150000_remove_unused_preferences.sql`.
 - `app_settings.language` and `programs.is_default` are added by `20260925100000_add_language_and_default_program.sql`.

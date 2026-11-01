@@ -9,7 +9,7 @@ vi.mock('../src/lib/supabase', () => ({ supabase: { auth: {
   signOut: auth.signOut,
   onAuthStateChange: (callback: typeof auth.change) => { auth.change = callback; return { data: { subscription: { unsubscribe: vi.fn() } } } },
 } } }))
-import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterialOwner, signOutLocalMaterialIdentity, watchLocalMaterialIdentity } from '../src/lib/localMaterialAccess'
+import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, isLocalMaterialIdentityReady, localMaterialOwner, onLocalMaterialVerification, signOutLocalMaterialIdentity, watchLocalMaterialIdentity } from '../src/lib/localMaterialAccess'
 
 let stop: (() => void) | undefined
 const sessionFor = (id: string) => ({ user: { id }, access_token: `isolated-${id}` })
@@ -75,6 +75,49 @@ describe('authenticated local material authority', () => {
     expect(isLocalMaterialAccessCurrent(oldAccess)).toBe(false)
   })
 
+  it('does not gate playback when focus returns from an embedded player iframe on the visible page', async () => {
+    vi.useFakeTimers()
+    try {
+      const notify = vi.fn()
+      const ready = vi.fn()
+      auth.bootstrap = Promise.resolve({ data: { session: sessionFor('A') }, error: null })
+      stop = watchLocalMaterialIdentity(notify)
+      const unsubscribe = onLocalMaterialVerification(ready)
+      await vi.advanceTimersByTimeAsync(0)
+      auth.change('SIGNED_IN', sessionFor('A'))
+      const current = captureLocalMaterialAccess()
+      const calls = notify.mock.calls.length
+      ready.mockClear()
+      Object.assign(document, { activeElement: { tagName: 'IFRAME' } })
+      window.dispatchEvent(new Event('blur'))
+      await vi.advanceTimersByTimeAsync(0)
+      Object.assign(document, { activeElement: { tagName: 'SELECT' } })
+      window.dispatchEvent(new Event('focus'))
+      expect(ready).not.toHaveBeenCalled()
+      expect(notify).toHaveBeenCalledTimes(calls)
+      expect(isLocalMaterialIdentityReady()).toBe(true)
+      expect(isLocalMaterialAccessCurrent(current)).toBe(true)
+
+      window.dispatchEvent(new Event('blur'))
+      await vi.advanceTimersByTimeAsync(0)
+      window.dispatchEvent(new Event('focus'))
+      expect(ready).toHaveBeenLastCalledWith(false)
+
+      Object.assign(document, { activeElement: { tagName: 'IFRAME' } })
+      window.dispatchEvent(new Event('blur'))
+      await vi.advanceTimersByTimeAsync(0)
+      Object.assign(document, { visibilityState: 'hidden' })
+      document.dispatchEvent(new Event('visibilitychange'))
+      Object.assign(document, { visibilityState: 'visible' })
+      ready.mockClear()
+      window.dispatchEvent(new Event('focus'))
+      expect(ready).toHaveBeenCalledWith(false)
+      unsubscribe()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('invalidates authority before sign-out resolves', async () => {
     stop = watchLocalMaterialIdentity(vi.fn())
     auth.change('SIGNED_IN', sessionFor('A'))
@@ -136,6 +179,8 @@ describe('authenticated local material authority', () => {
       materialUrlInputs: { learning: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
       materialNavigationRef: { current: 1 },
       materialsMountedRef: { current: true },
+      uploadControllersRef: { current: {} },
+      retryUploadsRef: { current: {} },
       practiceMediaKind: () => null,
       saveLocalMaterial: save,
       loadBlockMaterials: vi.fn(),

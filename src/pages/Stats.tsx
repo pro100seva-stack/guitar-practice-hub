@@ -1,10 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { useI18n } from '../lib/i18n'
 import { getLocalDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
-import { getCurrentStreak, hasPracticeMinutes, hasSessionActivity } from '../lib/sessionActivity'
-import { aggregateSessionBlockMinutes } from '../lib/blockLabels'
+import { getCurrentStreak, getPracticedDates, hasPracticeMinutes, hasSessionActivity } from '../lib/sessionActivity'
+import {
+  buildCumulativeBuckets,
+  formatBucketFullLabel,
+  niceYTicks,
+  planAxisLabels,
+  estimateLabelWidth,
+  type ChartScale,
+} from '../lib/statsChart'
+import {
+  aggregateCategoryMinutes,
+  buildBlockCategoryIndex,
+  statsCategoryColors,
+  statsCategoryLabelKeys,
+  toCategorySlices,
+  type BlockCategoryIndex,
+} from '../lib/statsCategories'
+import {
+  buildMonthGrid,
+  calendarYearOptions,
+  monthCursorFromDate,
+  monthNames,
+  mondayFirstWeekdays,
+  practicedDaysInMonth,
+  shiftMonth,
+  type MonthCursor,
+} from '../lib/statsCalendar'
 
 type Session = Database['public']['Tables']['sessions']['Row']
 type SessionBlock = Database['public']['Tables']['session_blocks']['Row']
@@ -12,28 +37,12 @@ type SessionWithBlocks = Session & {
   session_blocks: SessionBlock[]
 }
 
-type StatsSummary = {
-  totalMinutes: number
-  totalSessions: number
-  streakDays: number
-  selectedPeriodMinutes: number
-  lastSessionDate: string | null
-  lastSessionMinutes: number
-}
-
-type ChartPoint = {
-  label: string
-  value: number
-}
-
 type FilterPreset = 'current-week' | 'current-month' | 'this-year' | 'custom' | 'all'
-type ChartScale = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-type PieSlice = {
-  label: string
-  value: number
-  color: string
-}
+type CategoryState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; index: BlockCategoryIndex }
 
 type InsightCard = {
   title: string
@@ -47,28 +56,6 @@ function formatDate(value: string, locale: string) {
     day: 'numeric',
     year: 'numeric',
   })
-}
-
-function formatChartLabel(value: string, scale: ChartScale, weekLabel: (value: string) => string, locale: string) {
-  if (scale === 'daily') {
-    return new Date(`${value}T00:00:00`).toLocaleDateString(locale, {
-      month: 'short',
-      day: 'numeric',
-    })
-  }
-
-  if (scale === 'weekly') {
-    const date = new Date(`${value}T00:00:00`)
-    return weekLabel(date.toLocaleDateString(locale, { month: 'short', day: 'numeric' }))
-  }
-
-  if (scale === 'monthly') {
-    const [year, month] = value.split('-')
-    const date = new Date(Number(year), Number(month) - 1, 1)
-    return `${new Intl.DateTimeFormat(locale, { month: 'short' }).format(date)} '${new Intl.DateTimeFormat(locale, { year: '2-digit' }).format(date)}`
-  }
-
-  return value
 }
 
 function toInputDate(value: string | null) {
@@ -97,20 +84,162 @@ function getWeekKey(dateValue: string) {
   return toLocalIsoDate(start)
 }
 
-function chartLabelStep(total: number, chartWidth: number) {
-  const maxLabels = Math.max(2, Math.floor((chartWidth - 72) / 80))
-  return Math.max(1, Math.ceil(total / maxLabels))
+type PracticeCalendarProps = {
+  practicedDates: ReadonlySet<string>
+  loading: boolean
+  failed: boolean
+}
+
+function PracticeCalendar({ practicedDates, loading, failed }: PracticeCalendarProps) {
+  const { language, t } = useI18n()
+  const locale = localeForLanguage(language)
+  const headingId = useId()
+  const [today] = useState(() => new Date())
+  const todayIso = toLocalIsoDate(today)
+  const todayCursor = monthCursorFromDate(today)
+  const [cursor, setCursor] = useState<MonthCursor>(todayCursor)
+  const weekdays = useMemo(() => mondayFirstWeekdays(locale), [locale])
+  const months = useMemo(() => monthNames(locale), [locale])
+  const weeks = buildMonthGrid(cursor)
+  const years = calendarYearOptions(practicedDates, todayCursor, cursor)
+  const monthTitle = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(new Date(cursor.year, cursor.month, 1, 12))
+  const dayFormat = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const monthCount = practicedDaysInMonth(practicedDates, cursor)
+  const isCurrentMonth = cursor.year === todayCursor.year && cursor.month === todayCursor.month
+
+  return (
+    <section className="border-t border-slate-800 py-4" aria-labelledby={headingId}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id={headingId} className="section-title">{t('stats.calendarTitle')}</h2>
+        {!isCurrentMonth && (
+          <button type="button" className="btn btn-ghost" onClick={() => setCursor(todayCursor)}>
+            {t('stats.calendarThisMonth')}
+          </button>
+        )}
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="btn btn-secondary min-h-11 min-w-11"
+          aria-label={t('stats.calendarPrevious')}
+          title={t('stats.calendarPrevious')}
+          onClick={() => setCursor((value) => shiftMonth(value, -1))}
+        >
+          <span aria-hidden="true">‹</span>
+        </button>
+        <label className="min-w-0">
+          <span className="sr-only">{t('stats.calendarMonth')}</span>
+          <select
+            className="field min-h-11"
+            value={cursor.month}
+            onChange={(event) => setCursor((value) => ({ ...value, month: Number(event.target.value) }))}
+          >
+            {months.map((name, month) => <option key={name} value={month}>{name}</option>)}
+          </select>
+        </label>
+        <label className="min-w-0">
+          <span className="sr-only">{t('stats.calendarYear')}</span>
+          <select
+            className="field min-h-11"
+            value={cursor.year}
+            onChange={(event) => setCursor((value) => ({ ...value, year: Number(event.target.value) }))}
+          >
+            {years.map((year) => <option key={year} value={year}>{year}</option>)}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn btn-secondary min-h-11 min-w-11"
+          aria-label={t('stats.calendarNext')}
+          title={t('stats.calendarNext')}
+          onClick={() => setCursor((value) => shiftMonth(value, 1))}
+        >
+          <span aria-hidden="true">›</span>
+        </button>
+      </div>
+
+      {loading ? (
+        <p role="status" className="state">{t('stats.calendarLoading')}</p>
+      ) : failed ? (
+        <p role="alert" className="msg-error">{t('stats.calendarError')}</p>
+      ) : (
+        <>
+          <p className="meta mb-2" aria-live="polite">
+            {practicedDates.size === 0
+              ? t('stats.calendarNoHistory')
+              : monthCount === 0
+                ? t('stats.calendarEmptyMonth')
+                : t('stats.calendarMonthCount', { count: monthCount })}
+          </p>
+          <table className="w-full table-fixed border-separate border-spacing-1 text-center text-sm">
+            <caption className="sr-only">{monthTitle}</caption>
+            <thead>
+              <tr>
+                {weekdays.map((weekday) => (
+                  <th key={weekday.long} scope="col" className="pb-1 text-xs font-normal text-slate-400">
+                    <abbr title={weekday.long} className="no-underline">{weekday.short}</abbr>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {weeks.map((week, weekIndex) => (
+                <tr key={weekIndex}>
+                  {week.map((day, dayIndex) => {
+                    if (!day) return <td key={`empty-${dayIndex}`} />
+                    const practiced = practicedDates.has(day.iso)
+                    const isToday = day.iso === todayIso
+                    const status = [practiced ? t('stats.calendarPracticed') : t('stats.calendarNotPracticed'), isToday ? t('Today') : null]
+                      .filter(Boolean)
+                      .join(', ')
+                    return (
+                      <td key={day.iso} aria-current={isToday ? 'date' : undefined}>
+                        <span
+                          className={`relative mx-auto flex h-10 max-w-11 flex-col items-center justify-center rounded-md leading-none ${practiced ? 'bg-sky-500/25 font-semibold text-sky-100' : 'text-slate-300'} ${isToday ? 'outline-2 outline-offset-1 outline-amber-300' : ''}`}
+                        >
+                          <span aria-hidden="true">{day.day}</span>
+                          {practiced && (
+                            <svg aria-hidden="true" viewBox="0 0 12 12" className="mt-0.5 h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M2 6.5 5 9l5-6" />
+                            </svg>
+                          )}
+                          {isToday && <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-300" />}
+                          <span className="sr-only">{`${dayFormat.format(new Date(cursor.year, cursor.month, day.day, 12))}: ${status}`}</span>
+                        </span>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-300">
+            <li className="flex items-center gap-2">
+              <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded bg-sky-500/25 text-sky-100">
+                <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6.5 5 9l5-6" /></svg>
+              </span>
+              {t('stats.calendarPracticed')}
+            </li>
+            <li className="flex items-center gap-2">
+              <span aria-hidden="true" className="relative h-5 w-5 rounded outline-2 outline-offset-1 outline-amber-300">
+                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-300" />
+              </span>
+              {t('Today')}
+            </li>
+          </ul>
+        </>
+      )}
+    </section>
+  )
 }
 
 export default function Stats() {
   const { language, t } = useI18n()
   const locale = localeForLanguage(language)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
-  const [summary, setSummary] = useState<StatsSummary | null>(null)
-  const [chartPoints, setChartPoints] = useState<ChartPoint[]>([])
-  const [pieSlices, setPieSlices] = useState<PieSlice[]>([])
+  const [categoryState, setCategoryState] = useState<CategoryState>({ status: 'loading' })
   const [filterPreset, setFilterPreset] = useState<FilterPreset>('current-month')
-  const [chartScale, setChartScale] = useState<ChartScale>('monthly')
+  const [chartScale, setChartScale] = useState<ChartScale>('weekly')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
   const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null)
@@ -137,19 +266,29 @@ export default function Stats() {
   async function loadStats() {
     setLoading(true)
     setError(null)
+    setCategoryState({ status: 'loading' })
 
-    const { data, error } = await supabase
-      .from('sessions')
-      .select('*, session_blocks(*)')
-      .order('session_date', { ascending: true })
+    const [sessionsResult, catalogResult] = await Promise.all([
+      supabase
+        .from('sessions')
+        .select('*, session_blocks(*)')
+        .order('session_date', { ascending: true }),
+      supabase
+        .from('block_templates')
+        .select('key, category_key'),
+    ])
 
-    if (error) {
-      setError(error.message)
+    setCategoryState(catalogResult.error
+      ? { status: 'error' }
+      : { status: 'ready', index: buildBlockCategoryIndex(catalogResult.data ?? []) })
+
+    if (sessionsResult.error) {
+      setError(sessionsResult.error.message)
       setLoading(false)
       return
     }
 
-    setSessions((data ?? []) as SessionWithBlocks[])
+    setSessions((sessionsResult.data ?? []) as SessionWithBlocks[])
     setLoading(false)
   }
 
@@ -159,93 +298,103 @@ export default function Stats() {
       ? { start: '', end: '' }
       : getLocalDateRange(filterPreset)
 
-  const filteredSessions = sessions.filter((session) => hasSessionActivity(session) && isInRange(session.session_date, rangeStart || null, rangeEnd || null))
+  // Derived synchronously so the chart never renders points from a previous scale (item 56).
+  const filteredSessions = useMemo(
+    () => sessions
+      .filter((session) => hasSessionActivity(session) && isInRange(session.session_date, rangeStart || null, rangeEnd || null))
+      .sort((a, b) => a.session_date.localeCompare(b.session_date)),
+    [sessions, rangeStart, rangeEnd],
+  )
+  const chartBuckets = useMemo(() => buildCumulativeBuckets(filteredSessions, chartScale), [filteredSessions, chartScale])
+  const practicedDates = useMemo(() => getPracticedDates(sessions), [sessions])
+  const categorySlices = useMemo(
+    () => categoryState.status === 'ready' ? toCategorySlices(aggregateCategoryMinutes(filteredSessions, categoryState.index)) : [],
+    [filteredSessions, categoryState],
+  )
+  const minutesFormat = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }), [locale])
+  const tickFormat = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }), [locale])
 
-  useEffect(() => {
-    const effectFilteredSessions = sessions.filter((session) => hasSessionActivity(session) && isInRange(session.session_date, rangeStart || null, rangeEnd || null))
-    const sortedSessions = [...effectFilteredSessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
-    const totalMinutes = sortedSessions.reduce((sum, session) => sum + Number(session.total_minutes ?? 0), 0)
-    const totalSessions = sortedSessions.length
+  const totalMinutes = filteredSessions.reduce((sum, session) => sum + Number(session.total_minutes ?? 0), 0)
+  const lastSession = filteredSessions[filteredSessions.length - 1]
+  const summary = {
+    totalMinutes,
+    totalSessions: filteredSessions.length,
+    streakDays: getCurrentStreak(filteredSessions),
+    selectedPeriodMinutes: totalMinutes,
+    lastSessionDate: lastSession?.session_date ?? null,
+    lastSessionMinutes: Number(lastSession?.total_minutes ?? 0),
+  }
 
-    const streakDays = getCurrentStreak(sortedSessions)
-
-    const buckets = new Map<string, number>()
-    for (const session of sortedSessions) {
-      const key = chartScale === 'daily'
-        ? session.session_date
-        : chartScale === 'weekly'
-          ? getWeekKey(session.session_date)
-          : chartScale === 'monthly'
-            ? session.session_date.slice(0, 7)
-            : session.session_date.slice(0, 4)
-
-      buckets.set(key, (buckets.get(key) ?? 0) + Number(session.total_minutes ?? 0))
-    }
-
-    const cumulativeTimeline: ChartPoint[] = []
-    let runningTotal = 0
-    const orderedBuckets = Array.from(buckets.entries()).sort(([left], [right]) => left.localeCompare(right))
-    for (const [label, minutes] of orderedBuckets) {
-      runningTotal += minutes
-      cumulativeTimeline.push({
-        label,
-        value: runningTotal,
-      })
-    }
-
-    const pieMap = aggregateSessionBlockMinutes(sortedSessions)
-
-    const colors = ['#38bdf8', '#22c55e', '#f59e0b', '#f472b6', '#818cf8', '#fb923c', '#a78bfa']
-    const nextPieSlices = Array.from(pieMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value], index) => ({
-        label,
-        value,
-        color: colors[index % colors.length],
-      }))
-
-    setSummary({
-      totalMinutes,
-      totalSessions,
-      streakDays,
-      selectedPeriodMinutes: totalMinutes,
-      lastSessionDate: sortedSessions[sortedSessions.length - 1]?.session_date ?? null,
-      lastSessionMinutes: Number(sortedSessions[sortedSessions.length - 1]?.total_minutes ?? 0),
-    })
-    setChartPoints(cumulativeTimeline)
-    setPieSlices(nextPieSlices)
+  function selectScale(scale: ChartScale) {
     setHoveredPointIndex(null)
-  }, [sessions, rangeStart, rangeEnd, chartScale])
+    setChartScale(scale)
+  }
+
+  function selectPreset(preset: FilterPreset) {
+    setHoveredPointIndex(null)
+    setFilterPreset(preset)
+  }
 
   const chartWidth = chartBoxWidth > 0 ? Math.max(chartBoxWidth, 280) : 720
   const chartHeight = Math.min(288, Math.max(200, Math.round(chartWidth * 0.6)))
-  const labelStep = chartLabelStep(chartPoints.length, chartWidth)
-  const chartPadding = 36
-  const maxValue = Math.max(...chartPoints.map((point) => point.value), 1)
-  const chartPointsWithCoords = chartPoints.map((point, index) => {
-    const x = chartPadding + (index / Math.max(1, chartPoints.length - 1)) * (chartWidth - chartPadding * 2)
-    const y = chartHeight - chartPadding - (point.value / maxValue) * (chartHeight - chartPadding * 2)
-    return { ...point, x, y }
+  const maxValue = chartBuckets.length > 0 ? chartBuckets[chartBuckets.length - 1].total : 0
+  const yTicks = niceYTicks(maxValue)
+  const yMax = yTicks[yTicks.length - 1]
+  const yTickLabels = yTicks.map((tick) => tickFormat.format(tick))
+  const unitLabel = t('min')
+  const padLeft = Math.max(36, ...[...yTickLabels, unitLabel].map((label) => estimateLabelWidth(label) + 14))
+  const padRight = 20
+  const padTop = 24
+  const padBottom = 36
+  const plotWidth = chartWidth - padLeft - padRight
+  const plotHeight = chartHeight - padTop - padBottom
+  const yFor = (value: number) => padTop + plotHeight - (value / yMax) * plotHeight
+  const chartPointsWithCoords = chartBuckets.map((bucket, index) => {
+    const x = chartBuckets.length === 1
+      ? padLeft + plotWidth / 2
+      : padLeft + (index / (chartBuckets.length - 1)) * plotWidth
+    return { ...bucket, x, y: yFor(bucket.total) }
   })
+  const axisLabels = planAxisLabels(chartBuckets, locale, plotWidth)
+  const weekLabel = (date: string) => t('Week of {date}', { date })
+  const bucketFullLabel = (bucket: (typeof chartBuckets)[number]) => formatBucketFullLabel(bucket, locale, weekLabel)
 
   const polylinePoints = chartPointsWithCoords.map((point) => `${point.x},${point.y}`).join(' ')
-  const yTicks = Array.from({ length: 5 }, (_, index) => {
-    const tickValue = Math.round((maxValue / 4) * index)
-    return tickValue
-  })
 
-  const activePoint = hoveredPointIndex === null ? null : chartPointsWithCoords[hoveredPointIndex]
+  const activePoint = hoveredPointIndex === null ? null : chartPointsWithCoords[hoveredPointIndex] ?? null
+  const activePointText = activePoint
+    ? `${bucketFullLabel(activePoint)}: ${t('{value} min total', { value: minutesFormat.format(activePoint.total) })}`
+    : ''
+
+  function handleChartKeyDown(event: KeyboardEvent<SVGSVGElement>) {
+    const count = chartPointsWithCoords.length
+    if (count === 0) return
+    const current = hoveredPointIndex ?? count - 1
+    const next = event.key === 'ArrowLeft'
+      ? Math.max(0, current - 1)
+      : event.key === 'ArrowRight'
+        ? Math.min(count - 1, current + 1)
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? count - 1
+            : null
+    if (next === null) return
+    event.preventDefault()
+    setHoveredPointIndex(next)
+  }
+
   const connectorColor = '#f8fafc'
 
   const pieWidth = 260
   const pieHeight = 260
   const pieRadius = 78
   const pieCenter = 130
-  const totalPieValue = pieSlices.reduce((sum, slice) => sum + slice.value, 0)
+  const totalPieValue = categorySlices.reduce((sum, slice) => sum + slice.value, 0)
 
   let currentAngle = -90
-  const pieSegments = pieSlices.map((slice) => {
-    const sliceAngle = (slice.value / Math.max(1, totalPieValue)) * 360
+  const pieSegments = categorySlices.map((slice) => {
+    const sliceAngle = totalPieValue > 0 ? (slice.value / totalPieValue) * 360 : 0
     const startAngle = currentAngle
     const endAngle = currentAngle + sliceAngle
     currentAngle = endAngle
@@ -266,11 +415,18 @@ export default function Stats() {
     const labelX = pieCenter + Math.cos(midRad) * (pieRadius + 22)
     const labelY = pieCenter + Math.sin(midRad) * (pieRadius + 22)
     const textAnchor: 'start' | 'end' = labelX > pieCenter ? 'start' : 'end'
-    const percent = `${Math.round((slice.value / Math.max(1, totalPieValue)) * 100)}%`
+    const percent = `${slice.percent}%`
+    // A single 360° arc has identical endpoints and would not render.
+    const fullCircle = sliceAngle >= 359.999
+    const d = fullCircle
+      ? `M ${pieCenter - pieRadius} ${pieCenter} A ${pieRadius} ${pieRadius} 0 1 1 ${pieCenter + pieRadius} ${pieCenter} A ${pieRadius} ${pieRadius} 0 1 1 ${pieCenter - pieRadius} ${pieCenter} Z`
+      : `M ${pieCenter} ${pieCenter} L ${x1} ${y1} A ${pieRadius} ${pieRadius} 0 ${largeArc} 1 ${x2} ${y2} Z`
 
     return {
       ...slice,
-      d: `M ${pieCenter} ${pieCenter} L ${x1} ${y1} A ${pieRadius} ${pieRadius} 0 ${largeArc} 1 ${x2} ${y2} Z`,
+      label: t(statsCategoryLabelKeys[slice.key]),
+      color: statsCategoryColors[slice.key],
+      d,
       startPointX,
       startPointY,
       connectorEndX,
@@ -368,7 +524,7 @@ export default function Stats() {
                     key={preset}
                     type="button"
                     aria-pressed={filterPreset === preset}
-                    onClick={() => setFilterPreset(preset)}
+                    onClick={() => selectPreset(preset)}
                     className="chip"
                   >
                     {label}
@@ -378,7 +534,7 @@ export default function Stats() {
               <button
                 type="button"
                 onClick={() => {
-                  setFilterPreset('all')
+                  selectPreset('all')
                   setCustomStart('')
                   setCustomEnd('')
                 }}
@@ -413,7 +569,7 @@ export default function Stats() {
                 <button
                   type="button"
                   onClick={() => {
-                    setFilterPreset('all')
+                    selectPreset('all')
                     setCustomStart('')
                     setCustomEnd('')
                   }}
@@ -429,19 +585,19 @@ export default function Stats() {
             <dl data-tour="stats-summary" className="grid grid-cols-2 gap-x-4 gap-y-4 md:grid-cols-4">
               <div>
                 <dt className="meta">{t('Practice time')}</dt>
-                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.totalMinutes ?? 0} {t('min')}</dd>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.totalMinutes} {t('min')}</dd>
               </div>
               <div>
                 <dt className="meta">{t('Sessions logged')}</dt>
-                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.totalSessions ?? 0}</dd>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.totalSessions}</dd>
               </div>
               <div>
                 <dt className="meta">{t('Current streak')}</dt>
-                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.streakDays ?? 0} {t('days')}</dd>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.streakDays} {t('days')}</dd>
               </div>
               <div>
                 <dt className="meta">{t('Selected period')}</dt>
-                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary?.selectedPeriodMinutes ?? 0} {t('min')}</dd>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.selectedPeriodMinutes} {t('min')}</dd>
               </div>
             </dl>
           </section>
@@ -451,14 +607,15 @@ export default function Stats() {
               <div className="min-w-0">
                 <p className="meta">{t('Last session')}</p>
                 <p className="text-base font-medium text-slate-200">
-                  {summary?.lastSessionDate ? formatDate(summary.lastSessionDate, locale) : t('No sessions yet')}
+                  {summary.lastSessionDate ? formatDate(summary.lastSessionDate, locale) : t('No sessions yet')}
                 </p>
               </div>
-              <span className="badge badge-neutral shrink-0">{summary?.lastSessionMinutes ?? 0} {t('min')}</span>
+              <span className="badge badge-neutral shrink-0">{summary.lastSessionMinutes} {t('min')}</span>
             </div>
           </section>
 
           <div className="xl:grid xl:grid-cols-[2fr_1fr] xl:gap-x-6">
+            <div className="min-w-0">
             <section className="border-t border-slate-800 py-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="section-title">{t('Cumulative practice time')}</h2>
@@ -468,7 +625,7 @@ export default function Stats() {
                       key={scale}
                       type="button"
                       aria-pressed={chartScale === scale}
-                      onClick={() => setChartScale(scale)}
+                      onClick={() => selectScale(scale)}
                       className="chip"
                     >
                       {t(scale)}
@@ -477,16 +634,23 @@ export default function Stats() {
                 </div>
               </div>
               <div ref={chartBoxRef} className="relative">
+                {chartBuckets.length === 0 ? (
+                  <p className="state">{t('stats.chartEmpty')}</p>
+                ) : (
                 <svg
                   viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                  className="block h-auto w-full"
+                  className="block h-auto w-full rounded focus-visible:outline-2 focus-visible:outline-sky-400"
                   role="img"
-                  aria-label={t('Cumulative practice timeline')}
+                  tabIndex={0}
+                  aria-label={`${t('Cumulative practice timeline')}. ${t('stats.chartKeyboardHint')}`}
+                  style={{ fontFamily: 'inherit', fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}
+                  onKeyDown={handleChartKeyDown}
+                  onBlur={() => setHoveredPointIndex(null)}
                   onMouseMove={(event) => {
                     if (chartPointsWithCoords.length === 0) return
                     const bounds = event.currentTarget.getBoundingClientRect()
                     const scaleX = chartWidth / bounds.width
-                    const relativeX = Math.min(chartWidth - chartPadding, Math.max(chartPadding, (event.clientX - bounds.left) * scaleX))
+                    const relativeX = Math.min(chartWidth - padRight, Math.max(padLeft, (event.clientX - bounds.left) * scaleX))
                     const closestPoint = chartPointsWithCoords.reduce((closestIndex, point, index) => {
                       const currentDistance = Math.abs(point.x - relativeX)
                       const closestDistance = Math.abs(chartPointsWithCoords[closestIndex].x - relativeX)
@@ -496,42 +660,48 @@ export default function Stats() {
                   }}
                   onMouseLeave={() => setHoveredPointIndex(null)}
                 >
-                  {yTicks.map((tick) => {
-                    const y = chartHeight - chartPadding - (tick / Math.max(1, maxValue)) * (chartHeight - chartPadding * 2)
+                  <text x={padLeft - 8} y={padTop - 10} textAnchor="end" fontSize="11" fontWeight={400} fill="#cbd5e1">{unitLabel}</text>
+                  {yTicks.map((tick, index) => {
+                    const y = yFor(tick)
                     return (
                       <g key={tick}>
-                        <line x1={chartPadding} y1={y} x2={chartWidth - chartPadding} y2={y} stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-                        <text x={6} y={y + 4} fontSize="11" fill="#94a3b8">{tick}</text>
+                        <line x1={padLeft} y1={y} x2={chartWidth - padRight} y2={y} stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+                        <text x={padLeft - 8} y={y} dominantBaseline="middle" textAnchor="end" fontSize="11" fontWeight={400} fill="#cbd5e1">{yTickLabels[index]}</text>
                       </g>
                     )
                   })}
-                  <line x1={chartPadding} y1={chartHeight - chartPadding} x2={chartWidth - chartPadding} y2={chartHeight - chartPadding} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
-                  <line x1={chartPadding} y1={chartPadding} x2={chartPadding} y2={chartHeight - chartPadding} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
+                  <line x1={padLeft} y1={padTop + plotHeight} x2={chartWidth - padRight} y2={padTop + plotHeight} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
+                  <line x1={padLeft} y1={padTop} x2={padLeft} y2={padTop + plotHeight} stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
                   <polyline points={polylinePoints} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   {chartPointsWithCoords.map((point, index) => {
                     const isActive = hoveredPointIndex === index
-                    const showLabel = index % labelStep === 0
                     return (
-                      <g key={`${point.label}-${index}`}>
-                        <circle
-                          cx={point.x}
-                          cy={point.y}
-                          r={isActive ? 5.5 : 3.5}
-                          fill={isActive ? '#f8fafc' : '#38bdf8'}
-                          stroke="#38bdf8"
-                          strokeWidth="1.5"
-                        />
-                        {showLabel && (
-                          <text x={point.x} y={chartHeight - chartPadding + 18} textAnchor="middle" fontSize="11" fill="#94a3b8">
-                            {formatChartLabel(point.label, chartScale, (date) => t('Week of {date}', { date }), locale)}
-                          </text>
-                        )}
-                      </g>
+                      <circle
+                        key={`${point.scale}-${point.key}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r={isActive ? 5.5 : 3.5}
+                        fill={isActive ? '#f8fafc' : '#38bdf8'}
+                        stroke="#38bdf8"
+                        strokeWidth="1.5"
+                      />
+                    )
+                  })}
+                  {axisLabels.map((label) => {
+                    const pointX = chartPointsWithCoords[label.index].x
+                    const half = label.width / 2
+                    const x = Math.min(chartWidth - half - 2, Math.max(half + 2, pointX))
+                    return (
+                      <text key={`${chartScale}-${label.index}`} x={x} y={padTop + plotHeight + 20} textAnchor="middle" fontSize="11" fontWeight={400} fill="#cbd5e1">
+                        {label.text}
+                      </text>
                     )
                   })}
                 </svg>
+                )}
                 {activePoint && (
                   <div
+                    aria-hidden="true"
                     className="pointer-events-none absolute rounded border border-slate-700 bg-slate-900/95 px-3 py-2 text-xs text-slate-200 shadow-lg"
                     style={{
                       left: `${(activePoint.x / chartWidth) * 100}%`,
@@ -539,27 +709,60 @@ export default function Stats() {
                       transform: 'translate(-50%, -120%)',
                     }}
                   >
-                    <p className="font-medium text-slate-100">{formatChartLabel(activePoint.label, chartScale, (date) => t('Week of {date}', { date }), locale)}</p>
-                    <p className="mt-1 text-slate-400">{t('{value} min total', { value: activePoint.value })}</p>
+                    <p className="font-medium text-slate-100">{bucketFullLabel(activePoint)}</p>
+                    <p className="mt-1 text-slate-300">{t('{value} min total', { value: minutesFormat.format(activePoint.total) })}</p>
                   </div>
                 )}
+                <p className="sr-only" aria-live="polite">{activePointText}</p>
               </div>
+              {chartBuckets.length > 0 && (
+                <details className="mt-3 text-sm text-slate-300">
+                  <summary className="flex min-h-11 cursor-pointer items-center">{t('stats.chartData')}</summary>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <caption className="sr-only">{t('Cumulative practice timeline')}</caption>
+                      <thead>
+                        <tr className="text-xs text-slate-400">
+                          <th scope="col" className="py-1 pr-3 font-normal">{t('stats.chartPeriod')}</th>
+                          <th scope="col" className="py-1 pr-3 text-right font-normal">{t('stats.chartPeriodMinutes')}</th>
+                          <th scope="col" className="py-1 text-right font-normal">{t('stats.chartCumulative')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {chartBuckets.map((bucket) => (
+                          <tr key={`${bucket.scale}-${bucket.key}`} className="border-t border-slate-800">
+                            <th scope="row" className="py-1 pr-3 font-normal">{bucketFullLabel(bucket)}</th>
+                            <td className="py-1 pr-3 text-right tabular-nums">{minutesFormat.format(bucket.minutes)} {t('min')}</td>
+                            <td className="py-1 text-right tabular-nums">{minutesFormat.format(bucket.total)} {t('min')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              )}
             </section>
+            <PracticeCalendar practicedDates={practicedDates} loading={loading} failed={error !== null} />
+            </div>
 
             <section className="border-t border-slate-800 py-4">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="section-title">{t('Practice blocks')}</h2>
+                <h2 className="section-title">{t('stats.categoriesTitle')}</h2>
                 <p className="meta">{t('Selected period')}</p>
               </div>
-              {pieSlices.length > 0 ? (
+              {categoryState.status === 'loading' ? (
+                <p role="status" className="state">{t('Loading…')}</p>
+              ) : categoryState.status === 'error' ? (
+                <p role="alert" className="msg-error">{t('stats.categoriesError')}</p>
+              ) : pieSegments.length > 0 ? (
                 <>
-                  <svg viewBox={`0 0 ${pieWidth} ${pieHeight}`} className="mx-auto h-64 w-full max-w-[260px]" role="img" aria-label={t('Practice block distribution')}>
+                  <svg viewBox={`0 0 ${pieWidth} ${pieHeight}`} className="mx-auto h-64 w-full max-w-[260px]" role="img" aria-label={t('stats.categoriesChart')}>
                     {pieSegments.map((slice) => (
-                      <path key={slice.label} d={slice.d} fill={slice.color} />
+                      <path key={slice.key} d={slice.d} fill={slice.color} />
                     ))}
                     <circle cx={pieCenter} cy={pieCenter} r={pieRadius * 0.55} fill="#0f172a" />
                     {pieSegments.map((slice) => (
-                      <g key={`${slice.label}-label`}>
+                      <g key={`${slice.key}-label`}>
                         <line x1={slice.startPointX} y1={slice.startPointY} x2={slice.connectorEndX} y2={slice.connectorEndY} stroke={connectorColor} strokeWidth="1.5" />
                         <line x1={slice.connectorEndX} y1={slice.connectorEndY} x2={slice.labelX} y2={slice.labelY} stroke={connectorColor} strokeWidth="1.5" />
                         <line x1={slice.labelX - (slice.textAnchor === 'start' ? 0 : 12)} y1={slice.labelY} x2={slice.labelX + (slice.textAnchor === 'start' ? 12 : 0)} y2={slice.labelY} stroke={connectorColor} strokeWidth="1.5" />
@@ -570,13 +773,13 @@ export default function Stats() {
                     ))}
                   </svg>
                   <ul className="list mt-3">
-                    {pieSlices.map((slice) => (
-                      <li key={slice.label} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm text-slate-300">
+                    {pieSegments.map((slice) => (
+                      <li key={slice.key} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm text-slate-300">
                         <div className="flex min-w-0 items-center gap-2">
                           <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: slice.color }} />
                           <span className="min-w-0 break-words">{slice.label}</span>
                         </div>
-                        <span className="shrink-0">{Math.floor(slice.value)} {t('min')}</span>
+                        <span className="shrink-0 tabular-nums">{minutesFormat.format(slice.value)} {t('min')} · {slice.percent}</span>
                       </li>
                     ))}
                   </ul>

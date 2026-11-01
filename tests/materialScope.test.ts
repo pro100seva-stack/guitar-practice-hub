@@ -234,7 +234,7 @@ function installFakeCache(events: string[]) {
   const stores = new Map<string, Map<string, Response>>()
   const locks = new Map<string, Promise<unknown>>()
   let failPut = false
-  let failDelete = false
+  let failDeletes = 0
   let afterPut: (() => void) | undefined
   const storage = (name: string) => {
     let store = stores.get(name)
@@ -242,7 +242,8 @@ function installFakeCache(events: string[]) {
     return store
   }
   vi.stubGlobal('location', { origin: 'https://isolated-materials.test' })
-  vi.stubGlobal('navigator', { locks: { request: (name: string, action: () => Promise<unknown>) => {
+  vi.stubGlobal('navigator', { locks: { request: (name: string, ...args: [() => Promise<unknown>] | [{ signal?: AbortSignal }, () => Promise<unknown>]) => {
+    const action = args.length === 1 ? args[0] : args[1]
     const operation = (locks.get(name) ?? Promise.resolve()).then(action)
     locks.set(name, operation.catch(() => {}))
     return operation
@@ -258,12 +259,12 @@ function installFakeCache(events: string[]) {
       written?.()
     },
     delete: async (request: Request) => {
-      if (failDelete) { failDelete = false; throw new Error('Cache unavailable') }
+      if (failDeletes > 0) { failDeletes--; throw new Error('Cache unavailable') }
       events.push('cache-delete')
       return storage(name).delete(request.url)
     },
   })) })
-  return { storage, failPut: () => { failPut = true }, failDelete: () => { failDelete = true }, afterNextPut: (callback: () => void) => { afterPut = callback } }
+  return { storage, failPut: () => { failPut = true }, failDelete: (times = 1) => { failDeletes = times }, afterNextPut: (callback: () => void) => { afterPut = callback } }
 }
 
 describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
@@ -368,7 +369,7 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     const patch = { bookmarks: [2] }
     const patching = localApi.patchLocalMaterialMetadata(access, ref, patch)
     ref.id = 'foreign'; ref.blockKey = 'foreign'; patch.bookmarks.push(99)
-    expect((await patching).bookmarks).toEqual([2])
+    expect((await patching).bookmarks).toEqual([{ seconds: 2 }])
     const blobRef = { id: 'fixed', blockKey: 'learning' }
     const loading = localApi.loadLocalMaterialBlob(access, blobRef)
     blobRef.id = 'foreign'
@@ -437,7 +438,8 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     expect(await (await loadLocalMaterialBlob(saved)).text()).toBe('new bytes')
     expect([...cache.storage('guitar-practice-hub-media-v2').keys()]).toEqual(['https://isolated-materials.test/__guitar_practice_hub_local_media/v2/A/cached'])
     await deleteLocalMaterial('cached', 'learning')
-    expect(database.events.slice(-2)).toEqual(['metadata-commit', 'cache-delete'])
+    expect(database.events.slice(-3)).toEqual(['metadata-commit', 'cache-delete', 'metadata-commit'])
+    expect(database.snapshot()).toEqual([])
     expect(await [...legacyCache.values()][0].clone().text()).toBe('legacy bytes')
     expect(legacyCache.size).toBe(1)
   })
@@ -465,14 +467,86 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     expect(await (await loadLocalMaterialBlob(input)).text()).toBe('winner')
   })
 
-  it('leaves only inaccessible owned cache orphans if cleanup fails after metadata deletion', async () => {
+  it('retries a transient cache-delete failure and then fully removes the material', async () => {
     const cache = installFakeCache(database.events)
+    await saveLocalMaterial({ ...material('transient', 'learning'), source: 'file', blob: new Blob(['bytes']) })
+    cache.failDelete(1)
+    await deleteLocalMaterial('transient', 'learning')
+    expect(database.snapshot()).toEqual([])
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(0)
+  })
+
+  it('reports cleanup pending instead of silently orphaning bytes, hides the row and retries only this owner', async () => {
+    const cache = installFakeCache(database.events)
+    const legacyCache = cache.storage('guitar-practice-hub-media')
+    legacyCache.set('https://isolated-materials.test/legacy', new Response('legacy'))
+    database.seedLegacy({ ...material('legacy', 'learning'), ownerUid: undefined })
     const saved = await saveLocalMaterial({ ...material('orphan', 'learning'), source: 'file', blob: new Blob(['bytes']) })
-    cache.failDelete()
-    await deleteLocalMaterial('orphan', 'learning')
+    const kept = await saveLocalMaterial({ ...material('kept', 'learning'), source: 'file', blob: new Blob(['keep']) })
+    database.seed({ ...material('foreign-pending', 'learning'), ownerUid: 'B', storage: 'cache', pendingDeletion: true })
+    cache.storage('guitar-practice-hub-media-v2').set('https://isolated-materials.test/__guitar_practice_hub_local_media/v2/B/foreign-pending', new Response('B bytes'))
+    cache.failDelete(3)
+    await expect(deleteLocalMaterial('orphan', 'learning')).rejects.toThrow(localApi.localMaterialCleanupPending)
+    expect((await listLocalMaterials('learning')).map((row) => row.id)).toEqual(['kept'])
+    await expect(loadLocalMaterialBlob(saved)).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    await expect(patchLocalMaterialMetadata('orphan', 'learning', { name: 'revived' })).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    await expect(saveLocalMaterial({ ...material('orphan', 'learning'), source: 'file', blob: new Blob(['resurrect']) })).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    expect(database.snapshot().find((row) => row.id === 'orphan')?.pendingDeletion).toBe(true)
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(3)
+
+    expect(await localApi.retryPendingLocalMaterialCleanup(access)).toEqual({ attempted: 1, failed: 0 })
+    expect(database.snapshot().map((row) => row.id).sort()).toEqual(['foreign-pending', 'kept'])
+    expect([...cache.storage('guitar-practice-hub-media-v2').keys()].map((url) => url.split('/v2/')[1]).sort()).toEqual(['A/kept', 'B/foreign-pending'])
+    expect(await (await loadLocalMaterialBlob(kept)).text()).toBe('keep')
+    expect(database.legacySnapshot()).toHaveLength(1)
+    expect(legacyCache.size).toBe(1)
+  })
+
+  it('keeps a pending row when the final metadata delete fails and finishes it on retry', async () => {
+    const cache = installFakeCache(database.events)
+    await saveLocalMaterial({ ...material('half', 'learning'), source: 'file', blob: new Blob(['bytes']) })
+    database.afterNextCommit(() => { database.failNextWrite() })
+    await expect(deleteLocalMaterial('half', 'learning')).rejects.toThrow(localApi.localMaterialCleanupPending)
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(0)
+    expect(database.snapshot().map((row) => row.pendingDeletion)).toEqual([true])
     expect(await listLocalMaterials('learning')).toEqual([])
+    expect(await localApi.retryPendingLocalMaterialCleanup(access)).toEqual({ attempted: 1, failed: 0 })
+    expect(database.snapshot()).toEqual([])
+  })
+
+  it('stops a save aborted during its cache write before metadata commits and removes the late bytes', async () => {
+    const cache = installFakeCache(database.events)
+    const controller = new AbortController()
+    cache.afterNextPut(() => controller.abort(new DOMException('Local material save timed out.', 'TimeoutError')))
+    await expect(localApi.saveLocalMaterial(access, { ...material('late', 'learning'), source: 'file', blob: new Blob(['big video']) }, controller.signal)).rejects.toMatchObject({ name: 'TimeoutError' })
+    expect(database.snapshot()).toEqual([])
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(0)
+    expect(database.events).not.toContain('metadata-commit')
+    const retried = await saveLocalMaterial({ ...material('retried', 'learning'), source: 'file', blob: new Blob(['big video']) })
+    expect(await (await loadLocalMaterialBlob(retried)).text()).toBe('big video')
+  })
+
+  it('records a hidden pending row when an aborted save cannot remove its bytes, then cleans it on retry', async () => {
+    const cache = installFakeCache(database.events)
+    const controller = new AbortController()
+    cache.afterNextPut(() => { controller.abort(new DOMException('Local material save cancelled.', 'AbortError')); cache.failDelete(3) })
+    await expect(localApi.saveLocalMaterial(access, { ...material('stuck', 'learning'), source: 'file', blob: new Blob(['bytes']) }, controller.signal)).rejects.toThrow(localApi.localMaterialCleanupPending)
+    expect(await listLocalMaterials('learning')).toEqual([])
+    expect(database.snapshot()).toMatchObject([{ id: 'stuck', ownerUid: 'A', storage: 'cache', pendingDeletion: true }])
+    expect(database.snapshot()[0].blob).toBeUndefined()
     expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(1)
-    await expect(loadLocalMaterialBlob(saved)).rejects.toThrow()
+    expect(await localApi.retryPendingLocalMaterialCleanup(access)).toEqual({ attempted: 1, failed: 0 })
+    expect(database.snapshot()).toEqual([])
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(0)
+  })
+
+  it('rejects an already aborted save without touching storage', async () => {
+    const cache = installFakeCache(database.events)
+    const controller = new AbortController()
+    controller.abort(new DOMException('Local material save cancelled.', 'AbortError'))
+    await expect(localApi.saveLocalMaterial(access, { ...material('never', 'learning'), source: 'file', blob: new Blob(['bytes']) }, controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+    expect(database.snapshot()).toEqual([])
+    expect(cache.storage('guitar-practice-hub-media-v2').size).toBe(0)
   })
 
   it('moves warm-up materials to Chromatic once while keeping other blocks unchanged', async () => {
@@ -548,10 +622,11 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
   it('patches only metadata, trims names and preserves cached/blob fields', async () => {
     const original = { ...material('w1', 'warmup'), source: 'file' as const, storage: 'indexeddb' as const, blob: new Blob(['data']), bookmarks: [12] }
     await saveLocalMaterial(original)
+    const saved = { ...original, bookmarks: [{ seconds: 12 }] }
     await patchLocalMaterialMetadata('w1', 'chromatic', { name: '  My lesson  ' })
-    expect(await listLocalMaterials('chromatic')).toEqual([{ ...original, blockKey: 'chromatic', name: 'My lesson' }])
+    expect(await listLocalMaterials('chromatic')).toEqual([{ ...saved, blockKey: 'chromatic', name: 'My lesson' }])
     await patchLocalMaterialMetadata('w1', 'chromatic', { bookmarks: [3.14, 3.11, 0, -1, NaN] })
-    expect(await listLocalMaterials('chromatic')).toEqual([{ ...original, blockKey: 'chromatic', name: 'My lesson', bookmarks: [0, 3.1] }])
+    expect(await listLocalMaterials('chromatic')).toEqual([{ ...saved, blockKey: 'chromatic', name: 'My lesson', bookmarks: [{ seconds: 0 }, { seconds: 3.1 }] }])
     await expect(patchLocalMaterialMetadata('w1', 'warmup', { name: '  ' })).rejects.toThrow()
   })
 
@@ -569,12 +644,45 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
       patchLocalMaterialMetadata('w1', 'chromatic', { name: 'Renamed' }),
       patchLocalMaterialMetadata('w1', 'chromatic', { bookmarks: [5] }),
     ])
-    expect((await listLocalMaterials('chromatic'))[0]).toMatchObject({ name: 'Renamed', bookmarks: [5] })
+    expect((await listLocalMaterials('chromatic'))[0]).toMatchObject({ name: 'Renamed', bookmarks: [{ seconds: 5 }] })
   })
 
   it('normalizes finite nonnegative bookmarks to tenths', () => {
-    expect(normalizeBookmarks([2.26, 1, 2.3, Infinity, -1, NaN])).toEqual([1, 2.3])
-    expect(normalizeBookmarks([1e308])).toEqual([1e308])
+    expect(normalizeBookmarks([2.26, 1, 2.3, Infinity, -1, NaN])).toEqual([{ seconds: 1 }, { seconds: 2.3 }])
+    expect(normalizeBookmarks([1e308])).toEqual([{ seconds: 1e308 }])
+  })
+
+  it('reads legacy numeric and mixed bookmarks, trims/limits names and dedupes by time keeping the first', () => {
+    const long = 'x'.repeat(80)
+    expect(normalizeBookmarks([
+      12.5,
+      { seconds: 4, name: '  Solo  ' },
+      { seconds: 4.04, name: 'Duplicate' },
+      { seconds: 7, name: '   ' },
+      { seconds: 9, name: long },
+      { seconds: 2, name: 42 },
+      { seconds: -1, name: 'Negative' },
+      { name: 'No time' },
+      null,
+      'text',
+    ])).toEqual([
+      { seconds: 2 },
+      { seconds: 4, name: 'Solo' },
+      { seconds: 7 },
+      { seconds: 9, name: 'x'.repeat(60) },
+      { seconds: 12.5 },
+    ])
+  })
+
+  it('renames and clears a bookmark name only when bookmarks are patched, leaving legacy rows untouched otherwise', async () => {
+    const legacy = { ...material('w1', 'warmup'), storage: 'cache' as const, bookmarks: [8, 3] }
+    database.seed({ ...legacy, blockKey: 'chromatic' })
+    await patchLocalMaterialMetadata('w1', 'chromatic', { name: 'Only name' })
+    expect((await listLocalMaterials('chromatic'))[0].bookmarks).toEqual([8, 3])
+    await patchLocalMaterialMetadata('w1', 'chromatic', { bookmarks: [{ seconds: 3 }, { seconds: 8, name: ' Chorus ' }] })
+    expect((await listLocalMaterials('chromatic'))[0].bookmarks).toEqual([{ seconds: 3 }, { seconds: 8, name: 'Chorus' }])
+    await patchLocalMaterialMetadata('w1', 'chromatic', { bookmarks: [{ seconds: 3 }, { seconds: 8, name: '' }] })
+    expect((await listLocalMaterials('chromatic'))[0].bookmarks).toEqual([{ seconds: 3 }, { seconds: 8 }])
   })
 
   it('resolves only after transaction completion, not after put success', async () => {

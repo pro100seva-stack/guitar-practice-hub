@@ -1,5 +1,5 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { formatDateRange } from '../lib/dateFormat'
@@ -52,13 +52,14 @@ function getStatus(week: ScheduledPlanWeek, today: string, sessionCount: number)
   return 'upcoming'
 }
 
-function JourneyWeekRow({ item, onView, onPractice }: { item: JourneyWeek; onView: () => void; onPractice: () => void }) {
+function JourneyWeekRow({ item, onPractice }: { item: JourneyWeek; onPractice: () => void }) {
   const { language, t } = useI18n()
+  const detailsId = useId()
   return (
     <div className="py-3">
       <div className="flex items-start gap-3">
         <div aria-hidden="true" className={[
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+          'mt-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
           item.status === 'completed' && 'bg-emerald-500/20 text-emerald-200',
           item.status === 'current' && 'bg-sky-500/20 text-sky-200',
           item.status === 'upcoming' && 'bg-amber-500/20 text-amber-200',
@@ -68,12 +69,27 @@ function JourneyWeekRow({ item, onView, onPractice }: { item: JourneyWeek; onVie
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <span className="font-medium text-slate-200">{t('Week {week}', { week: item.week_number })}</span>
-              <p className="mt-1 text-xs font-medium text-sky-200">{item.programName}</p>
-              <p className="mt-1 text-xs text-slate-400">{item.focus} · {formatDateRange(item.start_date, item.end_date, language)}</p>
-            </div>
+          <div className="flex items-start gap-2">
+            <Link
+              to={`/plan?week=${encodeURIComponent(item.id)}`}
+              aria-label={t('Open week {week} in Plan', { week: item.week_number })}
+              aria-describedby={detailsId}
+              className="group block min-h-11 min-w-0 flex-1 rounded py-1 hover:bg-slate-800/40"
+            >
+              <span className="font-medium text-slate-200 underline-offset-2 group-hover:underline">{t('Week {week}', { week: item.week_number })}</span>
+              <span id={detailsId} className="block">
+                <span className="mt-1 block text-xs font-medium text-sky-200">{item.programName}</span>
+                <span className="mt-1 block text-xs text-slate-400">{item.focus} · {formatDateRange(item.start_date, item.end_date, language)}</span>
+              </span>
+            </Link>
+            <button type="button" onClick={onPractice} aria-label={t('Practice week {week}', { week: item.week_number })} className={`btn ${item.status === 'current' ? 'btn-primary' : 'btn-secondary'} min-h-11 min-w-11 shrink-0 px-3 py-1 text-xs leading-tight`}>
+              {t('Practice')}
+            </button>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-400">
+              {item.sessionCount} {t(item.sessionCount === 1 ? 'session' : 'sessions')} · {item.totalMinutes} {t('minutes')}
+            </p>
             <span className={[
               'badge shrink-0',
               item.status === 'completed' && 'badge-success',
@@ -82,18 +98,7 @@ function JourneyWeekRow({ item, onView, onPractice }: { item: JourneyWeek; onVie
               item.status === 'missed' && 'badge-danger',
             ].filter(Boolean).join(' ')}>{t(item.status)}</span>
           </div>
-          <p className="mt-2 text-xs text-slate-400">
-            {item.sessionCount} {t(item.sessionCount === 1 ? 'session' : 'sessions')} · {item.totalMinutes} {t('minutes')}
-          </p>
         </div>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" onClick={onView} aria-label={t('View week {week}', { week: item.week_number })} className="btn btn-secondary min-h-11 px-2 py-1 text-center leading-tight">
-          {t('View week')}
-        </button>
-        <button type="button" onClick={onPractice} aria-label={t('Practice week {week}', { week: item.week_number })} className={`btn ${item.status === 'current' ? 'btn-primary' : 'btn-secondary'} min-h-11 px-2 py-1 text-center leading-tight`}>
-          {t('Practice')}
-        </button>
       </div>
     </div>
   )
@@ -330,7 +335,7 @@ export default function Progress() {
                   {isOpen && <div className="list border-t border-slate-800">
                     {group.weeks.map((item) => (
                       <div key={item.id}>
-                        <JourneyWeekRow item={item} onView={() => navigate(`/plan?week=${item.id}`)} onPractice={() => navigate(`/practice?week=${item.id}`)} />
+                        <JourneyWeekRow item={item} onPractice={() => navigate(`/practice?week=${item.id}`)} />
                         {(item.status === 'current' || item.status === 'upcoming') && (
                           <div className="pb-3">
                             <button

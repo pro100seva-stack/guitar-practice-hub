@@ -70,8 +70,8 @@ Local-material authority derives from current authenticated identity through opa
 ### Saving a practice session
 1. The user selects a week and day, completes blocks, and enters time or notes.
 2. The frontend upserts the parent row with `supabase.from('sessions').upsert(...)`.
-3. The frontend deletes only deselected session blocks.
-4. The frontend upserts retained blocks into `session_blocks` using `(session_id, block_key)`.
+3. The frontend deletes saved blocks that are no longer practiced (removed, or zero minutes and not done).
+4. The frontend upserts practiced blocks (minutes above zero or done) into `session_blocks` using `(session_id, block_key)`. Untouched pre-filled program blocks are not stored; a new day with nothing practiced and no notes saves nothing.
 5. Supabase validates the JWT and RLS policies for each request.
 6. The frontend displays the save result and refreshes local state.
 
@@ -83,14 +83,15 @@ These requests are not one transaction; a later failure can leave earlier writes
 2. Adjacent weeks with the same `program_id` form one contiguous program period; returning to a previous program creates a new period in the timeline.
 3. Program periods collapse into timeline nodes, with the current period opened initially and every week remaining clickable to Plan.
 4. Current and future weeks expose inline insertion forms backed by `insert_plan_week`, which shifts later scheduled weeks without pausing the active program.
+5. Plan's Duplicate week calls `duplicate_plan_week`, which inserts a copy of the saved week (focus, tasks, unticked ToDos, week blocks, songs) directly after it with the same shifting and per-user lock. Sessions and materials are not copied.
 
 ### Practice-block catalog and Repertoire
 
 1. Practice reads shared selectable catalog blocks plus the authenticated user's own blocks; category selection filters the gallery, and selecting a block performs the screen's existing add/replace action.
 2. Plan composes a program or week from the same catalog. Same-every-week programs use ordered `program_blocks`; varying-week programs use ordered `plan_week_blocks`.
 3. Progress selects week blocks when inserting into a varying-week program; same-every-week programs inherit their program set.
-4. Repertoire songs remain user-owned rows linked to plan weeks through `week_songs`. The Plan editor replaces a week's links atomically through `replace_week_repertoire_songs`; unlinking does not delete song records. Practice displays those songs with song-scoped local materials.
-5. Plan's multi-resource save is not fully atomic: song links save after other Plan fields, so failure of the final song RPC can leave earlier fields saved while song associations remain unchanged.
+4. Repertoire songs remain user-owned rows linked to plan weeks through `week_songs`. Plan replaces a week's links atomically through `replace_week_repertoire_songs` immediately on each Repertoire change (reverting on failure); unlinking does not delete song records. Practice displays those songs with song-scoped local materials and refreshes them on focus/visibility.
+5. Plan's multi-resource save is not fully atomic: song links save separately from other Plan fields, so one request can succeed while another fails.
 
 ### Continuing the Default program
 1. Auth restoration asks the client to load the active Default program's stored content language and matching focus/task copy, then calls one database RPC. The client does not decide whether continuation is due or calculate dates. The language is treated as stable by the app but is not immutable at the database level.
@@ -122,7 +123,7 @@ Migration `20261003120000_serialize_default_program_continuation.sql` was applie
 - Flexible Programs intentionally uses nullable week dates for unscheduled branch rows; all read paths must filter them before showing visible plan/calendar state.
 - New scheduled weeks are program-owned and carry a required `program_sequence`; the unused `plan_weeks.phase` field is no longer part of the model.
 - `songs.status` and `sessions.source` have validated PostgreSQL domain `CHECK` constraints. Item 15 also constrained the original template keys, but the catalog migration removed that key-domain constraint to support new built-in and owner-specific keys. `block_templates` instead constrains categories and custom-block ownership; `session_blocks.block_key` remains free text for imported/historical snapshots.
-- Pure logic tests use Vitest in Node; the supported runtime range is `^22.12.0 || ^24.0.0 || >=26.0.0`; the latest recorded frontend validation used Node 24.19.0. Plan-week RPC integration tests run against a disposable local Supabase instance only. The isolated local config and historical migration baseline live under `supabase/local-test/supabase/`; run with `npx supabase --workdir supabase/local-test`. The original item-15 slice passed 35 pgTAP tests; subsequent local coverage totals 111 tests across four files per the current handoff. Never point DB tests at the linked production project or treat the local baseline as remote migration history.
+- Pure logic tests use Vitest in Node; the supported runtime range is `^22.12.0 || ^24.0.0 || >=26.0.0`; the latest recorded frontend validation used Node 24.19.0. Plan-week RPC integration tests run against a disposable local Supabase instance only. The isolated local config and historical migration baseline live under `supabase/local-test/supabase/`; run with `npx supabase --workdir supabase/local-test`. The original item-15 slice passed 35 pgTAP tests; the latest recorded local run passed 184 tests across six files (2026-11-01). Never point DB tests at the linked production project or treat the local baseline as remote migration history.
 - Microphone pitch detection is deferred. The tuner reference-tone slice and the local learning-materials viewer are live.
 - Mobile pinch zoom is intentionally disabled through the viewport configuration.
 - The language preference and UI string catalog support English, Russian, Italian, and French. User-owned content remains in its stored language by design.

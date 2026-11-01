@@ -42,4 +42,4 @@ This is not blanket future permission. It never authorizes force pushes, rebases
 
 ## Customization Files
 
-The workflow is referenced by the workspace Master Planner and Release Engineer agents and the thin `.github/prompts/release-app.prompt.md` entry point. The prompt invokes this workflow rather than duplicating it. Agent instructions route execution; this document is the release procedure, not a third backlog/status source. Future chats must load the referenced procedure before executing the trigger.
+The workflow is referenced by the workspace Master Planner and Release Engineer agents and the thin `.github/skills/release-app/SKILL.md` entry point (migrated from the former `.github/prompts/release-app.prompt.md`; user-invocable only). The skill invokes this workflow rather than duplicating it. Agent instructions route execution; this document is the release procedure, not a third backlog/status source. Future chats must load the referenced procedure before executing the trigger.

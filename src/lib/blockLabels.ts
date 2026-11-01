@@ -23,20 +23,25 @@ type BlockMinutesSession = {
   }> | null
 }
 
+// A block counts as practiced when it has minutes or is marked done (item 60 rule).
+export function countedSessionBlocks<T extends { done: boolean; actual_minutes: number | null }>(blocks: readonly T[] | null): T[] {
+  return (blocks ?? []).filter((block) => block.done || Number(block.actual_minutes ?? 0) > 0)
+}
+
 export function aggregateSessionBlockMinutes(sessions: readonly BlockMinutesSession[]): Map<string, number> {
   const pieMap = new Map<string, number>()
   for (const session of sessions) {
-    const doneBlocks = (session.session_blocks ?? []).filter((block) => block.done)
-    if (doneBlocks.length === 0) continue
+    const countedBlocks = countedSessionBlocks(session.session_blocks)
+    if (countedBlocks.length === 0) continue
 
-    const explicitMinutes = doneBlocks.reduce(
+    const explicitMinutes = countedBlocks.reduce(
       (sum, block) => sum + Number(block.actual_minutes ?? 0),
       0
     )
     const perBlockFallback =
-      explicitMinutes > 0 ? null : Number(session.total_minutes ?? 0) / doneBlocks.length
+      explicitMinutes > 0 ? null : Number(session.total_minutes ?? 0) / countedBlocks.length
 
-    for (const block of doneBlocks) {
+    for (const block of countedBlocks) {
       const label = normalizeBlockLabel(block.label || block.block_key)
       const value =
         perBlockFallback !== null ? perBlockFallback : Number(block.actual_minutes ?? 0)

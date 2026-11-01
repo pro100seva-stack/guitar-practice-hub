@@ -36,7 +36,7 @@ select is((select block_set_mode from public.programs where id = '10000000-0000-
 select is(
   (select count(*)::int from public.block_templates
    where user_id is null and is_selectable and archived_at is null),
-  22,
+  23,
   'selectable catalog listing excludes retired and archived entries');
 select is((select count(*)::int from public.block_templates where key = 'warmup'), 1,
   'authenticated legacy lookup can still read the retained warmup template');

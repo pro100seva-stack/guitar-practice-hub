@@ -3,13 +3,14 @@ import { useI18n } from '../lib/i18n'
 import { clampVideoPosition, createPlaybackTransition, loopSeekTarget, validDuration, videoShortcut, type LoopRange, type PlaybackIntent } from '../lib/youtubePractice'
 import VideoPracticeControls from './VideoPracticeControls'
 import { isLocalMaterialIdentityReady, onLocalMaterialInvalidation, onLocalMaterialVerification } from '../lib/localMaterialAccess'
+import type { PlaybackBookmark } from '../lib/localMaterials'
 
 type Props = {
   kind?: 'video' | 'audio'
   url: string
   name: string
-  bookmarks: number[]
-  onBookmarksChange: (bookmarks: number[]) => Promise<void>
+  bookmarks: PlaybackBookmark[]
+  onBookmarksChange: (bookmarks: PlaybackBookmark[]) => Promise<void>
   onPlaybackConfirmed: (intent: PlaybackIntent) => void
 }
 

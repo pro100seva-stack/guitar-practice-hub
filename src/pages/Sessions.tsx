@@ -8,29 +8,49 @@ import MaterialsInfo from '../components/MaterialsInfo'
 import RemoveBlockIcon from '../components/icons/RemoveBlockIcon'
 import { supabase } from '../lib/supabase'
 import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from '../lib/localMaterialAccess'
-import { deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate } from '../lib/localMaterials'
+import { deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, localMaterialCleanupPending, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, retryPendingLocalMaterialCleanup, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate, type PlaybackBookmark } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
 import { catalogBlockLabel, createOtherBlock, isSelectableCatalogBlock, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadSessionRestorationCatalog, readProgramBlockMode, type CatalogBlock } from '../lib/catalogApi'
 import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { getDefaultMaterials } from '../lib/defaultMaterials'
 import { normalizeBlockLabel } from '../lib/blockLabels'
-import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../lib/sessionBlockSavePlan'
+import { hasUnsupportedSessionBlocks, planSessionBlockSave, selectPracticedSessionBlocks, sessionBlockMinutes } from '../lib/sessionBlockSavePlan'
 import { getPracticedDates } from '../lib/sessionActivity'
 import { resolvePracticeDeepLink } from '../lib/practiceDeepLink'
 import { canInitializeSessionDefaults, getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock, type SessionEditorState } from '../lib/sessionEditorState'
-import { queryWeekSongsWithSortOrder } from '../lib/weekSongsApi'
+import { queryWeekSongsWithSortOrder, sameWeekSongs, shouldRefreshWeekSongs, toWeekSongs, type WeekSong, type WeekSongRow, type WeekSongsInFlight } from '../lib/weekSongsApi'
 import { activateBlockTimer, completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, toggleBlockTimer } from '../lib/sessionBlockTimer'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
 import MetronomeIcon from '../components/icons/MetronomeIcon'
 import TuningForkIcon from '../components/icons/TuningForkIcon'
 import { isYouTubeEmbedUrl, isYouTubeHostLink, lookupYouTubeTitle, toYouTubeEmbedUrl, youTubeTitleFallback } from '../lib/youtube'
 import type { PlaybackIntent } from '../lib/youtubePractice'
+import { formatPracticeKey, isPracticeKeyBlock, pickPracticeKey, type PracticeKeyBlock } from '../lib/practiceKey'
+import { adjacentPracticeWeeks } from '../lib/practiceWeekNavigation'
+import { metronomeClickGain, parseMetronomeVolume, readMetronomeVolume, writeMetronomeVolume } from '../lib/metronomeVolume'
 import YouTubePracticePlayer from '../components/YouTubePracticePlayer'
 import LocalVideoPracticePlayer from '../components/LocalVideoPracticePlayer'
 
-type MaterialFeedback = { error: string | null; notice: string | null; saveState: 'idle' | 'saving' | 'saved' }
+type MaterialFeedback = { error: string | null; notice: string | null; saveState: 'idle' | 'saving' | 'saved'; cancellable?: boolean; retryUpload?: boolean }
 const emptyMaterialFeedback: MaterialFeedback = { error: null, notice: null, saveState: 'idle' }
+// Bounds the visible wait for one local file save; slower writes are abandoned before their metadata commits.
+const localMaterialSaveTimeoutMs = 120_000
+
+function MaterialSaveStatus({ saveState, savingLabel, savedLabel }: { saveState: MaterialFeedback['saveState']; savingLabel: string; savedLabel: string }) {
+  // The live region stays mounted so state changes are announced.
+  return (
+    <span role="status" aria-live="polite" className="inline-flex">
+      {saveState === 'saving' && (
+        <span className="inline-flex min-h-8 items-center gap-2 rounded-full border border-sky-400/70 bg-sky-500/20 px-3 py-1 text-sm font-semibold text-sky-100">
+          <span aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-sky-200 border-t-transparent motion-reduce:animate-none" />
+          {savingLabel}
+        </span>
+      )}
+      {saveState === 'saved' && <span className="text-sm text-emerald-300">{savedLabel}</span>}
+    </span>
+  )
+}
 
 type BlockTemplate = CatalogBlock
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
@@ -45,7 +65,6 @@ type SessionBlock = Database['public']['Tables']['session_blocks']['Row']
 type SessionWithBlocks = Database['public']['Tables']['sessions']['Row'] & {
   session_blocks: SessionBlock[]
 }
-type WeekSong = { id: string; name: string }
 
 function localMaterialScopeKey(blockKey: string, songId?: string) {
   return songId ? `${blockKey}:song:${songId}` : blockKey
@@ -172,7 +191,12 @@ export default function Sessions() {
   const [timeSignatureMode, setTimeSignatureMode] = useState<'3/4' | '4/4' | '5/4' | 'custom'>('4/4')
   const [customBeatCount, setCustomBeatCount] = useState('4')
   const [customMeasureCount, setCustomMeasureCount] = useState('4')
+  const [metronomeVolume, setMetronomeVolume] = useState(readMetronomeVolume)
   const [tuningKey, setTuningKey] = useState<TuningKey>('standard')
+  const [practiceKeys, setPracticeKeys] = useState<Record<PracticeKeyBlock, string>>(() => ({
+    major_scales: pickPracticeKey('major_scales', null),
+    minor_scales: pickPracticeKey('minor_scales', null),
+  }))
   const [activeReferenceTone, setActiveReferenceTone] = useState<string | null>(null)
   const [materialsByBlock, setMaterialsByBlock] = useState<MaterialsByBlock>({})
   const [materialUrlInputs, setMaterialUrlInputs] = useState<Record<string, string>>({})
@@ -185,6 +209,9 @@ export default function Sessions() {
   const playbackBlockedRef = useRef(new Set<string>())
   const [materialRename, setMaterialRename] = useState<{ id: string; blockKey: string; songId?: string; draft: string; saving: boolean; error: string | null } | null>(null)
   const materialFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const uploadControllersRef = useRef<Record<string, AbortController>>({})
+  const retryUploadsRef = useRef<Record<string, File>>({})
+  const [materialCleanupPending, setMaterialCleanupPending] = useState(false)
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
   const referenceToneRef = useRef<OscillatorNode | null>(null)
@@ -205,6 +232,7 @@ export default function Sessions() {
   const materialNavigationRef = useRef(0)
   const materialsMountedRef = useRef(false)
   const weekSongsRequestRef = useRef(0)
+  const weekSongsInFlightRef = useRef<WeekSongsInFlight | null>(null)
   const dayStripRef = useRef<HTMLDivElement | null>(null)
   const blocksSectionRef = useRef<HTMLElement | null>(null)
   const addBlockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -215,6 +243,7 @@ export default function Sessions() {
   const bpmRef = useRef(bpm)
   const beatsPerMeasureRef = useRef(beatsPerMeasure)
   const lookaheadRef = useRef(0.12)
+  const metronomeVolumeRef = useRef(metronomeVolume)
   const nextNoteTimeRef = useRef(0)
   const editorNavigationRef = useRef(0)
   const editorRevisionRef = useRef(0)
@@ -275,6 +304,14 @@ export default function Sessions() {
     return () => { materialsMountedRef.current = false; unsubscribe() }
   }, [materialAccess])
 
+  useEffect(() => {
+    let cancelled = false
+    void retryPendingLocalMaterialCleanup(materialAccess).then(({ failed }) => {
+      if (!cancelled && isLocalMaterialAccessCurrent(materialAccess)) setMaterialCleanupPending(failed > 0)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [materialAccess])
+
   function captureMaterialAccess() {
     localMaterialOwner(materialAccess)
     return captureLocalMaterialAccess()
@@ -295,11 +332,14 @@ export default function Sessions() {
     if (id) setActiveDefaultMaterial(null)
   }
 
-  async function loadWeekSongs(weekId: string | null) {
+  async function loadWeekSongs(weekId: string | null, refresh = false) {
     const requestId = ++weekSongsRequestRef.current
-    setWeekSongs([])
-    setWeekSongsLoading(Boolean(weekId))
-    setWeekSongsError(null)
+    weekSongsInFlightRef.current = weekId ? { weekId, requestId } : null
+    if (!refresh) {
+      setWeekSongs([])
+      setWeekSongsLoading(Boolean(weekId))
+      setWeekSongsError(null)
+    }
     if (!weekId) return
 
     const { data, error: songsError } = await queryWeekSongsWithSortOrder(async (orderBySortOrder) => {
@@ -310,17 +350,40 @@ export default function Sessions() {
       return orderBySortOrder ? query.order('sort_order', { ascending: true }) : query
     })
     if (requestId !== weekSongsRequestRef.current) return
+    weekSongsInFlightRef.current = null
     if (songsError) {
-      setWeekSongsError(t('Could not load this week’s repertoire.'))
+      // A failed background refresh keeps the last loaded list.
+      if (!refresh) setWeekSongsError(t('Could not load this week’s repertoire.'))
       setWeekSongsLoading(false)
       return
     }
-    setWeekSongs(((data ?? []) as Array<{ song_id: string; songs?: { name: string } | null }>).flatMap((entry) => {
-      const name = entry.songs?.name?.trim()
-      return name ? [{ id: entry.song_id, name }] : []
-    }))
+    const next = toWeekSongs(data as WeekSongRow[] | null)
+    setWeekSongs((current) => sameWeekSongs(current, next) ? current : next)
+    setWeekSongsError(null)
     setWeekSongsLoading(false)
   }
+
+  const refreshWeekSongs = useEffectEvent(() => {
+    const weekId = planWeek?.id ?? null
+    if (shouldRefreshWeekSongs(weekId, weekSongsInFlightRef.current, weekSongsRequestRef.current, navigator.onLine)) void loadWeekSongs(weekId, true)
+  })
+
+  useEffect(() => {
+    function handleVisible() {
+      if (document.visibilityState === 'visible') refreshWeekSongs()
+    }
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) refreshWeekSongs()
+    }
+    document.addEventListener('visibilitychange', handleVisible)
+    window.addEventListener('focus', handleVisible)
+    window.addEventListener('pageshow', handlePageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisible)
+      window.removeEventListener('focus', handleVisible)
+      window.removeEventListener('pageshow', handlePageShow)
+    }
+  }, [])
 
   async function loadBlockMaterials(blockKey: string, songId?: string) {
     const scopeKey = localMaterialScopeKey(blockKey, songId)
@@ -427,7 +490,9 @@ export default function Sessions() {
     let access: LocalMaterialAccess
     try { access = captureMaterialAccess() } catch { return }
     const scopeKey = localMaterialScopeKey(blockKey, songId)
-    patchMaterialFeedback(scopeKey, { error: null, notice: null, saveState: 'saving' })
+    if (uploadControllersRef.current[scopeKey]) return
+    delete retryUploadsRef.current[scopeKey]
+    patchMaterialFeedback(scopeKey, { error: null, notice: null, saveState: 'saving', cancellable: false, retryUpload: false })
     const detectedType = detectMaterialType(file.name, file.type)
     if (!isAllowedMaterialType(detectedType)) {
       patchMaterialFeedback(scopeKey, { error: t('Use a PDF, image, text, audio, or video file.'), saveState: 'idle' })
@@ -456,20 +521,31 @@ export default function Sessions() {
       })
     }
 
+    const controller = new AbortController()
+    uploadControllersRef.current[scopeKey] = controller
+    const stopped = new Promise<never>((_resolve, reject) => {
+      controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true })
+    })
+    const timeoutId = window.setTimeout(() => controller.abort(new DOMException('Local material save timed out.', 'TimeoutError')), localMaterialSaveTimeoutMs)
+    patchMaterialFeedback(scopeKey, { cancellable: true })
+    const materialId = crypto.randomUUID()
+    const saving = saveLocalMaterial(access, {
+      id: materialId,
+      blockKey,
+      songId,
+      name: file.name,
+      type: detectedType,
+      size: file.size,
+      source: 'file',
+      blob: file,
+      createdAt: new Date().toISOString(),
+    }, controller.signal)
     try {
-      const materialId = crypto.randomUUID()
-      await saveLocalMaterial(access, {
-        id: materialId,
-        blockKey,
-        songId,
-        name: file.name,
-        type: detectedType,
-        size: file.size,
-        source: 'file',
-        blob: file,
-        createdAt: new Date().toISOString(),
-      })
+      await Promise.race([saving, stopped])
+      window.clearTimeout(timeoutId)
+      delete uploadControllersRef.current[scopeKey]
       if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      patchMaterialFeedback(scopeKey, { cancellable: false })
       await loadBlockMaterials(blockKey, songId)
       if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
       setActiveMaterial(scopeKey, materialId)
@@ -478,13 +554,42 @@ export default function Sessions() {
         if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) patchMaterialFeedback(scopeKey, { saveState: 'idle' })
       }, 2500)
     } catch (uploadError) {
+      window.clearTimeout(timeoutId)
+      if (uploadControllersRef.current[scopeKey] === controller) delete uploadControllersRef.current[scopeKey]
       if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      const stoppedBy = uploadError instanceof DOMException && controller.signal.aborted ? uploadError.name : null
+      if (stoppedBy) {
+        // A commit that won the race against the stop is shown rather than hidden.
+        void saving.then(() => {
+          if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+          delete retryUploadsRef.current[scopeKey]
+          patchMaterialFeedback(scopeKey, { error: null, retryUpload: false })
+          void loadBlockMaterials(blockKey, songId)
+        }, (lateError: unknown) => {
+          if (lateError instanceof Error && lateError.message === localMaterialCleanupPending && materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setMaterialCleanupPending(true)
+        })
+      }
+      if (uploadError instanceof Error && uploadError.message === localMaterialCleanupPending) setMaterialCleanupPending(true)
       const isQuotaError = uploadError instanceof DOMException && uploadError.name === 'QuotaExceededError'
+      retryUploadsRef.current[scopeKey] = file
       patchMaterialFeedback(scopeKey, {
-        error: isQuotaError ? t('The browser storage quota was reached. Remove local materials or use another device.') : t('Could not save the local material.'),
+        error: stoppedBy === 'TimeoutError' ? t('materials.saveTimedOut')
+          : stoppedBy ? t('materials.saveCancelled')
+          : isQuotaError ? t('The browser storage quota was reached. Remove local materials or use another device.') : t('Could not save the local material.'),
         saveState: 'idle',
+        cancellable: false,
+        retryUpload: true,
       })
     }
+  }
+
+  function cancelMaterialUpload(scopeKey: string) {
+    uploadControllersRef.current[scopeKey]?.abort(new DOMException('Local material save cancelled.', 'AbortError'))
+  }
+
+  function retryMaterialUpload(blockKey: string, songId?: string) {
+    const file = retryUploadsRef.current[localMaterialScopeKey(blockKey, songId)]
+    if (file) void handleLocalMaterialUpload(blockKey, file, songId)
   }
 
   async function addMaterialUrl(blockKey: string, songId?: string) {
@@ -558,17 +663,28 @@ export default function Sessions() {
     try { access = captureMaterialAccess() } catch { return }
     const scopeKey = localMaterialScopeKey(blockKey, songId)
     const commitDeletion = materialsRequestTrackerRef.current.beginDeletion(scopeKey)
-    try {
-      await deleteLocalMaterial(access, { id, blockKey, songId })
-      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+    const closeRemoved = () => {
       commitDeletion()
       setMaterialsByBlock((current) => removeBlockMaterial(current, scopeKey, id))
       setMaterialRename((current) => current?.id === id ? null : current)
       setActiveMaterialState((current) => closeDeletedMaterial(current, scopeKey, id))
+    }
+    try {
+      await deleteLocalMaterial(access, { id, blockKey, songId })
+      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      closeRemoved()
       const estimate = await estimateLocalStorage()
       if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setLocalStorageEstimate(estimate)
-    } catch {
-      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) patchMaterialFeedback(scopeKey, { error: t('Could not remove the local material.') })
+    } catch (removeError) {
+      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      // The row is already hidden; only its stored bytes still need clearing.
+      if (removeError instanceof Error && removeError.message === localMaterialCleanupPending) {
+        closeRemoved()
+        setMaterialCleanupPending(true)
+        patchMaterialFeedback(scopeKey, { error: t('materials.cleanupPending') })
+        return
+      }
+      patchMaterialFeedback(scopeKey, { error: t('Could not remove the local material.') })
     }
   }
 
@@ -578,7 +694,7 @@ export default function Sessions() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  async function saveMaterialBookmarks(blockKey: string, id: string, next: number[], songId?: string) {
+  async function saveMaterialBookmarks(blockKey: string, id: string, next: PlaybackBookmark[], songId?: string) {
     const access = captureMaterialAccess()
     const scopeKey = localMaterialScopeKey(blockKey, songId)
     materialsRequestTrackerRef.current.begin(scopeKey)
@@ -598,6 +714,16 @@ export default function Sessions() {
     return 'page'
   }
 
+  function renderUploadActions(feedback: MaterialFeedback, blockKey: string, songId?: string) {
+    if (feedback.saveState === 'saving' && feedback.cancellable) {
+      return <button type="button" onClick={() => cancelMaterialUpload(localMaterialScopeKey(blockKey, songId))} className="min-h-11 rounded border border-slate-600 px-3 text-sm text-slate-200">{t('materials.cancelSave')}</button>
+    }
+    if (feedback.saveState === 'idle' && feedback.retryUpload && feedback.error) {
+      return <button type="button" onClick={() => retryMaterialUpload(blockKey, songId)} className="min-h-11 rounded border border-sky-500/60 px-3 text-sm text-sky-200">{t('materials.retrySave')}</button>
+    }
+    return null
+  }
+
   function renderSongMaterials(song: WeekSong, blockKey: string) {
     const scopeKey = localMaterialScopeKey(blockKey, song.id)
     const songMaterials = materialsByBlock[scopeKey] ?? []
@@ -611,8 +737,9 @@ export default function Sessions() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
             type="button"
+            disabled={songFeedback.saveState === 'saving'}
             onClick={() => materialFileInputRefs.current[scopeKey]?.click()}
-            className="inline-flex min-h-11 items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500"
+            className="inline-flex min-h-11 items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500 disabled:opacity-50"
           >
             {t('Choose file')}
           </button>
@@ -624,7 +751,8 @@ export default function Sessions() {
             onChange={(event) => { void handleLocalMaterialUpload(blockKey, event.target.files?.[0], song.id); event.currentTarget.value = '' }}
             className="sr-only"
           />
-          {songFeedback.saveState !== 'idle' && <span className="text-sm text-slate-400">{songFeedback.saveState === 'saving' ? t('Saving locally…') : t('Saved on this device')}</span>}
+          <MaterialSaveStatus saveState={songFeedback.saveState} savingLabel={t('Saving locally…')} savedLabel={t('Saved on this device')} />
+          {renderUploadActions(songFeedback, blockKey, song.id)}
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -1172,7 +1300,7 @@ export default function Sessions() {
     oscillator.type = 'triangle'
     oscillator.frequency.value = frequency
     gainNode.gain.setValueAtTime(0.0001, context.currentTime)
-    gainNode.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.35)
+    gainNode.gain.exponentialRampToValueAtTime(0.25, context.currentTime + 0.35)
     oscillator.connect(gainNode)
     gainNode.connect(context.destination)
     oscillator.start()
@@ -1366,21 +1494,23 @@ export default function Sessions() {
     if (!context) return
 
     const accent = beatCounterRef.current % beatsPerMeasureRef.current === 0
-    const oscillator = context.createOscillator()
-    const gainNode = context.createGain()
-    const frequency = accent ? 880 : 620
-    const volume = accent ? 0.18 : 0.1
+    // Read per click so volume changes apply to the next scheduled beat without restarting the scheduler.
+    const volume = metronomeClickGain(metronomeVolumeRef.current, accent)
 
-    oscillator.type = 'sine'
-    oscillator.frequency.setValueAtTime(frequency, time)
-    gainNode.gain.setValueAtTime(0.0001, time)
-    gainNode.gain.exponentialRampToValueAtTime(volume, time + 0.01)
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, time + 0.16)
+    if (volume > 0.0001) {
+      const oscillator = context.createOscillator()
+      const gainNode = context.createGain()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(accent ? 880 : 620, time)
+      gainNode.gain.setValueAtTime(0.0001, time)
+      gainNode.gain.exponentialRampToValueAtTime(volume, time + 0.01)
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, time + 0.16)
 
-    oscillator.connect(gainNode)
-    gainNode.connect(context.destination)
-    oscillator.start(time)
-    oscillator.stop(time + 0.18)
+      oscillator.connect(gainNode)
+      gainNode.connect(context.destination)
+      oscillator.start(time)
+      oscillator.stop(time + 0.18)
+    }
 
     beatCounterRef.current += 1
     setCurrentBeat(beatCounterRef.current % beatsPerMeasureRef.current)
@@ -1420,6 +1550,13 @@ export default function Sessions() {
       }
     }
   }, [isMetronomePlaying])
+
+  function handleMetronomeVolumeChange(value: string) {
+    const next = parseMetronomeVolume(value)
+    metronomeVolumeRef.current = next
+    setMetronomeVolume(next)
+    writeMetronomeVolume(next)
+  }
 
   function handleTapTempo() {
     const now = Date.now()
@@ -1544,14 +1681,14 @@ export default function Sessions() {
       return
     }
     const saveTimers = snapshotBlockTimers(timers, Date.now())
-    const saveBlocks = selectedBlocks.map((block) => ({
+    const saveBlocks = selectPracticedSessionBlocks(selectedBlocks.map((block) => ({
       key: block.key,
       label: block.label,
       done: block.done,
       targetMinutes: block.targetMinutes,
       actualMinutes: block.actualMinutes,
       elapsedSeconds: saveTimers[block.id]?.elapsedSeconds,
-    }))
+    })))
     const saveTotalMinutes = saveBlocks.reduce((sum, block) => sum + (sessionBlockMinutes(block) ?? 0), 0)
     setSaving(true)
     setPendingDiscardAction(null)
@@ -1568,7 +1705,12 @@ export default function Sessions() {
       }
 
       const existingSession = sessions.find((session) => session.session_date === date && session.user_id === user.id)
-      if (existingSession && shouldDeleteClearedSession(true, selectedBlocks.length, comment)) {
+      if (!existingSession && saveBlocks.length === 0 && comment.trim() === '') {
+        setMessage(t('Nothing was saved. Log practice time or mark a block done first.'))
+        return
+      }
+
+      if (existingSession && shouldDeleteClearedSession(true, saveBlocks.length, comment)) {
         try {
           const { error: deletionError } = await supabase
             .from('sessions')
@@ -1660,6 +1802,7 @@ export default function Sessions() {
 
   const selectedWeekDates = getWeekDates(planWeek ?? weeks[selectedWeekIndex] ?? null)
   const visibleWeeks = weeks.slice(Math.max(0, selectedWeekIndex - 2), Math.min(weeks.length, selectedWeekIndex + 3))
+  const adjacentWeeks = adjacentPracticeWeeks(weeks, planWeek?.id)
   const todayDate = toLocalIsoDate()
   const actualCurrentWeek = weeks.find((week) => week.start_date <= todayDate && week.end_date >= todayDate)
   const isConfiguredProgram = readProgramBlockMode(programs.find((program) => program.id === planWeek?.program_id)?.block_set_mode) !== 'legacy_unconfigured'
@@ -1869,6 +2012,23 @@ export default function Sessions() {
                   </div>
                 )}
 
+                <label className="text-xs text-slate-400">
+                  {t('metronome.volume')}
+                  <span className="mt-1 flex h-11 items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={metronomeVolume}
+                      onChange={(event) => handleMetronomeVolumeChange(event.target.value)}
+                      aria-valuetext={t('metronome.volumeValue', { value: metronomeVolume })}
+                      className="h-11 w-32 accent-sky-400"
+                    />
+                    <span aria-hidden="true" className="min-w-10 text-right text-sm text-slate-200">{t('metronome.volumeValue', { value: metronomeVolume })}</span>
+                  </span>
+                </label>
+
                 <button
                   type="button"
                   onClick={handleTapTempo}
@@ -1961,6 +2121,17 @@ export default function Sessions() {
 
         <div className="mt-3">
           <label htmlFor="practice-week-select" className="block text-xs text-slate-400">{t('Jump to')}</label>
+          <div className="mt-1 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={saving || !adjacentWeeks.previous}
+            onClick={() => { const target = adjacentWeeks.previous; if (target) confirmDiscard(() => handleSelectWeek(target)) }}
+            aria-label={adjacentWeeks.previous ? t('practice.previousWeekLabel', { week: adjacentWeeks.previous.week_number }) : t('practice.previousWeek')}
+            title={t('practice.previousWeek')}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5l-5 5 5 5" /></svg>
+          </button>
           <select
             id="practice-week-select"
             value={planWeek?.id ?? ''}
@@ -1968,7 +2139,7 @@ export default function Sessions() {
               const targetWeek = weeks.find((weekItem) => weekItem.id === event.target.value)
               if (targetWeek) confirmDiscard(() => handleSelectWeek(targetWeek))
             }}
-            className="mt-1 h-11 w-full rounded border border-slate-700 bg-slate-950 px-3 text-base text-slate-200 focus:border-slate-500"
+            className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 text-base text-slate-200 focus:border-slate-500"
           >
             {weeks.map((weekItem) => (
               <option key={weekItem.id} value={weekItem.id}>
@@ -1976,6 +2147,17 @@ export default function Sessions() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            disabled={saving || !adjacentWeeks.next}
+            onClick={() => { const target = adjacentWeeks.next; if (target) confirmDiscard(() => handleSelectWeek(target)) }}
+            aria-label={adjacentWeeks.next ? t('practice.nextWeekLabel', { week: adjacentWeeks.next.week_number }) : t('practice.nextWeek')}
+            title={t('practice.nextWeek')}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 5l5 5-5 5" /></svg>
+          </button>
+          </div>
         </div>
 
         <button
@@ -2182,6 +2364,24 @@ export default function Sessions() {
                         <RemoveBlockIcon />
                       </button>
                     </div>
+                    {isPracticeKeyBlock(template.key) && (() => {
+                      const blockKey = template.key
+                      return (
+                        <div className="flex min-h-11 flex-wrap items-center gap-x-3 pl-11 text-sm">
+                          <span role="status" aria-live="polite" className="font-semibold text-sky-200">
+                            {t(blockKey === 'major_scales' ? 'practice.keyMajor' : 'practice.keyMinor', { key: formatPracticeKey(practiceKeys[blockKey], language) })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPracticeKeys((current) => ({ ...current, [blockKey]: pickPracticeKey(blockKey, current[blockKey]) }))}
+                            aria-label={t('practice.rerollKeyLabel', { block: template.label })}
+                            className="min-h-11 min-w-11 rounded px-3 text-sm font-medium text-sky-300 hover:text-sky-100"
+                          >
+                            {t('practice.rerollKey')}
+                          </button>
+                        </div>
+                      )
+                    })()}
                     {!isExpanded && <div className="flex min-h-11 flex-wrap items-center gap-x-3 pl-11 text-sm text-slate-300">
                       {showTargetPracticeTime && <span>{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</span>}
                       <span className="font-mono" aria-label={t('Timer')}>{String(timerMinutes).padStart(2, '0')}:{String(timerSeconds).padStart(2, '0')}</span>
@@ -2286,8 +2486,9 @@ export default function Sessions() {
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                               <button
                                 type="button"
+                                disabled={blockFeedback.saveState === 'saving'}
                                 onClick={() => materialFileInputRefs.current[template.key]?.click()}
-                                className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500"
+                                className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {t('Choose file')}
                               </button>
@@ -2299,12 +2500,10 @@ export default function Sessions() {
                                 onChange={(event) => { void handleLocalMaterialUpload(template.key, event.target.files?.[0]); event.currentTarget.value = '' }}
                                 className="sr-only"
                               />
-                              {blockFeedback.saveState !== 'idle' && (
-                                <span className={`text-sm ${blockFeedback.saveState === 'saved' ? 'text-emerald-300' : 'text-slate-400'}`}>
-                                  {blockFeedback.saveState === 'saving' ? t('Saving locally…') : t('Saved on this device')}
-                                </span>
-                              )}
+                              <MaterialSaveStatus saveState={blockFeedback.saveState} savingLabel={t('Saving locally…')} savedLabel={t('Saved on this device')} />
+                              {renderUploadActions(blockFeedback, template.key)}
                             </div>
+                            {materialCleanupPending && <p role="status" className="text-xs text-amber-300">{t('materials.cleanupPendingNote')}</p>}
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <input
                                 type="url"

@@ -44,6 +44,18 @@ describe('Practice translations', () => {
     }
   })
 
+  it('localizes material save/cleanup recovery and metronome volume in all four languages', () => {
+    const source = readFileSync('src/lib/i18n.tsx', 'utf8')
+    const dictionarySource = source.slice(source.indexOf('const pageTranslations:'), source.indexOf('const I18nContext ='))
+    const dictionaries = runInNewContext(transpileModule(`${dictionarySource}\ntranslations`, {}).outputText) as Record<string, Record<string, string>>
+    const keys = ['materials.saveTimedOut', 'materials.saveCancelled', 'materials.cleanupPending', 'materials.cancelSave', 'materials.retrySave', 'materials.cleanupPendingNote', 'metronome.volume', 'metronome.volumeValue']
+    for (const language of ['en', 'ru', 'it', 'fr']) {
+      expect(keys.filter((key) => !dictionaries[language][key] || dictionaries[language][key] === key), language).toEqual([])
+      expect(dictionaries[language]['metronome.volumeValue']).toContain('{value}')
+      if (language !== 'en') expect(dictionaries[language]['materials.saveTimedOut']).not.toBe(dictionaries.en['materials.saveTimedOut'])
+    }
+  })
+
   it('provides Russian translations for Practice and Repertoire keys', () => {
     const i18nSource = readFileSync('src/lib/i18n.tsx', 'utf8')
     const dictionarySource = i18nSource.slice(i18nSource.indexOf('const pageTranslations:'), i18nSource.indexOf('const I18nContext ='))

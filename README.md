@@ -6,9 +6,9 @@ A responsive guitar practice diary for weekly planning, daily sessions, and prog
 
 **[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
 
-- **0.4.0 first public beta: prepared on 2026-10-16, not yet published.** Includes configured-block workflows, responsive block-picker dialogs, expanded Help/materials guidance, install artwork, and account-scoped local materials. Final test/lint/build gates remain QA-owned and pending on the frozen release inputs.
-- **Backend prerequisites verified in the approved scope:** the security migration, dedicated limiter key and account-gateway revision 27 are deployed, with grant/RLS and bounded health checks recorded in the [gateway rollout evidence](supabase/functions/account-gateway/README.md#production-evidence-2026-10-16). This is not full production end-to-end acceptance or frontend publication.
-- Earlier **0.3.2** source is already upstream; its exact hosted snapshot is unverified. The version-only Home label already exists in upstream `007e292`, not as a newly introduced 0.4.0 feature. See [beta limitations](#beta-limitations) before inviting users.
+- **0.5.0: prepared on 2026-11-01, not yet published.** Adds Duplicate week, Repertoire song removal and immediate song-link saves, Practice week arrows, metronome volume, louder tuner, scale-key randomizer, named bookmarks, a Stats practice calendar and category breakdown, and an Arpeggios block. Practice now saves only practiced blocks. Fixes the Stats Yearly-to-Monthly crash and Plan songs missing from Practice. Final test/lint/build gates remain QA-owned.
+- **0.5.0 backend prerequisite:** Duplicate week and Arpeggios need `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql` applied to production (separate owner approval). Until then Duplicate week shows an unavailable message.
+- **0.4.0 first public beta** was delivered to `origin/master` as commit `6707119`; hosted publication was not independently verified. Its backend prerequisites are recorded in the [gateway rollout evidence](supabase/functions/account-gateway/README.md#production-evidence-2026-10-16). See [beta limitations](#beta-limitations) before inviting users.
 
 ## Overview
 
@@ -76,7 +76,7 @@ The script uses no additional dependencies. On other installations, set `ICON_BR
 
 ## Release Command
 
-Use **Release app** with Master Planner or the **/release-app** workspace prompt. The [canonical release workflow](docs/release-workflow.md) covers approved scope, one version bump, single-owner QA gates and a scoped commit/normal upstream push. Discussing the command does not execute it. A push hands off to connected deployment automation; it does not independently verify hosted publication or authorize live backend/provider operations.
+Use **Release app** with Master Planner or the **/release-app** workspace skill (`.github/skills/release-app/SKILL.md`). The [canonical release workflow](docs/release-workflow.md) covers approved scope, one version bump, single-owner QA gates and a scoped commit/normal upstream push. Discussing the command does not execute it. A push hands off to connected deployment automation; it does not independently verify hosted publication or authorize live backend/provider operations.
 
 ## Project Docs
 

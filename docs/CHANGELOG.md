@@ -6,11 +6,48 @@ Historical dates below are the version-bearing commit dates, **not verified host
 
 ## [Unreleased]
 
-Future changes will be recorded here. Deferred guitar rotation and stronger verified-email recovery are not implemented or included in the prepared beta.
+Future changes will be recorded here. Still deferred: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials and cleanup of historical zero-minute session rows.
+
+## [0.5.0] - 2026-11-01
+
+**PREPARED, not published:** this is the preparation date, not a publication date. No release commit, push, tag or GitHub Release has been created by this preparation; final test/lint/build gates are QA-owned on the frozen release snapshot.
+
+**Backend prerequisite:** Duplicate week and the Arpeggios block need two new migrations applied to production with separate owner approval: `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql`. Until then Duplicate week shows a graceful unavailable message and Arpeggios is not in the catalog. Both were verified on a disposable local database only.
+
+### Added
+
+- Plan: Duplicate week copies the selected scheduled week (focus, tasks, unticked ToDos, block composition, Repertoire songs) directly after itself through the new `duplicate_plan_week` RPC. Sessions, minutes, notes and materials are not copied.
+- Plan: non-destructive "Remove from this week" for Repertoire songs; the song itself is kept.
+- Practice: previous/next week arrows (stop at the first/last week).
+- Practice: metronome volume slider (louder 70% default, remembered per device) and louder tuner reference tones.
+- Practice: random key with Re-roll for Major and Minor scales blocks (not saved).
+- Practice: named playback bookmarks for YouTube and uploaded audio/video; names default to the timestamp, are capped at 60 characters and stay device-local. Older bookmarks still load.
+- Practice: a clearly visible "Saving locally" status while a material file is stored.
+- Stats: practice calendar of practiced days with its own month navigation.
+- Catalog: general built-in Arpeggios block in Scales and Fretboard Geography, in four languages (not added to any program).
+
+### Changed
+
+- Practice saves only practiced blocks (minutes above zero or marked done); untouched pre-filled program blocks are no longer stored, and re-saving a day removes its unpracticed rows. Existing saved sessions are not rewritten.
+- Stats breakdown groups minutes by practice category and counts blocks with minutes or done; totals are conserved. Stats opens on a weekly scale with cleaner axis labels.
+- Plan keeps its controls fixed above the week list and scrolls to the selected week.
+- Plan Repertoire changes (create, tick, untick, remove) save the week's song links immediately; leaving Plan with other unsaved edits now asks first.
+- Progress week cards: the week header opens Plan, with a smaller inline Practice control; the separate View week button is removed.
+- Home and Plan pick the current week by local date, matching Practice.
+- Local materials: removal retries cache cleanup instead of failing silently, uploads time out after 120 seconds with cancel/retry, and removed items cannot reappear from late writes.
+- `/release-app` entry point moved to `.github/skills/release-app/SKILL.md`; updated Home Frankenstrat image.
+
+### Fixed
+
+- Stats no longer crashes when switching from Yearly to Monthly.
+- Songs created in Plan Repertoire now appear in Practice for the same week (link was lost when leaving Plan without the main Save).
+- Editing YouTube loop bounds no longer jumps playback on partial input, and moving focus into the player no longer pauses it.
+
+Local evidence before the final gate: `npm test` 595/595, lint 0 errors (3 existing warnings), build OK, local pgTAP 184/184 across six files including custom-block isolation. Owner re-tests remain for Plan-to-Practice songs, real YouTube setting changes, audio loudness on devices and real-browser bookmark rename.
 
 ## [0.4.0] - 2026-10-16
 
-**First public beta, PREPARED:** this is the preparation date, not a frontend publication date. Version metadata is 0.4.0; final `PUBLIC-BETA-FULLGATE` test/lint/build remains QA-owned on the forthcoming frozen snapshot. No release commit, push, tag or GitHub Release has been created by this preparation. Frontend publication is not verified.
+**First public beta:** prepared on 2026-10-16 and delivered by Git commit `6707119` to `origin/master`. Hosted frontend publication was not independently verified.
 
 ### Added
 

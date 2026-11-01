@@ -5,13 +5,14 @@ import { loadYouTubeApi, type YouTubePlayer } from '../lib/youtubeApi'
 import { toYouTubeApiSrc, toYouTubeWatchUrl } from '../lib/youtube'
 import { bookmarkSeek, clampVideoPosition, createPlaybackTransition, loopSeekTarget, supportedPlaybackRates, validDuration, videoShortcut, type LoopRange, type PlaybackIntent } from '../lib/youtubePractice'
 import VideoPracticeControls, { videoControlClass as controlClass } from './VideoPracticeControls'
+import type { PlaybackBookmark } from '../lib/localMaterials'
 
 type Props = {
   materialId: string
   url: string
   name: string
-  bookmarks: number[]
-  onBookmarksChange: (bookmarks: number[]) => Promise<void>
+  bookmarks: PlaybackBookmark[]
+  onBookmarksChange: (bookmarks: PlaybackBookmark[]) => Promise<void>
   onPlaybackConfirmed: (intent: PlaybackIntent) => void
 }
 

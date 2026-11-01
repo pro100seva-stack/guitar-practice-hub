@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import evhImage from '../assets/EVH_Frankenstrat.jpg'
 import { useI18n } from '../lib/i18n'
+import { toLocalIsoDate } from '../lib/dateFormat'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type ScheduledPlanWeek = PlanWeek & {
@@ -14,6 +15,12 @@ type ScheduledPlanWeek = PlanWeek & {
 
 function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
   return week.week_number !== null && week.start_date !== null && week.end_date !== null
+}
+
+// Must match Practice's local-date week selection, not UTC.
+function weekContainingLocalDate<T extends { start_date: string; end_date: string }>(weeks: readonly T[], now: Date = new Date()) {
+  const today = toLocalIsoDate(now)
+  return weeks.find((item) => item.start_date <= today && item.end_date >= today) ?? null
 }
 
 export default function Landing() {
@@ -39,9 +46,7 @@ export default function Landing() {
       }
 
       const scheduledWeeks = ((data ?? []) as PlanWeek[]).filter(isScheduledWeek)
-      const today = new Date().toISOString().slice(0, 10)
-      const activeWeek =
-        scheduledWeeks.find((week) => week.start_date <= today && week.end_date >= today) ?? scheduledWeeks[0] ?? null
+      const activeWeek = weekContainingLocalDate(scheduledWeeks) ?? scheduledWeeks[0] ?? null
 
       setCurrentWeek(activeWeek)
       setLoading(false)

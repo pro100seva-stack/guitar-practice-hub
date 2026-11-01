@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isCatalogPickerBlock, isMissingProgramBlockModeError, isSelectableCatalogBlock, isSessionRestorableCatalogBlock, loadProgramsWithBlockMode, normalizeCatalogBlock, type CatalogBlock } from '../src/lib/catalogApi'
+import { catalogBlockLabel, isCatalogPickerBlock, isMissingProgramBlockModeError, isSelectableCatalogBlock, isSessionRestorableCatalogBlock, loadProgramsWithBlockMode, normalizeCatalogBlock, type CatalogBlock } from '../src/lib/catalogApi'
 import { getSessionEditorState } from '../src/lib/sessionEditorState'
 
 function block(overrides: Partial<CatalogBlock> = {}): CatalogBlock {
@@ -16,6 +16,11 @@ function block(overrides: Partial<CatalogBlock> = {}): CatalogBlock {
 }
 
 describe('catalog selection eligibility', () => {
+  it('translates the built-in arpeggios block and keeps custom labels verbatim', () => {
+    const translate = (key: string) => `t:${key}`
+    expect(catalogBlockLabel(block({ key: 'arpeggios', label: 'arpeggios seed', category_key: 'scales_fretboard' }), translate)).toBe('t:Arpeggios')
+    expect(catalogBlockLabel(block({ key: 'custom_arpeggios', label: 'My arpeggios' }), translate)).toBe('My arpeggios')
+  })
   it('uses is_selectable from the catalog contract', () => {
     expect(isSelectableCatalogBlock(block())).toBe(true)
     expect(isSelectableCatalogBlock(block({ key: 'warmup', is_selectable: false }))).toBe(false)

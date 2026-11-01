@@ -31,13 +31,13 @@ chromatic                 two_notes_per_string      technique
 alternate_picking         legato                    rhythm
 chord_changes             barre_chords              strumming_patterns
 major_scales              minor_scales              pentatonic_scales
-notes_fretboard           notes                     intervals
-chords                    repertoire                learn_song
-evening                   harmony                   jam_track
-songwriting               learning
+arpeggios                 notes_fretboard           notes
+intervals                 chords                    repertoire
+learn_song                evening                   harmony
+jam_track                 songwriting               learning
 ```
 
-`warmup` is retired historical compatibility data, not a new selectable block. Attaching content must not change program memberships, session history, song links, or existing local materials.
+`arpeggios` exists only after migration `20261101121000_arpeggios_block.sql` is applied. `warmup` is retired historical compatibility data, not a new selectable block. Attaching content must not change program memberships, session history, song links, or existing local materials.
 
 ### Add A PDF
 
@@ -84,7 +84,7 @@ For a personal reference rather than a built-in reference, open a block's Detail
 
 Files and saved-link metadata remain in browser-local storage on this device/origin, not in Supabase or a shared server library. New materials are scoped to the authenticated account: metadata is stored in an owned IndexedDB collection; uploaded file bytes use a separate owner-namespaced CacheStorage collection when available, otherwise IndexedDB. Changing accounts invalidates pending access and detaches old players. Legacy records without an owner remain preserved in their old storage but are temporarily hidden, not assigned to the first account that signs in. Do not manually move/claim them or clear browser data to recover them. This is application account isolation, not protection against OS users, DevTools or malicious same-origin scripts.
 
-A remote link is not an offline download. Playback-position bookmarks are not PDF page bookmarks. Song-scoped materials remain associated with that song and have different viewing controls from block-level materials. Browser eviction can still lose files; never clear site data as a shortcut for replacing content.
+A remote link is not an offline download. Playback-position bookmarks are not PDF page bookmarks; they can be renamed (up to 60 characters, default is the timestamp) and stay on this device only. Song-scoped materials remain associated with that song and have different viewing controls from block-level materials. Browser eviction can still lose files; never clear site data as a shortcut for replacing content.
 
 ## Domain And Installed App Notes
 

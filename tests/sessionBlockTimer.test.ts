@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { ScriptTarget, transpileModule } from 'typescript'
 import { completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, timerElapsedSeconds, toggleBlockTimer } from '../src/lib/sessionBlockTimer'
 import { getSessionEditorState, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState } from '../src/lib/sessionEditorState'
-import { hasUnsupportedSessionBlocks, planSessionBlockSave, sessionBlockMinutes } from '../src/lib/sessionBlockSavePlan'
+import { hasUnsupportedSessionBlocks, planSessionBlockSave, selectPracticedSessionBlocks, sessionBlockMinutes } from '../src/lib/sessionBlockSavePlan'
 
 describe('timestamp-based block timers', () => {
   it('captures minutes of background/sleep time without intermediate callbacks', () => {
@@ -114,16 +114,19 @@ describe('Sessions save handler timer regressions', () => {
     missingAuth?: boolean
     legacy?: boolean
     clear?: boolean
+    newDay?: boolean
+    untouched?: boolean
+    comment?: string
     onStep?: (step: SaveStep, state: LiveState) => void
   } = {}) {
     vi.useFakeTimers()
     vi.setSystemTime(151000)
-    const initialTimers: Timers = {
+    const initialTimers: Timers = options.untouched ? {} : {
       ...toggleBlockTimer({}, 'warmup', 1000),
       technique: { isRunning: false, elapsedSeconds: 120 },
     }
     const state = { timers: initialTimers }
-    const templates = ['warmup', 'technique'].map((key) => ({ id: key, key, label: key, target_minutes: 10 }))
+    const templates = ['warmup', 'technique', 'chords'].map((key) => ({ id: key, key, label: key, target_minutes: 10 }))
     const selectedBlocks = options.clear ? [] : templates.map((template) => ({
       id: template.id, key: template.key, label: template.label,
       done: false, targetMinutes: template.target_minutes, actualMinutes: '',
@@ -170,18 +173,19 @@ describe('Sessions save handler timer regressions', () => {
     const setMessage = vi.fn()
     const loadData = vi.fn(async () => {
       expect(setTimers).not.toHaveBeenCalled()
+      if (options.untouched) return
       expect(timerElapsedSeconds(state.timers.warmup, Date.now())).toBe(options.clear ? 270 : 390)
     })
     const context = {
       canSave: true, date: '2026-10-04', timers: initialTimers, templates, selectedBlocks,
-      comment: '', planWeek: null,
+      comment: options.comment ?? '', planWeek: null,
       defaultsSuppressedDateRef: { current: null as string | null },
-      sessions: [{
+      sessions: options.newDay ? [] : [{
         id: 'session', user_id: 'user', session_date: '2026-10-04',
         session_blocks: [{ block_key: 'warmup' }, ...(options.legacy ? [{ block_key: 'legacy' }] : [])],
       }],
       supabase: { auth: { getUser }, from },
-      snapshotBlockTimers, sessionBlockMinutes, planSessionBlockSave,
+      snapshotBlockTimers, sessionBlockMinutes, planSessionBlockSave, selectPracticedSessionBlocks,
       hasUnsupportedSessionBlocks, shouldDeleteClearedSession,
       setTimers, setSaving, setPendingDiscardAction, setError, setMessage, loadData, t: (text: string) => text,
     }
@@ -294,6 +298,48 @@ describe('Sessions save handler timer regressions', () => {
     expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-delete'])
     expect(fixture.loadData).toHaveBeenCalledWith({ date: '2026-10-04', weekId: null, cleared: true })
     expect(fixture.setMessage).toHaveBeenLastCalledWith('Empty session deleted successfully.')
+  })
+
+  it('saves only practiced blocks and removes untouched pre-filled blocks from the session', async () => {
+    const fixture = setup()
+    await fixture.save()
+    expect(fixture.payloads[1].payload).toEqual([
+      expect.objectContaining({ block_key: 'warmup' }),
+      expect.objectContaining({ block_key: 'technique' }),
+    ])
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-upsert', 'blocks-delete', 'blocks-upsert'])
+  })
+
+  it('saves nothing on a new day with no practice and no notes', async () => {
+    const fixture = setup({ newDay: true, untouched: true })
+    await fixture.save()
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth'])
+    expect(fixture.payloads).toEqual([])
+    expect(fixture.loadData).not.toHaveBeenCalled()
+    expect(fixture.setError).toHaveBeenLastCalledWith(null)
+    expect(fixture.setMessage).toHaveBeenLastCalledWith('Nothing was saved. Log practice time or mark a block done first.')
+    expect(fixture.setSaving).toHaveBeenLastCalledWith(false)
+  })
+
+  it('saves a notes-only session on a new day with no practiced blocks', async () => {
+    const fixture = setup({ newDay: true, untouched: true, comment: 'Sore fingers' })
+    await fixture.save()
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-upsert', 'blocks-delete'])
+    expect(fixture.payloads).toEqual([{ table: 'sessions', payload: expect.objectContaining({ total_minutes: 0, comment: 'Sore fingers' }) }])
+  })
+
+  it('deletes an existing session when nothing is practiced and notes are empty', async () => {
+    const fixture = setup({ untouched: true })
+    await fixture.save()
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-delete'])
+    expect(fixture.loadData).toHaveBeenCalledWith({ date: '2026-10-04', weekId: null, cleared: true })
+  })
+
+  it('keeps an existing notes-only session and removes all unpracticed blocks', async () => {
+    const fixture = setup({ untouched: true, comment: 'Notes' })
+    await fixture.save()
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-upsert', 'blocks-delete'])
+    expect(fixture.payloads).toEqual([{ table: 'sessions', payload: expect.objectContaining({ total_minutes: 0, comment: 'Notes' }) }])
   })
 })
 

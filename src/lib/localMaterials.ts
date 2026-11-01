@@ -1,5 +1,10 @@
 import { localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from './localMaterialAccess'
 
+export type PlaybackBookmark = { seconds: number; name?: string }
+// Legacy records store bare seconds; they are only rewritten when that material's bookmarks change.
+export type StoredBookmark = number | PlaybackBookmark
+export const bookmarkNameMaxLength = 60
+
 export type LocalMaterial = {
   id: string
   blockKey: string
@@ -10,7 +15,7 @@ export type LocalMaterial = {
   source: 'file' | 'url'
   url?: string
   blob?: Blob
-  bookmarks?: number[]
+  bookmarks?: StoredBookmark[]
   storage?: 'indexeddb' | 'cache'
   createdAt: string
 }
@@ -49,8 +54,12 @@ const mediaCacheName = 'guitar-practice-hub-media-v2'
 
 export type MaterialScope = { blockKey: string; songId?: string }
 export type MaterialRef = MaterialScope & { id: string }
-export type OwnedLocalMaterial = LocalMaterial & { ownerUid: string }
+// pendingDeletion marks an owned row whose cached bytes still need removal; it is hidden and cannot be reopened or patched.
+export type OwnedLocalMaterial = LocalMaterial & { ownerUid: string; pendingDeletion?: true }
 export type LocalMaterialInput = Omit<LocalMaterial, 'storage'>
+
+export const localMaterialCleanupPending = 'LOCAL_MATERIAL_CLEANUP_PENDING'
+const cacheDeleteRetryDelaysMs = [0, 150, 600]
 
 function snapshotMaterialRef(ref: MaterialRef): MaterialRef {
   if (!ref.id || ref.id === '.' || ref.id === '..') throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
@@ -90,22 +99,30 @@ function openDatabase() {
   })
 }
 
-async function materialTransaction<Result>(access: LocalMaterialAccess, mode: IDBTransactionMode, run: (store: IDBObjectStore, finish: (result: Result) => void, guard: (action: () => void) => void) => void, onCommitted?: () => void): Promise<Result> {
+async function materialTransaction<Result>(access: LocalMaterialAccess, mode: IDBTransactionMode, run: (store: IDBObjectStore, finish: (result: Result) => void, guard: (action: () => void) => void) => void, onCommitted?: () => void, signal?: AbortSignal): Promise<Result> {
   localMaterialOwner(access)
+  signal?.throwIfAborted()
   const database = await openDatabase()
   return new Promise<Result>((resolve, reject) => {
-    try { localMaterialOwner(access) } catch (error) { database.close(); reject(error); return }
+    try { localMaterialOwner(access); signal?.throwIfAborted() } catch (error) { database.close(); reject(error); return }
     const transaction = database.transaction(storeName, mode)
     const store = transaction.objectStore(storeName)
     let result: Result
     let failure: unknown
+    let settled = false
     const unsubscribe = onLocalMaterialInvalidation(() => {
       try { localMaterialOwner(access) } catch (error) {
         failure = error
         try { transaction.abort() } catch {}
       }
     })
-    const close = () => { unsubscribe(); database.close() }
+    const abortForSignal = () => {
+      if (settled) return
+      failure = signal?.reason
+      try { transaction.abort() } catch {}
+    }
+    signal?.addEventListener('abort', abortForSignal)
+    const close = () => { settled = true; signal?.removeEventListener('abort', abortForSignal); unsubscribe(); database.close() }
     const guard = (action: () => void) => {
       try { localMaterialOwner(access); action() } catch (error) {
         failure = error
@@ -126,7 +143,7 @@ async function materialTransaction<Result>(access: LocalMaterialAccess, mode: ID
 }
 
 function requireRecord(record: OwnedLocalMaterial | undefined, ownerUid: string, ref: MaterialRef): OwnedLocalMaterial {
-  if (!record || record.ownerUid !== ownerUid || record.id !== ref.id || record.blockKey !== ref.blockKey || record.songId !== ref.songId) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+  if (!record || record.ownerUid !== ownerUid || record.id !== ref.id || record.blockKey !== ref.blockKey || record.songId !== ref.songId || record.pendingDeletion) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
   return record
 }
 
@@ -142,7 +159,7 @@ export async function listLocalMaterials(access: LocalMaterialAccess, scope: Mat
         store.put(migrated)
         return migrated
       })
-      finish(owned.filter((record) => record.blockKey === scope.blockKey && record.songId === scope.songId))
+      finish(owned.filter((record) => !record.pendingDeletion && record.blockKey === scope.blockKey && record.songId === scope.songId))
     })
   })
 }
@@ -155,11 +172,32 @@ function readOwnedRecord(access: LocalMaterialAccess, ref: MaterialRef) {
   })
 }
 
-function withMaterialLock<Result>(ownerUid: string, id: string, action: () => Promise<Result>) {
-  return navigator.locks ? navigator.locks.request(`local-material-v2:${ownerUid}:${id}`, action) : action()
+function withMaterialLock<Result>(ownerUid: string, id: string, action: () => Promise<Result>, signal?: AbortSignal) {
+  const name = `local-material-v2:${ownerUid}:${id}`
+  if (!navigator.locks) return action()
+  return signal ? navigator.locks.request(name, { signal }, action) : navigator.locks.request(name, action)
 }
 
-export async function saveLocalMaterial(access: LocalMaterialAccess, input: LocalMaterialInput): Promise<OwnedLocalMaterial> {
+async function deleteCachedBytes(ownerUid: string, id: string, assertOwner: () => void = () => {}) {
+  let lastError: unknown
+  for (const delay of cacheDeleteRetryDelaysMs) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+    assertOwner()
+    try {
+      const cache = await caches.open(mediaCacheName)
+      assertOwner()
+      await cache.delete(mediaCacheRequest(ownerUid, id))
+      return
+    } catch (error) {
+      assertOwner()
+      lastError = error
+    }
+  }
+  throw lastError
+}
+
+// The signal stops the save before its metadata commits; it cannot interrupt a cache write already in progress, whose bytes are removed once it settles.
+export async function saveLocalMaterial(access: LocalMaterialAccess, input: LocalMaterialInput, signal?: AbortSignal): Promise<OwnedLocalMaterial> {
   const ownerUid = localMaterialOwner(access)
   snapshotMaterialRef(input)
   const material: OwnedLocalMaterial = {
@@ -170,6 +208,7 @@ export async function saveLocalMaterial(access: LocalMaterialAccess, input: Loca
   }
   return withMaterialLock(ownerUid, material.id, async () => {
     localMaterialOwner(access)
+    signal?.throwIfAborted()
     await materialTransaction<void>(access, 'readonly', (store, finish, guard) => {
       const request = store.get([ownerUid, material.id])
       request.onsuccess = () => guard(() => {
@@ -187,23 +226,35 @@ export async function saveLocalMaterial(access: LocalMaterialAccess, input: Loca
         localMaterialOwner(access)
         if (await cache.match(cacheRequest())) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
         localMaterialOwner(access)
+        signal?.throwIfAborted()
         await cache.put(cacheRequest(), new Response(material.blob, { headers: { 'Content-Type': material.type } }))
         wroteBytes = true
         localMaterialOwner(access)
+        signal?.throwIfAborted()
         material.blob = undefined
         material.storage = 'cache'
       }
       await materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish) => {
         store.add(material)
         finish(material)
-      }, () => { committed = true })
+      }, () => { committed = true }, signal)
       localMaterialOwner(access)
       return material
     } catch (error) {
-      if (wroteBytes && !committed) await cache?.delete(cacheRequest()).catch(() => false)
+      if (!wroteBytes || committed) throw error
+      try {
+        await deleteCachedBytes(ownerUid, material.id)
+      } catch (cleanupError) {
+        // Record a hidden pending-deletion row so the uncommitted bytes stay reachable for retryPendingLocalMaterialCleanup.
+        await materialTransaction<void>(access, 'readwrite', (store, finish) => {
+          store.add({ ...material, blob: undefined, storage: 'cache', pendingDeletion: true } satisfies OwnedLocalMaterial)
+          finish()
+        }).catch(() => undefined)
+        throw new Error(localMaterialCleanupPending, { cause: cleanupError })
+      }
       throw error
     }
-  })
+  }, signal)
 }
 
 export async function loadLocalMaterialBlob(access: LocalMaterialAccess, ref: MaterialRef): Promise<Blob> {
@@ -225,10 +276,25 @@ export async function loadLocalMaterialBlob(access: LocalMaterialAccess, ref: Ma
   })
 }
 
-export type MaterialMetadataPatch = { name?: string; bookmarks?: number[] }
+export type MaterialMetadataPatch = { name?: string; bookmarks?: StoredBookmark[] }
 
-export function normalizeBookmarks(values: number[]) {
-  return [...new Set(values.filter((value) => Number.isFinite(value) && value >= 0).map((value) => Number(value.toFixed(1))))].sort((left, right) => left - right)
+export function normalizeBookmarkName(value: unknown) {
+  if (typeof value !== 'string') return undefined
+  const name = [...value.trim()].slice(0, bookmarkNameMaxLength).join('').trim()
+  return name || undefined
+}
+
+export function normalizeBookmarks(values: readonly unknown[]): PlaybackBookmark[] {
+  const bySeconds = new Map<number, PlaybackBookmark>()
+  for (const value of values) {
+    const raw = typeof value === 'number' ? value : typeof value === 'object' && value !== null && 'seconds' in value ? value.seconds : NaN
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) continue
+    const seconds = Number(raw.toFixed(1))
+    if (bySeconds.has(seconds)) continue
+    const name = typeof value === 'object' && value !== null && 'name' in value ? normalizeBookmarkName(value.name) : undefined
+    bySeconds.set(seconds, name ? { seconds, name } : { seconds })
+  }
+  return [...bySeconds.values()].sort((left, right) => left.seconds - right.seconds)
 }
 
 export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, ref: MaterialRef, patch: MaterialMetadataPatch) {
@@ -249,6 +315,7 @@ export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, re
   })
 }
 
+// Two phases: hide the owned row, remove its cached bytes (retried), then drop the row. A failed byte removal keeps the hidden row so cleanup can be retried instead of orphaning bytes.
 export async function deleteLocalMaterial(access: LocalMaterialAccess, ref: MaterialRef) {
   const ownerUid = localMaterialOwner(access)
   ref = snapshotMaterialRef(ref)
@@ -256,21 +323,52 @@ export async function deleteLocalMaterial(access: LocalMaterialAccess, ref: Mate
     const record = await materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish, guard) => {
       const request = store.get([ownerUid, ref.id])
       request.onsuccess = () => guard(() => {
-        const owned = requireRecord(request.result, ownerUid, ref)
-        store.delete([ownerUid, ref.id])
+        const owned = requireRecord(request.result ? { ...request.result, pendingDeletion: undefined } : undefined, ownerUid, ref)
+        if (owned.storage === 'cache') store.put({ ...owned, pendingDeletion: true })
+        else store.delete([ownerUid, ref.id])
         finish(owned)
       })
     })
     localMaterialOwner(access)
-    if (record.storage === 'cache' && 'caches' in globalThis) {
-      try {
-        const cache = await caches.open(mediaCacheName)
-        localMaterialOwner(access)
-        await cache.delete(mediaCacheRequest(ownerUid, ref.id))
-      } catch { localMaterialOwner(access) }
+    if (record.storage !== 'cache') return
+    try {
+      if ('caches' in globalThis) await deleteCachedBytes(ownerUid, ref.id, () => localMaterialOwner(access))
+    } catch (error) {
+      localMaterialOwner(access)
+      throw new Error(localMaterialCleanupPending, { cause: error })
     }
+    await materialTransaction<void>(access, 'readwrite', (store, finish, guard) => {
+      const request = store.get([ownerUid, ref.id])
+      request.onsuccess = () => guard(() => {
+        if (request.result?.pendingDeletion) store.delete([ownerUid, ref.id])
+        finish()
+      })
+    }).catch((error: unknown) => {
+      localMaterialOwner(access)
+      throw new Error(localMaterialCleanupPending, { cause: error })
+    })
     localMaterialOwner(access)
   })
+}
+
+// Retries removal only for this owner's rows already marked for deletion; no other cache entries are touched.
+export async function retryPendingLocalMaterialCleanup(access: LocalMaterialAccess) {
+  const ownerUid = localMaterialOwner(access)
+  const pending = await materialTransaction<OwnedLocalMaterial[]>(access, 'readonly', (store, finish, guard) => {
+    const request = store.index('ownerUid').getAll(ownerUid)
+    request.onsuccess = () => guard(() => finish((request.result as OwnedLocalMaterial[]).filter((record) => record.ownerUid === ownerUid && record.pendingDeletion)))
+  })
+  let failed = 0
+  for (const record of pending) {
+    try { await deleteLocalMaterial(access, { id: record.id, blockKey: record.blockKey, songId: record.songId }) } catch (error) {
+      localMaterialOwner(access)
+      // UNAVAILABLE means a concurrent retry already removed it.
+      if (error instanceof Error && error.message === 'LOCAL_MATERIAL_UNAVAILABLE') continue
+      if (!(error instanceof Error) || error.message !== localMaterialCleanupPending) throw error
+      failed++
+    }
+  }
+  return { attempted: pending.length, failed }
 }
 
 export async function estimateLocalStorage(): Promise<LocalStorageEstimate> {

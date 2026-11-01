@@ -5,7 +5,7 @@ import { transpileModule } from 'typescript'
 import type { YouTubeApi, YouTubePlayerOptions } from '../src/lib/youtubeApi'
 import * as practice from '../src/lib/youtubePractice'
 import * as youtube from '../src/lib/youtube'
-import { normalizeBookmarks } from '../src/lib/localMaterials'
+import { bookmarkNameMaxLength, normalizeBookmarkName, normalizeBookmarks, type PlaybackBookmark } from '../src/lib/localMaterials'
 import { activateBlockTimer, completeBlockTimer, toggleBlockTimer } from '../src/lib/sessionBlockTimer'
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
@@ -147,7 +147,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   const imports: Record<string, unknown> = {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     '../lib/i18n': { useI18n: () => ({ t: (key: string) => key }) },
-    '../lib/localMaterials': { normalizeBookmarks },
+    '../lib/localMaterials': { bookmarkNameMaxLength, normalizeBookmarkName, normalizeBookmarks },
     '../lib/localMaterialAccess': authority,
     '../lib/youtubeApi': { loadYouTubeApi: load },
     '../lib/youtube': youtube,
@@ -155,7 +155,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   }
   const controlsModule = { exports: {} }
   const controlsCode = transpileModule(readFileSync('src/components/VideoPracticeControls.tsx', 'utf8'), { compilerOptions: { jsx: 4, module: 1 } }).outputText
-  runInNewContext(controlsCode, { exports: controlsModule.exports, require: (name: string) => imports[name] })
+  runInNewContext(controlsCode, { exports: controlsModule.exports, require: (name: string) => imports[name], setTimeout, clearTimeout })
   imports['./VideoPracticeControls'] = controlsModule.exports
   vi.stubGlobal('navigator', { onLine: true })
   const browser = { location: { origin: 'http://localhost:5173' }, addEventListener: vi.fn(), removeEventListener: vi.fn() }
@@ -165,7 +165,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
     return element
   } }
   runInNewContext(code, { exports: module.exports, require: (name: string) => imports[name], window: browser, navigator, document, setTimeout, clearTimeout, setInterval, clearInterval, Date })
-  let props: Record<string, unknown> = { materialId: 'one', url: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', name: 'Lesson', bookmarks: [5], onBookmarksChange: vi.fn(async () => {}), onPlaybackConfirmed: vi.fn() }
+  let props: Record<string, unknown> = { materialId: 'one', url: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', name: 'Lesson', bookmarks: [{ seconds: 5 }], onBookmarksChange: vi.fn(async () => {}), onPlaybackConfirmed: vi.fn() }
   function nodes(element: unknown): Element[] {
     if (Array.isArray(element)) return element.flatMap(nodes)
     if (!element || typeof element !== 'object' || !('props' in element)) return []
@@ -386,7 +386,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     const harness = playerHarness()
     if (failure === 'offline') Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
     if (failure === 'blockedAPI') harness.load.mockRejectedValueOnce(new Error('Blocked API'))
-    const persist = vi.fn(async (_next: number[]) => {})
+    const persist = vi.fn(async (_next: PlaybackBookmark[]) => {})
     harness.render({ materialId: 'target', bookmarks: [5, 8], onBookmarksChange: persist })
     await Promise.resolve()
     await Promise.resolve()
@@ -398,8 +398,8 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     expect(harness.nodes().find((node) => node.props.children === '0:05.0')?.props.disabled).toBe(true)
     ;(remove.props.onClick as () => void)()
     await Promise.resolve()
-    harness.render({ bookmarks: [8] })
-    expect(persist).toHaveBeenCalledExactlyOnceWith([8])
+    harness.render({ bookmarks: [{ seconds: 8 }] })
+    expect(persist).toHaveBeenCalledExactlyOnceWith([{ seconds: 8 }])
     expect(harness.nodes().some((node) => node.props.children === '0:05.0')).toBe(false)
     expect(harness.player.seekTo).not.toHaveBeenCalled()
     harness.close()
@@ -409,7 +409,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     const harness = playerHarness()
     let rejectSave: (error: Error) => void = () => {}
     const persist = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectSave = reject }))
-    harness.render({ bookmarks: [5, 8], onBookmarksChange: persist })
+    harness.render({ bookmarks: [{ seconds: 5 }, { seconds: 8, name: 'Chorus' }], onBookmarksChange: persist })
     const remove = () => harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Remove')!
     ;(remove().props.onClick as () => void)()
     harness.render()
@@ -420,9 +420,43 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     expect(remove().props.disabled).toBe(false)
     expect(harness.nodes().some((node) => node.props.role === 'alert' && node.props.children === 'Could not save material changes.')).toBe(true)
     expect(harness.nodes().some((node) => node.props.children === '0:05.0')).toBe(true)
-    expect(persist).toHaveBeenCalledExactlyOnceWith([8])
+    expect(persist).toHaveBeenCalledExactlyOnceWith([{ seconds: 8, name: 'Chorus' }])
     harness.close()
     await Promise.resolve()
+  })
+
+  it('renames a bookmark, clears it back to the time label and keeps seek by seconds', async () => {
+    const harness = playerHarness()
+    const persist = vi.fn(async (_next: PlaybackBookmark[]) => {})
+    harness.render({ bookmarks: [5, { seconds: 8, name: 'Chorus' }], onBookmarksChange: persist })
+    await Promise.resolve()
+    harness.ready()
+    harness.render()
+    expect(harness.nodes().some((node) => node.type === 'button' && node.props.children === 'Chorus')).toBe(true)
+    const rename = (seconds: number) => harness.nodes().find((node) => node.props['data-bookmark-rename'] === seconds)!
+    ;(rename(5).props.onClick as () => void)()
+    harness.render()
+    const input = () => harness.nodes().find((node) => node.type === 'input' && node.props['aria-label'] === 'Bookmark name at {time}')!
+    expect(input().props.maxLength).toBe(bookmarkNameMaxLength)
+    ;(input().props.onChange as (event: unknown) => void)({ target: { value: '  Intro riff  ' } })
+    harness.render()
+    const saveName = () => harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Save name')!
+    ;(saveName().props.onClick as () => void)()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(persist).toHaveBeenLastCalledWith([{ seconds: 5, name: 'Intro riff' }, { seconds: 8, name: 'Chorus' }])
+    harness.render({ bookmarks: [{ seconds: 5, name: 'Intro riff' }, { seconds: 8, name: 'Chorus' }] })
+    expect(harness.nodes().some((node) => node.type === 'input' && node.props['aria-label'] === 'Bookmark name at {time}')).toBe(false)
+    const named = harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Intro riff')!
+    ;(named.props.onClick as () => void)()
+    expect(harness.player.seekTo).toHaveBeenLastCalledWith(5, true)
+    ;(rename(8).props.onClick as () => void)()
+    harness.render()
+    ;(input().props.onChange as (event: unknown) => void)({ target: { value: '   ' } })
+    harness.render()
+    ;(saveName().props.onClick as () => void)()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(persist).toHaveBeenLastCalledWith([{ seconds: 5, name: 'Intro riff' }, { seconds: 8 }])
+    harness.close()
   })
 
   it('sets referrer policy before navigation, does not autoplay, and keeps metadata changes in place', async () => {
@@ -511,6 +545,87 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     expect(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')?.props.disabled).toBe(true)
     harness.close()
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('applies speed, loop toggles and loop bounds during playback without pausing, reloading or seeking on partial input', async () => {
+    const harness = playerHarness()
+    const confirm = vi.fn()
+    harness.render({ onPlaybackConfirmed: confirm })
+    await Promise.resolve()
+    harness.ready()
+    harness.event(1, 30)
+    // The harness's own Play above is a user play; only settings changes below must not confirm playback.
+    expect(confirm).toHaveBeenCalledExactlyOnceWith('explicit')
+    confirm.mockClear()
+    harness.render()
+    const numberInputs = () => harness.nodes().filter((node) => node.type === 'input' && node.props.type === 'number')
+    const change = (node: Element, value: string) => (node.props.onChange as (event: unknown) => void)({ target: { value } })
+    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 1)!, '1.5')
+    expect(harness.player.setPlaybackRate).toHaveBeenCalledExactlyOnceWith(1.5)
+    harness.render()
+    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!, 'whole')
+    harness.render()
+    await vi.advanceTimersByTimeAsync(250)
+    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'whole')!, 'section')
+    harness.render()
+    change(numberInputs()[0], '20')
+    harness.render()
+    change(numberInputs()[1], '4')
+    harness.render()
+    await vi.advanceTimersByTimeAsync(300)
+    harness.render()
+    expect(harness.player.seekTo).not.toHaveBeenCalled()
+    change(numberInputs()[1], '45')
+    harness.render()
+    await vi.advanceTimersByTimeAsync(700)
+    harness.render()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(harness.nodes().some((node) => node.props.role === 'status' && String(node.props.children).includes('Loop suspended'))).toBe(false)
+    expect(harness.player.seekTo).not.toHaveBeenCalled()
+    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'section')!, 'off')
+    harness.render()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(harness.player.pauseVideo).not.toHaveBeenCalled()
+    expect(harness.player.playVideo).not.toHaveBeenCalled()
+    expect(harness.player.destroy).not.toHaveBeenCalled()
+    expect(harness.construct).toHaveBeenCalledOnce()
+
+    harness.event(2, 30)
+    harness.render()
+    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 1)!, '0.5')
+    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!, 'section')
+    harness.render()
+    change(numberInputs()[0], '40')
+    harness.render()
+    await vi.advanceTimersByTimeAsync(1000)
+    harness.render()
+    expect(harness.player.playVideo).not.toHaveBeenCalled()
+    expect(harness.player.pauseVideo).not.toHaveBeenCalled()
+    expect(harness.player.seekTo).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    harness.close()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('applies a typed loop bound immediately on blur and seeks into a new range while playing', async () => {
+    const harness = playerHarness()
+    harness.render()
+    await Promise.resolve()
+    harness.ready()
+    harness.event(1, 30)
+    harness.render()
+    const numberInputs = () => harness.nodes().filter((node) => node.type === 'input' && node.props.type === 'number')
+    ;(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!.props.onChange as (event: unknown) => void)({ target: { value: 'section' } })
+    harness.render()
+    ;(numberInputs()[0].props.onChange as (event: unknown) => void)({ target: { value: '40' } })
+    ;(numberInputs()[1].props.onChange as (event: unknown) => void)({ target: { value: '50' } })
+    harness.render()
+    ;(numberInputs()[1].props.onBlur as () => void)()
+    harness.render()
+    await vi.advanceTimersByTimeAsync(125)
+    expect(harness.player.seekTo).toHaveBeenCalledExactlyOnceWith(40, true)
+    expect(harness.player.pauseVideo).not.toHaveBeenCalled()
+    harness.close()
   })
 
   it('does not create a player if closed before the loader resolves', async () => {
@@ -630,7 +745,7 @@ describe('local native player with shared controls', () => {
   it('renders uploaded audio as one native <audio> with the shared controls, shortcuts, loop and timer activation', () => {
     const harness = playerHarness('local')
     const confirm = vi.fn()
-    const persist = vi.fn(async (_next: number[]) => {})
+    const persist = vi.fn(async (_next: PlaybackBookmark[]) => {})
     harness.render({ kind: 'audio', url: 'blob:audio', name: 'Backing track', bookmarks: [], onPlaybackConfirmed: confirm, onBookmarksChange: persist })
     harness.native('onLoadedMetadata')
     harness.render()
@@ -667,14 +782,14 @@ describe('local native player with shared controls', () => {
     ;(now.props.onClick as () => void)()
     const save = harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Save position')!
     ;(save.props.onClick as () => void)()
-    expect(persist).toHaveBeenCalledExactlyOnceWith([20])
+    expect(persist).toHaveBeenCalledExactlyOnceWith([{ seconds: 20 }])
     const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
     ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
     harness.render()
     harness.video.currentTime = 60
     harness.native('onTimeUpdate')
     expect(harness.video.currentTime).toBe(0)
-    harness.render({ name: 'Renamed track', bookmarks: [20] })
+    harness.render({ name: 'Renamed track', bookmarks: [{ seconds: 20 }] })
     expect(harness.nodes().filter((node) => node.type === 'audio')).toHaveLength(1)
     harness.close()
   })

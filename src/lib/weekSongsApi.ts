@@ -23,3 +23,25 @@ export async function queryWeekSongsWithSortOrder<T>(
   if (result.error && isMissingWeekSongSortOrderError(result.error)) result = await query(false)
   return result
 }
+
+export type WeekSong = { id: string; name: string }
+export type WeekSongRow = { song_id: string; songs?: { name: string | null } | null }
+
+export function toWeekSongs(rows: readonly WeekSongRow[] | null): WeekSong[] {
+  return (rows ?? []).flatMap((entry) => {
+    const name = entry.songs?.name?.trim()
+    return name ? [{ id: entry.song_id, name }] : []
+  })
+}
+
+export function sameWeekSongs(left: readonly WeekSong[], right: readonly WeekSong[]) {
+  return left.length === right.length && left.every((song, index) => song.id === right[index].id && song.name === right[index].name)
+}
+
+export type WeekSongsInFlight = { weekId: string; requestId: number }
+
+// Refresh the shown week's links (e.g. after a Plan save in another tab) unless that exact load is already pending or offline.
+export function shouldRefreshWeekSongs(weekId: string | null, inFlight: WeekSongsInFlight | null, currentRequestId: number, online: boolean) {
+  if (!weekId || !online) return false
+  return !(inFlight && inFlight.weekId === weekId && inFlight.requestId === currentRequestId)
+}

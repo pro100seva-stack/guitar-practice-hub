@@ -454,6 +454,10 @@ export type Database = {
         Args: { p_program_id: string; p_week_id: string }
         Returns: undefined
       }
+      duplicate_plan_week: {
+        Args: { p_week_id: string }
+        Returns: string
+      }
       insert_plan_week: {
         Args: {
           p_end_date: string
