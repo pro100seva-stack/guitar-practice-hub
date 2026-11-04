@@ -4,6 +4,7 @@ import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
 import * as security from '../supabase/functions/account-gateway/security'
 import * as defaults from '../supabase/functions/account-gateway/default-program'
+import * as identifier from '../supabase/functions/account-gateway/identifier'
 import { equalDigest, hashAnswer, limiterLoginHash, maxBodyBytes, parseBudget, readPayload } from '../supabase/functions/account-gateway/security'
 
 const gatewaySource = readFileSync(new URL('../supabase/functions/account-gateway/index.ts', import.meta.url), 'utf8')
@@ -17,35 +18,49 @@ function fixture(options: {
   missingKey?: boolean
   lookupError?: boolean
   resetError?: boolean
+  internalDomain?: string
+  insertErrorTable?: string
 } = {}) {
   const rpc = vi.fn(options.rpc ?? (async () => ({ data: [{ allowed: true, retry_after_seconds: 0 }], error: null })))
   const updateUserById = vi.fn(async () => ({ error: options.resetError ? {} : null }))
   const createUser = vi.fn(async () => ({ data: { user: { id: 'synthetic-user' } }, error: null }))
-  const insert = vi.fn((_rows: unknown) => query)
+  const deleteUser = vi.fn(async () => ({ error: null }))
+  let activeTable = ''
+  let pendingInsertTable: string | null = null
+  const insertedRows: Array<{ table: string; rows: unknown }> = []
+  const deletedTables: string[] = []
+  const insert = vi.fn((rows: unknown) => {
+    pendingInsertTable = activeTable
+    insertedRows.push({ table: activeTable, rows })
+    return query
+  })
   const query = {
     select: vi.fn(() => query), eq: vi.fn(() => query), insert,
+    delete: vi.fn(() => { deletedTables.push(activeTable); pendingInsertTable = null; return query }),
     maybeSingle: vi.fn(async () => ({ data: options.profile ?? null, error: options.lookupError ? {} : null })),
-    single: vi.fn(async () => ({ data: { id: 'synthetic-program' }, error: null })),
-    then: (resolve: (result: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve),
+    single: vi.fn(async () => ({ data: { id: 'synthetic-program' }, error: pendingInsertTable === options.insertErrorTable ? {} : null })),
+    then: (resolve: (result: unknown) => unknown) => Promise.resolve({ error: pendingInsertTable === options.insertErrorTable ? {} : null }).then(resolve),
   }
-  const from = vi.fn(() => query)
-  const admin = { rpc, from, auth: { admin: { updateUserById, createUser } } }
+  const from = vi.fn((table: string) => { activeTable = table; pendingInsertTable = null; return query })
+  const admin = { rpc, from, auth: { admin: { updateUserById, createUser, deleteUser } } }
   let handler!: (request: Request) => Promise<Response>
   const env: Record<string, string> = {
     SUPABASE_URL: 'https://synthetic.invalid', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-service',
     ACCOUNT_ANSWER_PEPPER: 'synthetic-pepper', ACCOUNT_LIMITER_HMAC_KEY: 'synthetic-key',
   }
   if (options.missingKey) delete env.ACCOUNT_LIMITER_HMAC_KEY
+  if (options.internalDomain) env.INTERNAL_AUTH_DOMAIN = options.internalDomain
   new Function('require', 'Deno', 'exports', gatewayCode)((specifier: string) => {
     if (specifier === './security.ts') return security
     if (specifier === './default-program.ts') return defaults
+    if (specifier === './identifier.ts') return identifier
     if (specifier === 'https://esm.sh/@supabase/supabase-js@2') return { createClient: () => admin }
     throw new Error('Unexpected import')
   }, { env: { get: (name: string) => env[name] }, serve: (callback: typeof handler) => { handler = callback } }, {})
   const call = (payload: unknown, headers: Record<string, string> = {}) => handler(new Request('https://unit.invalid', {
     method: 'POST', body: JSON.stringify(payload), headers,
   }))
-  return { call, handler, rpc, from, query, updateUserById, createUser, insert }
+  return { call, handler, rpc, from, query, updateUserById, createUser, deleteUser, insert, insertedRows, deletedTables }
 }
 
 const reset = { action: 'reset-password', loginName: ' PeRsOn ', password: 'NewPass123', securityAnswer: 'answer' }
@@ -172,6 +187,88 @@ describe('actual gateway handler with synthetic admin/RPC dependencies', () => {
     expect(await response.json()).toEqual({ ok: true })
     expect(gateway.insert.mock.calls.map(([value]) => value)).toContainEqual(expect.objectContaining({ show_target_practice_time: false, language: 'fr' }))
     expect(gateway.insert.mock.calls.map(([value]) => value)).toContainEqual(expect.objectContaining({ block_set_mode: 'same_every_week', language: 'fr' }))
+    expect(gateway.createUser).toHaveBeenCalledExactlyOnceWith({ email: 'person@accounts.guitar-practice-hub.invalid', password: 'NewPass123', email_confirm: true })
+  })
+
+  it('creates a normalized real-email account with the existing complete default setup', async () => {
+    const gateway = fixture()
+    const response = await gateway.call({ ...reset, action: 'create-account', loginName: '  Player.Name+Practice@Example.com  ', securityQuestion: 'Synthetic question?', language: 'ru' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true })
+    const login = 'player.name+practice@example.com'
+    expect(gateway.createUser).toHaveBeenCalledExactlyOnceWith({ email: login, password: 'NewPass123', email_confirm: true })
+    expect(gateway.rpc.mock.calls[0][1]).toEqual({ p_login_hash: await limiterLoginHash('synthetic-key', login), p_action: 'create-account' })
+    expect(gateway.insertedRows.map(({ table }) => table)).toEqual(['user_profiles', 'app_settings', 'programs', 'program_blocks', 'plan_weeks'])
+    expect(gateway.insertedRows[0].rows).toMatchObject({ user_id: 'synthetic-user', login_name: login, security_answer_hash: await hashAnswer('synthetic-pepper', login, 'answer') })
+    expect(gateway.insertedRows[1].rows).toMatchObject({ language: 'ru', onboarding_tour_pending: true, show_target_practice_time: false })
+    expect(gateway.insertedRows[2].rows).toMatchObject({ language: 'ru', name: defaults.defaultProgramCopy.ru.name, block_set_mode: 'same_every_week' })
+    expect(gateway.insertedRows[3].rows).toEqual(defaults.defaultProgramBlockKeys.map((block_key, index) => ({ program_id: 'synthetic-program', block_key, sort_order: index + 1 })))
+    expect(gateway.insertedRows[4].rows).toEqual(defaults.defaultProgramCopy.ru.focuses.map((focus, index) => expect.objectContaining({ user_id: 'synthetic-user', program_id: 'synthetic-program', program_sequence: index + 1, week_number: index + 1, focus, tasks: defaults.defaultProgramCopy.ru.tasks })))
+    expect(gateway.deleteUser).not.toHaveBeenCalled()
+  })
+
+  it('keeps email recovery lookup, digest and budget on one normalized identifier', async () => {
+    const login = 'player.name+practice@example.com'
+    const gateway = fixture({ profile: { user_id: 'synthetic-user', security_question: 'Synthetic question?', security_answer_hash: await hashAnswer('synthetic-pepper', login, 'answer') } })
+    const payload = { ...reset, loginName: ' Player.Name+Practice@Example.com ' }
+    expect(await (await gateway.call({ ...payload, action: 'get-recovery-question' })).json()).toEqual({ securityQuestion: 'Synthetic question?' })
+    expect(await (await gateway.call(payload)).json()).toEqual({ ok: true })
+    expect(gateway.query.eq).toHaveBeenCalledWith('login_name', login)
+    expect(gateway.updateUserById).toHaveBeenCalledExactlyOnceWith('synthetic-user', { password: 'NewPass123' })
+    for (const [, args] of gateway.rpc.mock.calls) expect(args.p_login_hash).toBe(await limiterLoginHash('synthetic-key', login))
+    expect(gateway.rpc.mock.calls.map(([, args]) => args.p_action)).toEqual(['get-recovery-question', 'reset-password'])
+  })
+
+  it.each(['create-account', 'get-recovery-question', 'reset-password'])('rejects reserved aliases before budget or admin access: %s', async (action) => {
+    for (const loginName of [' Person@Accounts.Guitar-Practice-Hub.Invalid ', 'person@custom.internal.example']) {
+      const gateway = fixture({ internalDomain: 'CUSTOM.INTERNAL.EXAMPLE' })
+      const response = await gateway.call({ ...reset, action, loginName })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ code: 'INVALID_REQUEST', field: 'loginName' })
+      expect(gateway.rpc).not.toHaveBeenCalled()
+      expect(gateway.from).not.toHaveBeenCalled()
+      expect(gateway.createUser).not.toHaveBeenCalled()
+    }
+  })
+
+  it('preserves configured internal-domain mapping for username accounts', async () => {
+    const gateway = fixture({ internalDomain: 'custom.internal.example' })
+    expect((await gateway.call({ ...reset, action: 'create-account', securityQuestion: 'Synthetic question?' })).status).toBe(200)
+    expect(gateway.createUser).toHaveBeenCalledExactlyOnceWith({ email: 'person@custom.internal.example', password: 'NewPass123', email_confirm: true })
+  })
+
+  it('never reports signup success after a downstream initialization failure', async () => {
+    const gateway = fixture({ insertErrorTable: 'app_settings' })
+    const response = await gateway.call({ ...reset, action: 'create-account', loginName: 'player@example.com', securityQuestion: 'Synthetic question?' })
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ code: 'TEMPORARILY_UNAVAILABLE' })
+    expect(gateway.insertedRows.map(({ table }) => table)).toEqual(['user_profiles', 'app_settings'])
+    expect(gateway.deletedTables).toEqual(['user_profiles'])
+    expect(gateway.deleteUser).toHaveBeenCalledExactlyOnceWith('synthetic-user')
+  })
+
+  it('keeps duplicate email creation controlled without creating a second Auth user', async () => {
+    const gateway = fixture({ profile: { user_id: 'synthetic-user' } })
+    expect((await gateway.call({ ...reset, action: 'create-account', loginName: 'player@example.com', securityQuestion: 'Synthetic question?' })).status).toBe(400)
+    expect(gateway.createUser).not.toHaveBeenCalled()
+    expect(gateway.insert).not.toHaveBeenCalled()
+  })
+})
+
+describe('AccountIdentifier-v1 bounded username and email policy', () => {
+  it.each(['person', ' PeRsOn.Name_1-2 ', 'a'.repeat(32), 'Player.Name+Practice@Example.com', 'a@b.co', `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`])('accepts supported identifier %s', (value) => {
+    expect(identifier.isValidAccountIdentifier(value)).toBe(true)
+  })
+
+  it.each(['', 'ab', '_person', 'a'.repeat(33), 'a b@example.com', 'a\u0000b@example.com', 'a\nb@example.com', 'a@@example.com', 'a@example', '.a@example.com', 'a.@example.com', 'a..b@example.com', `${'a'.repeat(65)}@example.com`, `a@${'b'.repeat(64)}.com`, 'a@-example.com', 'a@example-.com', 'a@example..com', 'a@example.com.', 'a@.example.com', 'a@ex_ample.com', 'test@éxample.com', 'é@example.com', '"a"@example.com', `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(62)}`])('rejects unsupported or oversize identifier %s', (value) => {
+    expect(identifier.isValidAccountIdentifier(value)).toBe(false)
+  })
+
+  it('normalizes nonstring input safely without changing username Auth mapping', () => {
+    expect(identifier.normalizeAccountIdentifier(null)).toBe('')
+    expect(identifier.normalizeAccountIdentifier('  PeRsOn  ')).toBe('person')
+    expect(identifier.authEmailForIdentifier('person')).toBe('person@accounts.guitar-practice-hub.invalid')
+    expect(identifier.authEmailForIdentifier('person@example.com')).toBe('person@example.com')
   })
 })
 

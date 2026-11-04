@@ -1055,6 +1055,19 @@ Object.assign(pageTranslations.fr, {
   'ux.selectedPeriodTime': 'Temps de pratique sur la période sélectionnée',
 })
 
+Object.assign(pageTranslations.en, {
+  'auth.invalidIdentifier': 'Use a public email address or a username: 3–32 Latin letters or numbers, with . _ - allowed; start with a letter or number.',
+})
+Object.assign(pageTranslations.ru, {
+  'auth.invalidIdentifier': 'Укажите обычный адрес эл. почты или имя пользователя: 3–32 латинские буквы или цифры, также разрешены . _ -; первый символ — буква или цифра.',
+})
+Object.assign(pageTranslations.it, {
+  'auth.invalidIdentifier': 'Usa un indirizzo email pubblico o un nome utente: 3–32 lettere latine o numeri, con . _ - consentiti; inizia con una lettera o un numero.',
+})
+Object.assign(pageTranslations.fr, {
+  'auth.invalidIdentifier': 'Utilisez une adresse e-mail publique ou un identifiant : 3 à 32 lettres latines ou chiffres, avec . _ - autorisés ; commencez par une lettre ou un chiffre.',
+})
+
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)
 Object.assign(translations.it, pageTranslations.it)

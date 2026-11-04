@@ -8,6 +8,26 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.7.0] - 2026-11-04
+
+**Prepared 2026-11-04.** Minor version reflects newly supported email account creation and question-based recovery while retaining existing username behavior. This source release also restores the explicit zoom lock and includes the density/registration review evidence. It requires no dependency upgrades or schema migrations. Production gateway rollout is a separate required dependency; source preparation does not establish backend deployment or hosted publication.
+
+Local implementation acceptance passed 736/736 tests across 35 files, lint with zero errors/three existing warnings, and TypeScript/Vite/PWA build with 20 precache entries. These checks execute the gateway handler and Login logic with synthetic services; actual Edge/Auth/database integration was not established by that run. Final versioned release gates follow preparation. See the [identifier acceptance](evidence/acceptance/account-identifiers-2026-11-04.md) and current handoff for rollout status.
+
+### Added
+
+- Consistent username-or-email support for account creation, recovery-question lookup and question-based password reset, matching the form's existing label. Email accounts use their normalized real email; existing username Auth mappings, recovery digests, rate budgets and email sign-in remain compatible. Internal-domain email aliases are blocked to preserve account-budget identity.
+- Actionable translated identifier feedback without an extra permanent instruction paragraph.
+
+### Fixed
+
+- Restored the explicit page-zoom lock on sign-in and every app screen. This reverts only the viewport-policy change from 0.6.0; responsive layout and other UX improvements remain. Browser accessibility overrides can still apply.
+
+### Documentation
+
+- Added the seven-surface density/guidance review with sanitized browser captures and the registration failure diagnosis. Simplification recommendations remain proposed work; this release does not redesign Practice or Plan.
+- Recorded the existing tester's incomplete app setup and guarded repair proposal; this release does not modify that account, its credentials or recovery profile.
+
 ## [0.6.0] - 2026-11-04
 
 **Prepared 2026-11-04.** This minor release adds user-facing accessibility, saving and tool controls alongside the hosting repair and documentation organization. It does not require new backend migrations or dependency changes. Hosted publication is not established by source preparation; the handoff records delivery and public verification separately.

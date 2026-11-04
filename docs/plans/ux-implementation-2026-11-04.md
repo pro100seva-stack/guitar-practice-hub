@@ -1,4 +1,6 @@
-﻿# UX implementation brief — 2026-11-04
+# UX implementation brief — 2026-11-04
+
+**Zoom-policy correction (2026-11-04, item 68):** the owner rejects the zoom-enabling change and requires the prior app-wide lock. This supersedes the zoom recommendation/approval interpretation below. Preserve other UX and responsive work; the current backlog/handoff records the correction queued for the next release.
 
 Contract: **UX-Improvements-v1**. Owner approved proceeding with the [six recommendations](ux-improvements-2026-11-03.md) on 2026-11-04. The backlog and handoff retain current execution status. This authorizes local implementation and isolated QA; no release, version bump, Git delivery or live operations.
 

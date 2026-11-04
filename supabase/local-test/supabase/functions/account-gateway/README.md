@@ -1,10 +1,20 @@
 # Account gateway
 
-This function is the server-only boundary for the existing username-based account flow. It supports:
+This function is the server-only boundary for username and email account creation/recovery. The `AccountIdentifier-v1` extension is included in the prepared 0.7.0 source. Production gateway deployment is a required rollout dependency before released clients rely on email creation/recovery; function deployment and existing-account repair require separate scoped approval. Source preparation is not deployment evidence. It supports:
 
-- `create-account`: creates a Supabase Auth user with a project-scoped internal email and stores an owner profile.
+- `create-account`: creates a Supabase Auth user using the supplied real email, or a project-scoped internal email for a username, and stores an owner profile.
 - `reset-password`: verifies the normalized security answer and sets a new password without revealing the old one.
-- `get-recovery-question`: returns the configured security question for a valid login name so the reset UI can prompt the correct answer. Unknown names return the same successful response shape without a question.
+- `get-recovery-question`: returns the configured security question for a valid username or email so the reset UI can prompt the correct answer. Unknown identifiers return the same successful response shape without a question.
+
+## AccountIdentifier-v1
+
+All three actions trim/lowercase the identifier and use that same value for profile lookup, recovery-answer digest and durable per-action budget. Existing usernames retain their 3-32-character rule: ASCII letters/digits/dot/underscore/hyphen with an alphanumeric first character. Their Auth email mapping, digests and budget identifiers remain unchanged. Real email identifiers go directly to Supabase Auth rather than receiving an appended internal domain.
+
+New email input follows a practical unquoted ASCII policy, not every RFC address form: at most 254 characters total and 64 in the local part; common plus/dot addresses are supported. Local parts use letters/digits and `.!#$%&'*+/=?^_` plus backtick, braces, vertical bar, tilde and hyphen, with no leading/trailing/consecutive dots. Domains need at least two nonempty labels of 1-63 alphanumeric/hyphen characters, starting and ending alphanumeric. Spaces, controls, quoted/internationalized addresses and malformed/oversize parts are rejected. Supabase Auth remains the final creation authority.
+
+Explicit email aliases at either the default internal domain or configured `INTERNAL_AUTH_DOMAIN` are rejected in gateway actions. Otherwise a username account could acquire an alternate budget identity through its synthetic email. Ordinary username/email sign-in retains its existing behavior and does not use this gateway validator. Email ownership verification and email-link recovery are not introduced; question-based recovery and its documented limitations remain.
+
+No schema migration, stored-profile rewrite, digest backfill or credential change is required for this extension. Manually adding an Auth user does not run this function's application initialization sequence; missing settings/programs/weeks require a separately reviewed repair. Accepting a manually stored email identifier does not prove its existing recovery digest was generated correctly.
 
 Required function secrets:
 
@@ -40,9 +50,9 @@ The Edge function HMAC-SHA-256s the normalized login with the message `account-g
 
 Existing action payloads and successful responses remain unchanged: `{ok:true}` or `{securityQuestion:string|null}`. Request JSON must be an object, valid UTF-8, at most 16 KiB including chunked bodies. Null, arrays, invalid action/login, malformed bodies and unsupported methods return controlled 400 errors. OPTIONS remains a CORS preflight. CORS is not authentication.
 
-Errors use `{error:string,code:string,retryAfterSeconds?:number}`:
+Errors use `{error:string,code:string,retryAfterSeconds?:number,field?:string}`:
 
-- 400 `INVALID_REQUEST` for request validation; 400 `RECOVERY_FAILED` with identical text for nonexistent-login, missing-answer and incorrect-answer reset failures.
+- 400 `INVALID_REQUEST` for request validation, with optional `field: "loginName"` for a malformed/reserved identifier. This safe discriminator supports actionable client guidance without rendering provider details; older clients retain their existing generic error. 400 `RECOVERY_FAILED` uses identical text for nonexistent-login, missing-answer and incorrect-answer reset failures.
 - 429 `RATE_LIMITED` with integer `retryAfterSeconds` and `Retry-After` (exposed by CORS).
 - 503 `TEMPORARILY_UNAVAILABLE` for missing configuration/RPC, RPC errors or malformed replies, and account-provider/storage failures. Missing limiter prerequisites fail closed before account lookup/mutation. No automatic password-mutation retry.
 

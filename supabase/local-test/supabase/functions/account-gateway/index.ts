@@ -1,12 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { defaultProgramBlockKeys, defaultProgramCopy } from './default-program.ts'
 import { equalDigest, hashAnswer, InvalidRequest, limiterLoginHash, normalizeAnswer, parseBudget, readPayload } from './security.ts'
+import { authEmailForIdentifier, defaultInternalAuthDomain, isValidAccountIdentifier, normalizeAccountIdentifier } from './identifier.ts'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const accountPepper = Deno.env.get('ACCOUNT_ANSWER_PEPPER') ?? ''
 const limiterKey = Deno.env.get('ACCOUNT_LIMITER_HMAC_KEY') ?? ''
-const internalAuthDomain = Deno.env.get('INTERNAL_AUTH_DOMAIN') ?? 'accounts.guitar-practice-hub.invalid'
+const internalAuthDomain = Deno.env.get('INTERNAL_AUTH_DOMAIN') ?? defaultInternalAuthDomain
 const supabaseAdmin = supabaseUrl && serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,14 +21,6 @@ function json(body: Record<string, unknown>, status = 200, headers: Record<strin
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers },
   })
-}
-
-function normalizeLoginName(value: unknown) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : ''
-}
-
-function authEmail(loginName: string) {
-  return `${loginName}@${internalAuthDomain}`
 }
 
 function isStrongEnoughPassword(value: unknown): value is string {
@@ -70,11 +63,11 @@ Deno.serve(async (request) => {
     return invalidRequest()
   }
 
-  const loginName = normalizeLoginName(payload.loginName)
+  const loginName = normalizeAccountIdentifier(payload.loginName)
   const password = payload.password
 
-  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(loginName)) {
-    return invalidRequest('Login name must be 3-32 characters using lowercase letters, numbers, dot, underscore, or hyphen.')
+  if (!isValidAccountIdentifier(loginName, internalAuthDomain)) {
+    return json({ error: 'Use a valid username or email address.', code: 'INVALID_REQUEST', field: 'loginName' }, 400)
   }
 
   if (!supabaseAdmin || !accountPepper || !limiterKey.trim()) return unavailable()
@@ -122,7 +115,7 @@ Deno.serve(async (request) => {
     if (existingProfile) return invalidRequest('Login name is already in use.')
 
     const { data: createdUser, error: userError } = await supabaseAdmin.auth.admin.createUser({
-      email: authEmail(loginName),
+      email: authEmailForIdentifier(loginName, internalAuthDomain),
       password,
       email_confirm: true,
     })

@@ -37,7 +37,9 @@ Maintained guides, release notes and the two current status documents remain at 
 
 | Record | Scope |
 | --- | --- |
+| [Registration failure diagnosis, 2026-11-04](reviews/technical/registration-failure-2026-11-04.md) | Source identifier mismatch, bounded read-only account findings, policy options and a guarded setup-repair proposal. |
 | [Project review, 2026-11-02](reviews/technical/project-review-2026-11-02.md) | Technical health, documentation drift, acceptance and maintenance findings at that snapshot. |
+| [UX/UI density and guidance review, 2026-11-04](reviews/ux/ux-density-and-guidance-review-2026-11-04.md) | Text/control density, task hierarchy, truthful guidance and proposed simplification; seven surfaces with recovered browser evidence. |
 | [UX review, started 2026-11-02 / completed 2026-11-03](reviews/ux/ux-review-2026-11-02.md) | Whole-app newcomer/accessibility review, observed issues and design hypotheses. |
 | [Learning-materials viewer spike](reviews/technical/learning-materials-viewer-spike.md) | Historical technical proposal; superseded by the implemented viewer and current guides. |
 
@@ -45,11 +47,14 @@ Maintained guides, release notes and the two current status documents remain at 
 
 | Record | Contents |
 | --- | --- |
+| [UX density evidence, 2026-11-04](evidence/acceptance/ux-density-2026-11-04.md) | Recovered 23 captures, action positions, metric limits and cleanup. |
 | [Acceptance checks, 2026-11-02](evidence/acceptance/acceptance-checks-2026-11-02.md) | Public build identity, actual client/local-database checks and local Workers routing validation, with separate evidence tags. |
 | [UX screenshots, 2026-11-03](evidence/ux/2026-11-03) | Six selected, sanitized browser captures linked and interpreted in the UX review. |
 | [UX improvement proposal, 2026-11-03](plans/ux-improvements-2026-11-03.md) | Recommended order, concrete changes, example wording and acceptance checks. Subsequently approved; use the implementation brief and current status documents for delivery. |
 | [Release 0.6.0 acceptance, 2026-11-04](evidence/acceptance/release-0.6.0-2026-11-04.md) | Scoped release inventory, final versioned gates, artifact checks and publication boundary. |
 | [UX implementation acceptance, 2026-11-04](evidence/acceptance/ux-implementation-2026-11-04.md) | Final gates, 24 actual-browser scenarios, repaired defects, selected captures and verification limits. |
+| [Account identifier acceptance, 2026-11-04](evidence/acceptance/account-identifiers-2026-11-04.md) | Local 736-test gate, validation parity, synthetic handler coverage, manifest and deployment/integration limits. |
+| [Account identifier implementation brief, 2026-11-04](plans/account-identifiers-2026-11-04.md) | Approved username/email creation and recovery contract, compatibility and validation boundaries. |
 | [UX implementation brief, 2026-11-04](plans/ux-implementation-2026-11-04.md) | Approved item 67 scope, acceptance, ownership and validation boundaries. |
 | [Historical backlog](archive/backlog-through-2026-11-01.md) / [historical handoff](archive/handoff-through-2026-11-01.md) | Original chronological decisions and evidence, preserved as historical records. |
 

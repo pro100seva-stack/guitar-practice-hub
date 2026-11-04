@@ -2,17 +2,17 @@
 
 Updated 2026-11-04. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
 
-The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; future unique item IDs start at 68.
+The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; future unique item IDs start at 71.
 
 ## Current baseline
 
 - **Source:** package 0.6.0 prepared on baseline `6776bfd` (0.5.0). Final release gates passed; scoped commit and normal upstream push are authorized by the actual release invocation. Delivery hash is reported by the release step; hosted publication remains separate.
 - **Backend:** the [archived handoff](archive/handoff-through-2026-11-01.md#backlog-execution-run-2026-11-01) records owner-approved production application of `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql`, history 25→27, with RPC/catalog checks. They are not pending approval/application. This is recorded evidence, not a new live audit.
-- **Validation:** `RELEASE-060-20261104` on Node 24.19.0/npm 11.17.0: 649/649 tests across 34 files, lint zero errors/three existing warnings, TypeScript/Vite/PWA build passed. Final 120-input snapshot has no drift; 33 artifacts and 86 references checked. See the [release acceptance](evidence/acceptance/release-0.6.0-2026-11-04.md). Prior pgTAP evidence is unchanged, not rerun.
+- **Validation:** latest local `ACCOUNT-ID-20261104`: 736/736 tests across 35 files, lint zero errors/three existing warnings, TypeScript/Vite/PWA build passed. All 167 frozen input hashes stable. This uses synthetic gateway/Auth dependencies; real Edge/Auth/DB integration remains unverified. The delivered 0.6.0 release gate is separately recorded in its release evidence.
 - **Publication:** bounded public HTTP verification on 2026-11-02 confirmed hosted version 0.5.0, commit `6776bfd`, build `2026-11-01 11:52`. Current entry and i18n chunks return JavaScript. Missing `/assets/*.js` still returns the root HTML with 200; this is the remaining hosting follow-up. See [acceptance evidence](evidence/acceptance/acceptance-checks-2026-11-02.md).
 - **Owner acceptance:** owner confirms YouTube and large files work on live v0.5.0 (2026-11-02). General live playback/upload checks are accepted; this does not assert unreported settings transitions, quota/crash recovery or every device.
 - **Client acceptance:** `LOCAL-ACCEPTANCE-20261102` passed 31 real Chromium → local proxy → Supabase checkpoints, including failed requests/retries, reloads, notes-only/clear, same-week songs and 390px four-language Plan/Practice smoke. Actual-client persistence and Plan-to-Practice local gaps are closed; no new app defect found. [Evidence and cleanup](evidence/acceptance/acceptance-checks-2026-11-02.md#isolated-client-persistence-acceptance).
-- **Current work:** owner invoked `/release-app` on 2026-11-04. Release 0.6.0 preparation includes locally accepted UX improvements (67), hosting repair (32), and documentation/evidence cleanup. Release Engineer inventories approved files, bumps metadata once and owns scoped Git delivery; QA owns the final release gate/artifact. Production publication remains unverified.
+- **Current work:** owner invoked `/release-app` for username/email support, zoom-lock restoration and approved documentation/evidence. Prepare 0.7.0 under the minor-version policy. Final versioned gates and real local Edge validation are scheduled; production gateway deployment requires separate approval before Git delivery relying on that dependency. Existing tester-account setup remains excluded.
 
 ## Release 0.6.0 preparation
 
@@ -149,3 +149,58 @@ Later maintenance recommendations: importable session/Repertoire logic and integ
 **Ownership:** Frontend Developer sole application/i18n/test writer; QA Tester sole full-gate/build owner and isolated local browser/fixture owner; Planner sole backlog/handoff owner.
 
 **Acceptance:** [UX-ACCEPTANCE-20261104](evidence/acceptance/ux-implementation-2026-11-04.md): 24/24 distinct actual Chrome/local-Supabase scenarios, zero runtime errors. Final repaired snapshot passes 649/649 tests across 34 files, lint zero errors/three existing warnings and TypeScript/Vite/PWA build. Browser-discovered layout and current-page focus defects were repaired and rechecked. Physical phones, actual screen readers, full contrast and beta-user comprehension remain separate acceptance gaps. No release performed.
+
+
+## Item 68 - restore the explicit zoom policy (2026-11-04)
+
+**Status:** implemented locally and queued for the next app release. The owner explicitly requires zoom to remain locked on every screen and rejects the 0.6.0 zoom-enabling change. This supersedes the earlier interpretation in item 67 and the UX plans: broad permission to proceed does not reverse this explicit product choice.
+
+**Scope:** restore the pre-0.6.0 shared viewport metadata (`maximum-scale=1.0, user-scalable=no` alongside the existing initial scale and safe-area settings). It applies to account entry and every app route. Preserve responsive wrapping, text-enlargement resilience and all other UX work. Do not add gesture interception, global keyboard blocking, dependencies or persistence changes. Browser/accessibility settings can override viewport restrictions; restoring the app policy is not a guarantee that every browser can prohibit zoom.
+
+**Ownership/validation:** Frontend Developer alone owns the one-line entry change and current changelog/technical-guide correction, plus the sole affected production build. Planner owns this register, handoff and plan annotations. Verify exact previous viewport policy and scoped diff; build the affected entry. No broad test rewrite or repeat browser/database fixtures is needed for this metadata-only revert. No version bump, commit/push, release or deployment is requested.
+
+
+**Item 68 validation:** the shared source and built `index.html` match the exact pre-0.6.0 viewport policy. `npm.cmd run build` passed TypeScript/Vite/PWA generation with 20 precache entries. Only the one viewport line changed in application inputs; focused diff checks passed. No full test/lint repetition was needed. Package remains 0.6.0; this correction is uncommitted/unpublished and logged under Unreleased for the next release.
+
+
+## Item 69 - density and guidance UX/UI review (2026-11-04)
+
+**Status:** completed. Owner requested an industry-guidance review focused on excessive text/controls, clear next actions and whether newcomers can get lost. This is review scope, not approval to add/remove controls, change saving behavior or reopen the explicit zoom policy.
+
+**Method:** UX Designer owns `docs/reviews/ux/ux-density-and-guidance-review-2026-11-04.md`; QA owns isolated local fictional fixtures/browser at port 4185 and external sanitized captures, tag `UX-DENSITY-20261104`. Planner owns the two status documents. Reuse unchanged prior acceptance; no full test/lint/build, deployment, live data or dependency installation.
+
+**Evidence:** distinguish actual rendered observations, source findings and expert hypotheses. Measure viewport versus whole-page content separately; visible counts and scroll length are descriptive, not universal standards or a proxy for comprehension. Evaluate Nielsen heuristics, progressive disclosure, relevant primary design-system advice and applicable WCAG criteria without claiming certification. Preserve important labels/save errors/local-file limitations; review existing tours for consistency. User zoom lock remains explicit.
+
+
+## Item 70 - registration identifier mismatch and manual-account setup (2026-11-04)
+
+**Status:** username/email support implemented and locally verified; queued for next release with separate gateway-deployment dependency. Owner reported a real signup failure and authorized a bounded read-only Supabase check of the manually created account. Do not copy the supplied screenshot or its visible credentials/recovery answer into repository evidence.
+
+**Cause in current source:** account creation/recovery gateway validates username-only syntax (3-32 ASCII letters/digits/dot/underscore/hyphen, starting with a letter/digit). The shared client field instead advertises username or email. An email is rejected as INVALID_REQUEST before Auth creation; the client shows a generic input error. Email sign-in is intentionally supported for existing accounts and must remain compatible.
+
+**Read-only account evidence:** one confirmed Auth user with a prior sign-in, one recovery-profile row, zero app-settings rows, zero programs and zero plan weeks. The profile identifier has email format and does not satisfy current gateway username validation; its mere existence does not establish working recovery. No private profile fields, credentials or identifiers are recorded here, and no live rows were changed.
+
+**Boundaries:** asked owner whether to support both usernames and email (matching the current UI) or retain username-only signup with accurate labels and validation. No backend-policy expansion is inferred. Separately prepare a guarded account-bootstrap repair for review; owner permission to check the account does not authorize production writes or function deployment. Preserve the existing Auth account/profile, credentials, any user data and explicit zoom lock.
+
+
+**Item 69 outcome:** [completed density/guidance report](reviews/ux/ux-density-and-guidance-review-2026-11-04.md) and [recovered evidence](evidence/acceptance/ux-density-2026-11-04.md). Seven surfaces, 23 captures, zero runtime errors; actual manual five-minute entry/save, rendered contradictory tour text and irrelevant loop-off A/B fields confirmed. Practice/Plan simplification and truthful guidance are prioritized; Home/Settings remain restrained. All recommendations remain proposed implementation. Cleanup verified; no app or live-data changes occurred in UX QA.
+
+
+**Item 70 diagnosis completed:** [sanitized registration report](reviews/technical/registration-failure-2026-11-04.md) records the username/email mismatch and read-only account findings. Recommendation is consistent username/email creation and recovery while preserving username compatibility; owner policy choice remains pending. Existing-account setup proposal is settings +1, localized Default program +1, ordered program blocks +4 and scheduled weeks +5, with no Auth/profile/credential changes, strict preconditions and transaction rollback. Exact transaction/local validation must precede a future live-write approval request. No live data or backend/frontend account behavior was changed.
+
+
+**Item 70 decision/brief:** owner selected both usernames and email addresses. [AccountIdentifier-v1](plans/account-identifiers-2026-11-04.md) governs bounded validation, canonical Auth/profile/recovery/rate identifiers, reserved internal-domain aliases, existing sign-in compatibility and four-language feedback. Backend owns gateway/tests; frontend owns Login/helper/i18n/tests; QA alone owns final full gates/build after freeze. No migration, account repair, live write, function deployment, version bump or Git delivery is included. Earlier policy-pending notes describe the pre-decision diagnosis.
+
+
+**Item 70 implementation acceptance:** [ACCOUNT-ID-20261104](evidence/acceptance/account-identifiers-2026-11-04.md), final 736/736 tests across 35 files, lint zero errors/three existing warnings, TypeScript/Vite/PWA build with 20 precache entries; 167 input hashes stable. Gateway-handler/Login tests use synthetic dependencies, including full email-bootstrap shape and representative cleanup failure. No Deno/real Edge/Auth/DB or rendered locale checks were executed.
+
+**Rollout dependency:** publish the separately approved gateway update before relying on email signup/recovery in released clients. A frontend-only release cannot repair the old live validator. No schema/type/migration changes are needed. No function deployment or existing-account data repair was performed/authorized in this implementation run. Existing tracked local-test function paths mirror canonical source through a Windows junction; include corresponding changed/new files in a future explicit release inventory without restoring one side separately.
+
+
+## Release 0.7.0 preparation - 2026-11-04
+
+Owner invoked `/release-app`. Highest included category is new username/email registration and recovery capability, so the pre-1.0 policy requires 0.6.0 to 0.7.0. Include item 70, item 68 zoom-policy restoration and completed review/evidence documentation; do not implement the density-report recommendations as part of release. No new schema/migration is needed.
+
+Release Engineer owns version/lock metadata, assigned release notes/guides and eventual explicit-file Git delivery. QA owns sole `RELEASE-ACCOUNT-20261104` full gates/build after freeze. Backend Developer owns an isolated existing local Edge validation environment and a concrete rollout plan, preserving JWT/configuration and all production secrets. Existing function-junction aliases must be inventoried together with canonical changes. Planner owns current status documents and release evidence.
+
+The command authorizes the scoped commit/normal upstream push after gates; it does not authorize existing-account bootstrap, credentials, migrations or manual provider changes. This prepared client depends on the gateway update. Do not commit/push a dependent release without resolving the production gateway deployment approval and integration prerequisite. All prior staged/remote/CLI-marker preservation rules remain in force.

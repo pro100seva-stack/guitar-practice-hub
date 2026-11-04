@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
 import { useI18n } from '../lib/i18n'
+import { isValidAccountIdentifier, normalizeAccountIdentifier } from '../lib/accountIdentifier'
 
 type LoginMode = 'sign-in' | 'create-account' | 'reset-password'
 type GatewayAction = Exclude<LoginMode, 'sign-in'> | 'get-recovery-question'
@@ -23,7 +24,7 @@ async function readGatewayFailure(data: unknown, error: unknown): Promise<Gatewa
   }
   if (response?.status === 503 || code === 'TEMPORARILY_UNAVAILABLE') return { key: 'auth.unavailable' }
   if (code === 'RECOVERY_FAILED') return { key: 'auth.recoveryFailed' }
-  if (code === 'INVALID_REQUEST') return { key: 'auth.invalidRequest' }
+  if (code === 'INVALID_REQUEST') return { key: body && 'field' in body && body.field === 'loginName' ? 'auth.invalidIdentifier' : 'auth.invalidRequest' }
   if (response?.status === 400) return { key: 'auth.recoveryFailed' }
   if (error || !body || 'error' in body) return { key: 'auth.unavailable' }
   return null
@@ -122,6 +123,12 @@ export default function Login() {
       return
     }
 
+    const identifier = normalizeAccountIdentifier(loginName)
+    if (!isValidAccountIdentifier(identifier)) {
+      setError(t('auth.invalidIdentifier'))
+      return
+    }
+
     const nextPassword = mode === 'create-account' ? password : newPassword
     if (!isValidPassword(nextPassword, t)) {
       setError(t('Choose a password that meets every requirement.'))
@@ -131,7 +138,7 @@ export default function Login() {
     const functionPayload = mode === 'create-account'
       ? {
           action: mode,
-          loginName,
+          loginName: identifier,
           password,
           securityQuestion,
           securityAnswer,
@@ -139,7 +146,7 @@ export default function Login() {
         }
       : {
           action: mode,
-          loginName,
+          loginName: identifier,
           password: newPassword,
           securityAnswer,
         }
@@ -185,8 +192,13 @@ export default function Login() {
     setMessage(null)
     setLoading(true)
     try {
+      const identifier = normalizeAccountIdentifier(loginName)
+      if (!isValidAccountIdentifier(identifier)) {
+        setError(t('auth.invalidIdentifier'))
+        return
+      }
       const { data, error: functionError } = await supabase.functions.invoke('account-gateway', {
-        body: { action: 'get-recovery-question', loginName },
+        body: { action: 'get-recovery-question', loginName: identifier },
       })
       if (request !== requestRef.current) return
       const failure = await readGatewayFailure(data, functionError)
@@ -235,6 +247,10 @@ export default function Login() {
           <input
             type="text"
             autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            aria-invalid={error === t('auth.invalidIdentifier') || undefined}
+            aria-describedby={error === t('auth.invalidIdentifier') ? 'account-error' : undefined}
             value={loginName}
             onChange={(e) => { clearRequestState(); setLoginName(e.target.value) }}
             className="field"
@@ -312,7 +328,7 @@ export default function Login() {
             </div>
           )}
         </div>
-        {error && <p role="alert" className="msg-error">{error}</p>}
+        {error && <p id="account-error" role="alert" className="msg-error">{error}</p>}
         {cooldown > 0 && <p role="status" className="msg-error">{t('auth.rateLimited', { seconds: cooldown })}</p>}
         {message && <p role="status" className="msg-success">{message}</p>}
         <button type="submit" disabled={loading || submitCooldown > 0} className="btn btn-primary w-full">

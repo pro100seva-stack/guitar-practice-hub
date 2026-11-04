@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { transpileModule } from 'typescript'
 import * as language from '../src/lib/language'
+import * as accountIdentifier from '../src/lib/accountIdentifier'
 const loginSource = readFileSync('src/pages/Login.tsx', 'utf8')
 const parserSource = loginSource.slice(loginSource.indexOf('type LoginMode'), loginSource.indexOf('const internalAuthDomain'))
 const readGatewayFailure = runInNewContext(transpileModule(`${parserSource}\nreadGatewayFailure`, {}).outputText, { Response, Date }) as (data: unknown, error: unknown) => Promise<{ key: string; retryAfterSeconds?: number } | null>
@@ -39,6 +40,7 @@ function loginHarness() {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     '../lib/supabase': { supabase: { functions: { invoke }, auth: { signInWithPassword: signIn } } },
     '../lib/language': language,
+    '../lib/accountIdentifier': accountIdentifier,
     '../lib/i18n': { useI18n: () => ({ language: 'en', setLanguage: vi.fn(), t: (key: string) => key }) },
   }
   const module = { exports: {} as { default: () => Node } }
@@ -63,9 +65,14 @@ function loginHarness() {
     const input = tree.find((node) => node.type === 'input' && node.props.autoComplete === autocomplete)!
     ;(input.props.onChange as (event: unknown) => void)({ target: { value } })
   }
+  const changeLabel = (label: string, value: string) => {
+    const wrapper = tree.find((node) => node.type === 'label' && nodes(node.props.children).some((child) => child.type === 'span' && child.props.children === label))!
+    const input = nodes(wrapper.props.children).find((node) => node.type === 'input')!
+    ;(input.props.onChange as (event: unknown) => void)({ target: { value } })
+  }
   const submit = () => (tree.find((node) => node.type === 'form')!.props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault: vi.fn() })
   render()
-  return { render, click, change, submit, invoke, signIn, text: () => JSON.stringify(tree), close: () => { for (const effect of effects.values()) effect.cleanup?.() } }
+  return { render, click, change, changeLabel, submit, invoke, signIn, text: () => JSON.stringify(tree), close: () => { for (const effect of effects.values()) effect.cleanup?.() } }
 }
 
 describe('frontend gateway error contract', () => {
@@ -84,13 +91,19 @@ describe('frontend gateway error contract', () => {
     expect(await readGatewayFailure(null, { context: new Response('{}', { status: 400 }) })).toEqual({ key: 'auth.recoveryFailed' })
     expect(await readGatewayFailure({ success: true }, null)).toBeNull()
   })
+  it('only uses safe identifier field metadata for actionable invalid-input feedback', async () => {
+    const failure = { code: 'INVALID_REQUEST', field: 'loginName', error: 'Never display this raw address' }
+    expect(await readGatewayFailure(failure, null)).toEqual({ key: 'auth.invalidIdentifier' })
+    expect(await readGatewayFailure(null, { context: new Response(JSON.stringify(failure), { status: 400 }) })).toEqual({ key: 'auth.invalidIdentifier' })
+    expect(await readGatewayFailure({ ...failure, field: 'securityAnswer' }, null)).toEqual({ key: 'auth.invalidRequest' })
+  })
 })
 
 describe('Login async ownership', () => {
   it('clears a loaded question on login/mode change and drops delayed responses including A-B-A edits', async () => {
     const harness = loginHarness()
     harness.click('Reset password'); harness.render()
-    harness.change('username', 'A'); harness.render()
+    harness.change('username', 'user_a'); harness.render()
     harness.invoke.mockResolvedValueOnce({ data: { securityQuestion: 'Visible question' }, error: null })
     harness.click('Show security question')
     for (let turn = 0; turn < 12; turn++) await Promise.resolve()
@@ -99,8 +112,8 @@ describe('Login async ownership', () => {
     let finish: (value: { data: unknown; error: unknown }) => void = () => {}
     harness.invoke.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
     harness.click('Show security question')
-    harness.change('username', 'B'); harness.render()
-    harness.change('username', 'A'); harness.render()
+    harness.change('username', 'user_b'); harness.render()
+    harness.change('username', 'user_a'); harness.render()
     expect(harness.text()).not.toContain('Visible question')
     finish({ data: { securityQuestion: 'Stale question' }, error: null })
     await Promise.resolve(); await Promise.resolve()
@@ -136,7 +149,7 @@ describe('Login async ownership', () => {
   it('does not sign in after an old create response or show an old question error in another mode', async () => {
     const harness = loginHarness()
     harness.click('Create account'); harness.render()
-    harness.change('username', 'A'); harness.change('new-password', 'Password9'); harness.render()
+    harness.change('username', 'user_a'); harness.change('new-password', 'Password9'); harness.render()
     let finish: (value: { data: unknown; error: unknown }) => void = () => {}
     harness.invoke.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
     const create = harness.submit()
@@ -152,6 +165,67 @@ describe('Login async ownership', () => {
     await Promise.resolve(); await Promise.resolve()
     harness.render()
     expect(harness.text()).not.toContain('auth.recoveryFailed')
+    harness.close()
+  })
+})
+
+describe('Login username and email gateway input', () => {
+  it.each([' Musician+Lessons@Example.COM ', ' User.Name '])('creates using canonical %s and preserves Auth mapping', async (input) => {
+    const harness = loginHarness()
+    harness.click('Create account'); harness.render()
+    harness.change('username', input)
+    harness.change('new-password', 'Password9')
+    harness.changeLabel('Security question', 'Synthetic fixture question')
+    harness.changeLabel('Security answer', 'Synthetic fixture answer')
+    harness.render()
+    await harness.submit(); harness.render()
+    const identifier = input.trim().toLowerCase()
+    expect(harness.invoke).toHaveBeenCalledWith('account-gateway', { body: {
+      action: 'create-account', loginName: identifier, password: 'Password9', language: 'en',
+      securityQuestion: 'Synthetic fixture question', securityAnswer: 'Synthetic fixture answer',
+    } })
+    expect(harness.signIn).toHaveBeenCalledWith({ email: identifier.includes('@') ? identifier : `${identifier}@accounts.guitar-practice-hub.invalid`, password: 'Password9' })
+    harness.close()
+  })
+
+  it('uses the same canonical email for recovery question and password reset', async () => {
+    const harness = loginHarness()
+    harness.click('Reset password'); harness.render()
+    harness.change('username', ' Player+Practice@Example.COM '); harness.change('new-password', 'Password9'); harness.render()
+    harness.invoke.mockResolvedValueOnce({ data: { securityQuestion: 'Synthetic fixture question' }, error: null })
+    harness.click('Show security question')
+    for (let turn = 0; turn < 12; turn++) await Promise.resolve()
+    harness.render()
+    expect(harness.invoke).toHaveBeenLastCalledWith('account-gateway', { body: { action: 'get-recovery-question', loginName: 'player+practice@example.com' } })
+    harness.changeLabel('Security answer', 'Synthetic fixture answer'); harness.render()
+    await harness.submit(); harness.render()
+    expect(harness.invoke).toHaveBeenLastCalledWith('account-gateway', { body: { action: 'reset-password', loginName: 'player+practice@example.com', password: 'Password9', securityAnswer: 'Synthetic fixture answer' } })
+    expect(harness.text()).toContain('Password reset. You can now sign in.')
+    harness.close()
+  })
+
+  it.each(['bad@@example.com', 'user@accounts.guitar-practice-hub.invalid', 'x', `${'a'.repeat(65)}@example.com`])('rejects malformed/reserved gateway identifier %s without network requests', async (input) => {
+    const harness = loginHarness()
+    harness.click('Create account'); harness.render()
+    harness.change('username', input); harness.change('new-password', 'Password9'); harness.render()
+    await harness.submit(); harness.render()
+    expect(harness.text()).toContain('auth.invalidIdentifier')
+    expect(harness.invoke).not.toHaveBeenCalled()
+    harness.click('Reset password'); harness.render()
+    await harness.click('Show security question'); harness.render()
+    expect(harness.text()).toContain('auth.invalidIdentifier')
+    await harness.submit(); harness.render()
+    expect(harness.invoke).not.toHaveBeenCalled()
+    harness.close()
+  })
+
+  it('does not impose gateway identifier restrictions on legacy sign-in', async () => {
+    const harness = loginHarness()
+    harness.change('username', ' User@Accounts.Guitar-Practice-Hub.Invalid ')
+    harness.change('current-password', 'Password9'); harness.render()
+    await harness.submit()
+    expect(harness.signIn).toHaveBeenCalledWith({ email: 'user@accounts.guitar-practice-hub.invalid', password: 'Password9' })
+    expect(harness.invoke).not.toHaveBeenCalled()
     harness.close()
   })
 })
