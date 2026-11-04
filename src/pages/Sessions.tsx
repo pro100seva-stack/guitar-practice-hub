@@ -184,6 +184,7 @@ export default function Sessions() {
   const [includeDefaultExercises, setIncludeDefaultExercises] = useState(true)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
   const [isMetronomeSettingsOpen, setIsMetronomeSettingsOpen] = useState(false)
+  const metronomeSettingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const [currentBeat, setCurrentBeat] = useState(0)
   const [bpmInput, setBpmInput] = useState('100')
   const [bpm, setBpm] = useState(100)
@@ -733,6 +734,7 @@ export default function Sessions() {
       <article key={song.id} className="space-y-2 border-b border-slate-800 pb-3 last:border-0">
         <h5 className="break-words text-sm font-medium text-slate-100">{song.name}</h5>
         <p className="text-xs text-slate-400">{t('materials.accountScope')}</p>
+        <p className="text-xs text-slate-400">{t('ux.localFiles')}</p>
         <p className="text-xs text-slate-400">{t('materials.legacy')}</p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
@@ -1471,7 +1473,7 @@ export default function Sessions() {
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node
-      if (metronomeButtonRef.current?.contains(target) || tunerButtonRef.current?.contains(target) || toolPanelRef.current?.contains(target)) return
+      if (metronomeButtonRef.current?.contains(target) || metronomeSettingsButtonRef.current?.contains(target) || tunerButtonRef.current?.contains(target) || toolPanelRef.current?.contains(target)) return
       closePanels()
     }
 
@@ -1916,7 +1918,7 @@ export default function Sessions() {
               onContextMenu={handleMetronomeContextMenu}
               onKeyDown={handleMetronomeKeyDown}
               onClick={handleMetronomeButtonClick}
-              aria-label={t(isMetronomePlaying ? 'Playing' : 'Metronome')}
+              aria-label={t(isMetronomePlaying ? 'ux.stopMetronome' : 'ux.startMetronome')}
               aria-haspopup="true"
               aria-expanded={isMetronomeSettingsOpen}
               aria-keyshortcuts="Shift+Enter Shift+F10"
@@ -1940,22 +1942,30 @@ export default function Sessions() {
             type="button"
             ref={tunerButtonRef}
             aria-expanded={isTunerOpen}
-            aria-label={t('Tuner')}
+            aria-label={t('ux.referenceTones')}
             onPointerDown={handleTunerPointerDown}
             onPointerUp={handleTunerPointerUp}
             onPointerCancel={handleTunerPointerUp}
             onContextMenu={handleTunerContextMenu}
             onClick={handleTunerButtonClick}
-            title={t('Tuner')}
+            title={t('ux.referenceTones')}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-slate-200"
           >
             <TuningForkIcon className="h-6 w-auto" />
           </button>
+          <button
+            type="button"
+            ref={metronomeSettingsButtonRef}
+            aria-expanded={isMetronomeSettingsOpen}
+            aria-controls="practice-tool-panel"
+            onClick={() => { toggleMetronomeSettings(); lastToolButtonRef.current = metronomeSettingsButtonRef.current }}
+            className="btn btn-secondary max-w-full whitespace-normal rounded-lg px-2 text-xs"
+          >{t('Metronome settings')}</button>
         </>,
         headerSlots.actions,
       )}
 
-        {headerSlots.panel && isToolPanelOpen && createPortal(<div ref={toolPanelRef} tabIndex={-1} role="group" aria-label={t(isTunerOpen ? 'Tuner' : 'Metronome settings')} className="mx-auto max-h-[60dvh] max-w-6xl overflow-x-auto overflow-y-auto border-b border-slate-800 bg-slate-900 p-3 shadow-lg shadow-slate-950/30 focus:outline-none">
+        {headerSlots.panel && isToolPanelOpen && createPortal(<div id="practice-tool-panel" ref={toolPanelRef} tabIndex={-1} role="group" aria-label={t(isTunerOpen ? 'ux.referenceTones' : 'Metronome settings')} className="mx-auto max-h-[60dvh] max-w-6xl overflow-x-auto overflow-y-auto border-b border-slate-800 bg-slate-900 p-3 shadow-lg shadow-slate-950/30 focus:outline-none">
               {isMetronomeSettingsOpen && <div className="flex flex-wrap items-end justify-center gap-2">
                 <label className="text-xs text-slate-400">
                   BPM
@@ -2046,6 +2056,7 @@ export default function Sessions() {
               </div>}
               {isTunerOpen && (
                 <div>
+                  <p className="mb-2 text-sm text-slate-300">{t('ux.referenceTones')}</p>
                   <select
                     value={tuningKey}
                     onChange={(event) => {
@@ -2118,20 +2129,12 @@ export default function Sessions() {
 
       <section className="py-4">
         <h1 className="text-xl font-semibold">{t('Session {date}', { date: formatHeadingDate(date, language) })}</h1>
+        <p className="meta mt-2">{t('ux.practiceCue')}</p>
+        <p className="meta mt-1">{t('ux.doneCue')}</p>
 
         <div className="mt-3">
           <label htmlFor="practice-week-select" className="block text-xs text-slate-400">{t('Jump to')}</label>
-          <div className="mt-1 flex items-center gap-2">
-          <button
-            type="button"
-            disabled={saving || !adjacentWeeks.previous}
-            onClick={() => { const target = adjacentWeeks.previous; if (target) confirmDiscard(() => handleSelectWeek(target)) }}
-            aria-label={adjacentWeeks.previous ? t('practice.previousWeekLabel', { week: adjacentWeeks.previous.week_number }) : t('practice.previousWeek')}
-            title={t('practice.previousWeek')}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5l-5 5 5 5" /></svg>
-          </button>
+          <div className="practice-week-navigation mt-1 items-center">
           <select
             id="practice-week-select"
             value={planWeek?.id ?? ''}
@@ -2147,6 +2150,16 @@ export default function Sessions() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            disabled={saving || !adjacentWeeks.previous}
+            onClick={() => { const target = adjacentWeeks.previous; if (target) confirmDiscard(() => handleSelectWeek(target)) }}
+            aria-label={adjacentWeeks.previous ? t('practice.previousWeekLabel', { week: adjacentWeeks.previous.week_number }) : t('practice.previousWeek')}
+            title={t('practice.previousWeek')}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5l-5 5 5 5" /></svg>
+          </button>
           <button
             type="button"
             disabled={saving || !adjacentWeeks.next}
@@ -2205,10 +2218,10 @@ export default function Sessions() {
           </div>
         )}
 
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <h2 className="min-w-0 truncate text-base font-semibold text-slate-100">{planWeek?.focus ?? t('No week selected')}</h2>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="min-w-0 max-w-full text-base font-semibold text-slate-100 [overflow-wrap:anywhere]">{planWeek?.focus ?? t('No week selected')}</h2>
           {actualCurrentWeek && planWeek?.id === actualCurrentWeek.id && (
-            <button type="button" disabled={saving} onClick={() => confirmDiscard(() => navigate(`/plan?week=${encodeURIComponent(actualCurrentWeek.id)}`))} className="min-h-11 shrink-0 rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-sky-300 hover:text-sky-100">
+            <button type="button" disabled={saving} onClick={() => confirmDiscard(() => navigate(`/plan?week=${encodeURIComponent(actualCurrentWeek.id)}`))} className="min-h-11 max-w-full whitespace-normal rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium uppercase tracking-normal text-sky-300 hover:text-sky-100">
               {t('Current week')}
             </button>
           )}
@@ -2278,9 +2291,9 @@ export default function Sessions() {
         aria-labelledby="practice-blocks-heading"
         className="border-t border-slate-800 py-4 focus:outline-none"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <h2 id="practice-blocks-heading" className="min-w-0 break-words text-lg font-semibold text-slate-100">{formatHeadingDate(date, language)}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 id="practice-blocks-heading" className="text-lg font-semibold text-slate-100">{formatHeadingDate(date, language)}</h2>
             <MaterialsInfo />
           </div>
           {isTodayDate(date) && (
@@ -2326,15 +2339,16 @@ export default function Sessions() {
               return (
                 <div key={template.id} className="border-b border-slate-800 py-1">
                   <div className="min-w-0">
-                    <div className="flex min-h-14 items-center">
-                      <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
+                    <div className="practice-block-heading min-h-14 gap-x-2">
+                      <label className="practice-block-done flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-300">
                         <input
                           type="checkbox"
                           checked={selected.done}
                           onChange={(event) => toggleBlock(template.id, event.target.checked)}
-                          aria-label={template.label}
+                          aria-label={t('ux.markDone', { block: template.label })}
                           className="h-5 w-5 rounded border-slate-700 bg-slate-950"
                         />
+                        <span>{t('Done')}</span>
                       </label>
                       <h3 className="min-w-0 flex-1">
                         <button
@@ -2343,9 +2357,9 @@ export default function Sessions() {
                           data-tour="practice-details"
                           aria-expanded={isExpanded}
                           onClick={() => toggleBlockDetails(template.id, template.key)}
-                          className="flex min-h-14 w-full min-w-0 scroll-mt-32 items-center justify-between gap-2 rounded-lg px-2 text-left transition hover:bg-slate-800/60 active:bg-slate-800"
+                          className="flex min-h-14 w-full min-w-0 scroll-mt-32 flex-wrap items-center justify-between gap-2 rounded-lg px-2 text-left transition hover:bg-slate-800/60 active:bg-slate-800"
                         >
-                          <span className="min-w-0 break-words text-base font-semibold text-slate-100">{template.label}</span>
+                          <span className="text-base font-semibold text-slate-100 [overflow-wrap:anywhere]">{template.label}</span>
                           <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
                             {t('Details')}
                             <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-5 w-5 shrink-0 text-slate-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2357,8 +2371,8 @@ export default function Sessions() {
                       <button
                         type="button"
                         onClick={() => removeBlock(template.id)}
-                        aria-label={t('Remove block')}
-                        title={t('Remove block')}
+                        aria-label={t('ux.removeBlock', { block: template.label })}
+                        title={t('ux.removeBlock', { block: template.label })}
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
                       >
                         <RemoveBlockIcon />
@@ -2367,7 +2381,7 @@ export default function Sessions() {
                     {isPracticeKeyBlock(template.key) && (() => {
                       const blockKey = template.key
                       return (
-                        <div className="flex min-h-11 flex-wrap items-center gap-x-3 pl-11 text-sm">
+                        <div className="flex min-h-11 flex-wrap items-center gap-x-3 text-sm">
                           <span role="status" aria-live="polite" className="font-semibold text-sky-200">
                             {t(blockKey === 'major_scales' ? 'practice.keyMajor' : 'practice.keyMinor', { key: formatPracticeKey(practiceKeys[blockKey], language) })}
                           </span>
@@ -2382,12 +2396,13 @@ export default function Sessions() {
                         </div>
                       )
                     })()}
-                    {!isExpanded && <div className="flex min-h-11 flex-wrap items-center gap-x-3 pl-11 text-sm text-slate-300">
+                    {!isExpanded && <div className="flex min-h-11 flex-wrap items-center gap-x-3 text-sm text-slate-300">
                       {showTargetPracticeTime && <span>{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</span>}
                       <span className="font-mono" aria-label={t('Timer')}>{String(timerMinutes).padStart(2, '0')}:{String(timerSeconds).padStart(2, '0')}</span>
                       <button
                         type="button"
                         onClick={() => toggleTimer(template.id)}
+                        aria-label={t(timers[template.id]?.isRunning ? 'ux.pauseTimer' : 'ux.startTimer', { block: template.label })}
                         className="min-h-11 min-w-11 rounded px-3 text-sm font-medium text-sky-300 hover:text-sky-100"
                       >
                         {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
@@ -2405,6 +2420,7 @@ export default function Sessions() {
                           <button
                             type="button"
                             onClick={() => toggleTimer(template.id)}
+                            aria-label={t(timers[template.id]?.isRunning ? 'ux.pauseTimer' : 'ux.startTimer', { block: template.label })}
                             className="min-h-11 rounded bg-slate-800 px-4 text-sm font-medium text-slate-200"
                           >
                             {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
@@ -2412,6 +2428,7 @@ export default function Sessions() {
                           <button
                             type="button"
                             onClick={() => resetTimer(template.id)}
+                            aria-label={t('ux.resetTimer', { block: template.label })}
                             className="min-h-11 rounded border border-slate-700 px-4 text-sm text-slate-300"
                           >
                             {t('Reset')}
@@ -2479,6 +2496,7 @@ export default function Sessions() {
                             <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
                               {t('materials.accountScope')}
                             </p>
+                            <p className="text-xs text-slate-400">{t('ux.localFiles')}</p>
                             <p className="text-xs text-slate-400">
                               {t('materials.legacy')}
                             </p>

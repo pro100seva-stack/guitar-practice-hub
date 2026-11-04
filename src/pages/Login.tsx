@@ -54,6 +54,7 @@ export default function Login() {
   const [mode, setMode] = useState<LoginMode>('sign-in')
   const [loginName, setLoginName] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [securityQuestion, setSecurityQuestion] = useState('')
   const [securityAnswer, setSecurityAnswer] = useState('')
   const [loadedSecurityQuestion, setLoadedSecurityQuestion] = useState('')
@@ -206,6 +207,7 @@ export default function Login() {
 
   const switchMode = (nextMode: LoginMode) => {
     clearRequestState()
+    setShowPassword(false)
     setMode(nextMode)
   }
 
@@ -285,13 +287,17 @@ export default function Login() {
           <label className="block">
             <span className="label">{isResetMode ? t('New password') : t('Password')}</span>
             <input
-              type="password"
-              autoComplete={isResetMode ? 'new-password' : 'current-password'}
+              type={showPassword ? 'text' : 'password'}
+              autoComplete={isResetMode || isCreateMode ? 'new-password' : 'current-password'}
               value={isResetMode ? newPassword : password}
               onChange={(e) => isResetMode ? setNewPassword(e.target.value) : setPassword(e.target.value)}
               className="field"
               required
             />
+          </label>
+          <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-5 w-5 shrink-0" />
+            {t('ux.showPassword')}
           </label>
           {(isCreateMode || isResetMode) && (
             <div className="mt-2 text-xs">

@@ -267,7 +267,8 @@ export default function Plan() {
     || JSON.stringify(programBlockKeys) !== JSON.stringify(compositionBaseline.programKeys)
     || JSON.stringify(weekBlockKeys) !== JSON.stringify(compositionBaseline.weekKeys)
   )
-  const isDirty = compositionDirty || isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
+  const planDetailsDirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
+  const isDirty = compositionDirty || planDetailsDirty
   const songSaving = pendingSongIds !== null
   const shownSongIds = pendingSongIds ?? selectedSongIds
   const leaveApprovedRef = useRef(false)
@@ -696,14 +697,14 @@ export default function Plan() {
           const block = catalogBlocks.find((item) => item.key === key)
           return <li key={`${scope}:${index}`} className="flex min-h-14 flex-wrap items-center gap-2 py-2">
             <span className="min-w-0 flex-1 break-words text-base text-slate-100">{block ? catalogBlockLabel(block, t) : key}</span>
-            <button type="button" aria-haspopup="dialog" aria-label={t('Replace block')} title={t('Replace block')} disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => openPicker(key)} className="icon-btn disabled:opacity-50">
+            <button type="button" aria-haspopup="dialog" aria-label={t('ux.replaceBlock', { block: block ? catalogBlockLabel(block, t) : key })} title={t('Replace block')} disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => openPicker(key)} className="icon-btn disabled:opacity-50">
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7h-9a6 6 0 0 0-6 6M16 3l4 4-4 4M4 17h9a6 6 0 0 0 6-6M8 13l-4 4 4 4" /></svg>
             </button>
             <button type="button" disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => {
               setter((current) => current.filter((item) => item !== key))
               setCompositionPicker(null)
               setCompositionMessage(null)
-            }} aria-label={t('Remove block')} title={t('Remove block')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50"><RemoveBlockIcon /></button>
+            }} aria-label={t('ux.removeBlock', { block: block ? catalogBlockLabel(block, t) : key })} title={t('Remove block')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50"><RemoveBlockIcon /></button>
           </li>
         })}
       </ol>
@@ -1225,7 +1226,8 @@ export default function Plan() {
     <div className="page-wide">
       <h1 className="page-title">{t('Week overview')}</h1>
       {initialLoading && <p role="status" className="state">{t('Loading…')}</p>}
-      {!week && error && <p role="alert" className="msg-error mt-3">{t('Error: {error}', { error })}</p>}
+      {!loading && !error && weeks.length > 0 && !currentWeek && <p className="meta mt-2">{t('ux.noCurrentWeek')} {t('Choose a covered week')}</p>}
+      {!week && error && <div role="alert" className="mt-3 space-y-2"><p className="msg-error">{t('ux.planLoadFailed')}</p><button type="button" disabled={loading} onClick={() => { void loadWeeks() }} className="btn btn-secondary">{t('Retry')}</button></div>}
 
       {!initialLoading && (
         <div className="mt-4 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start lg:gap-6">
@@ -1260,6 +1262,9 @@ export default function Plan() {
                         <button
                           key={isoDate}
                           type="button"
+                          aria-label={day.toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                          aria-pressed={isSelected}
+                          aria-current={isoDate === today ? 'date' : undefined}
                           disabled={!isCovered || !isCurrentMonth}
                           onClick={() => {
                             if (!isCovered) return
@@ -1380,7 +1385,7 @@ export default function Plan() {
                   </div>
                 </div>
               ) : (
-                <p className="state">{t("No plan_weeks row covers today's date.")}</p>
+                !error && <p className="state">{t(programs.length === 0 ? 'ux.noProgram' : 'ux.noScheduledWeeks')}</p>
               )}
               {week && (pendingChange || blocker.state === 'blocked') && (
                 <div ref={discardPromptRef} tabIndex={-1} role="alert" className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 focus:outline-none">
@@ -1442,6 +1447,7 @@ export default function Plan() {
                 {selectedProgramId !== otherProgramOption && programs.some((program) => program.id === selectedProgramId) && (
                   <section className="space-y-3 border-l-2 border-sky-500/50 pl-3" aria-label={t('Block composition')}>
                     <h3 className="item-title">{t('Block composition')}</h3>
+                    {!compositionLoading && !catalogError && compositionBaseline && <p role="status" className="meta">{t(compositionSaving ? 'Saving composition…' : compositionDirty ? 'ux.compositionUnsaved' : 'ux.compositionClean')}</p>}
                     {legacyProgramSchema ? <p role="status" className="meta">{t('Catalog composition is unavailable until the database is updated.')}</p> : <>
                     <label className="block">
                       <span className="label">{t('Block composition')}</span>
@@ -1663,6 +1669,7 @@ export default function Plan() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              {week && <p role="status" className="meta">{t(saving ? 'Saving…' : planDetailsDirty ? 'ux.planUnsaved' : 'ux.planClean')}</p>}
               <button type="submit" data-tour={week ? 'plan-save' : undefined} disabled={saving || songSaving || songCreating || !week} className="btn btn-primary w-full sm:w-auto">
                 {saving ? t('Saving…') : t('Save plan')}
               </button>

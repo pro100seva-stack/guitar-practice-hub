@@ -136,7 +136,7 @@ describe('Login async ownership', () => {
   it('does not sign in after an old create response or show an old question error in another mode', async () => {
     const harness = loginHarness()
     harness.click('Create account'); harness.render()
-    harness.change('username', 'A'); harness.change('current-password', 'Password9'); harness.render()
+    harness.change('username', 'A'); harness.change('new-password', 'Password9'); harness.render()
     let finish: (value: { data: unknown; error: unknown }) => void = () => {}
     harness.invoke.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
     const create = harness.submit()

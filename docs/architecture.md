@@ -1,6 +1,6 @@
 # System Architecture
 
-This document describes the current high-level architecture of Guitar Practice Hub.
+This document describes the high-level architecture of Guitar Practice Hub. Current implementation, release and acceptance status is maintained in the [backlog](guitar-hub-v1-scope-and-backlog.md) and [handoff](project-handoff.md); dated evidence below is historical verification, not a new live check.
 
 ## High-Level Diagram
 
@@ -9,7 +9,8 @@ graph TD
     subgraph Client_Side [Frontend - React/Vite]
         UI[Home / Progress / Plan / Practice / Stats / Settings UI]
         State[React local state]
-        LocalStore[(IndexedDB local materials)]
+        LocalMetadata[(IndexedDB owned metadata and bookmarks)]
+        LocalBytes[(Owner-scoped CacheStorage file bytes)]
         SupabaseClient[Supabase Client Library]
     end
 
@@ -23,13 +24,16 @@ graph TD
 
     UI <--> State
     State <--> SupabaseClient
-    State <--> LocalStore
+    State <--> LocalMetadata
+    State <--> LocalBytes
     SupabaseClient <--> Auth
     SupabaseClient <--> Edge
     SupabaseClient <--> RPC
     SupabaseClient <--> API
     API <--> DB
 ```
+
+File bytes use CacheStorage only when CacheStorage and Web Locks are available; otherwise they remain in IndexedDB alongside the owned metadata. Both paths stay local to the browser/device and origin. Hidden ownerless legacy storage is preserved separately.
 
 ## System Components
 
@@ -45,7 +49,7 @@ The project uses **Backend as a Service** instead of a custom Node.js or Python 
 - **Authentication:** manages user sessions and JWT tokens.
 - **Database:** PostgreSQL with Row Level Security (RLS).
 - **API layer:** PostgREST provides access to database tables.
-- **Server-only account boundary:** `account-gateway` creates accounts and resets passwords using service-role access that never reaches the browser. Durable admission uses a service-only database RPC with HMAC login identifiers, not IPs or isolate-local counters. Approved Backend evidence on 2026-10-16 confirms the exact security migration, dedicated key and ACTIVE gateway revision 27, including browser CRUD denial on `user_profiles`. This bounded backend verification is not full production end-to-end acceptance or publication of the prepared 0.4.0 frontend.
+- **Server-only account boundary:** `account-gateway` creates accounts and resets passwords using service-role access that never reaches the browser. Durable admission uses a service-only database RPC with HMAC login identifiers, not IPs or isolate-local counters. The [gateway guide](../supabase/functions/account-gateway/README.md) records the approved 2026-10-16 migration, dedicated key and gateway revision 27 verification, including browser CRUD denial on `user_profiles`. Backend rollout evidence is separate from frontend delivery and full production end-to-end acceptance.
 - **Language preference:** account creation accepts one of `en`, `ru`, `it`, or `fr`; the preference is persisted in `app_settings` and can later be changed from Settings.
 - **Onboarding tour state:** `app_settings.onboarding_tour_pending` (boolean, default `false`) is set to `true` only by `account-gateway` at account creation. The app reads it once on first entry, clears it immediately, and runs the per-screen tour from in-memory state. Existing accounts keep `false`, so they never see the tour. The per-screen Help button replays one screen's tour and never touches this flag.
 - **Program content language:** programs store a content-language value in `programs.language`. Continuation uses that stored value rather than the current interface preference; immutability is an application convention, not a database-enforced guarantee.
@@ -61,7 +65,7 @@ Data security is enforced server-side through **Supabase Row Level Security (RLS
 3. PostgreSQL evaluates each row policy, typically against `auth.uid()`.
 4. Data is returned only when the policy permits access.
 
-Credential profiles are an exception to browser-owned CRUD: `20261016120000_account_gateway_security.sql` retains RLS but removes browser profile policies/grants and keeps service CRUD. Approved Backend evidence confirms this migration was the only history addition (24 to 25) on `vmeyyhroxlnqahbiogxr`. The limiter's private table is inaccessible directly, including to service role; only the service-only security-definer RPC admits five requests per login/action and 100 globally per rolling 15 minutes. Missing key/RPC, malformed replies and dependency failures return controlled 503 errors with no in-memory/IP fallback. Security questions remain an owner-accepted weak-entropy/enumeration and quota-exhaustion risk; limits do not make them strong recovery authentication. Verified-email recovery is not implemented. See the [gateway contract and rollout evidence](../supabase/functions/account-gateway/README.md).
+Credential profiles are an exception to browser-owned CRUD: `20261016120000_account_gateway_security.sql` retains RLS but removes browser profile policies/grants and keeps service CRUD. The approved 2026-10-16 Backend evidence records this migration as that operation's only history addition (24 to 25). The limiter's private table is inaccessible directly, including to service role; only the service-only security-definer RPC admits five requests per login/action and 100 globally per rolling 15 minutes. Missing key/RPC, malformed replies and dependency failures return controlled 503 errors with no in-memory/IP fallback. Security questions remain an owner-accepted weak-entropy/enumeration and quota-exhaustion risk; limits do not make them strong recovery authentication. Verified-email recovery is not implemented. See the [gateway contract and rollout evidence](../supabase/functions/account-gateway/README.md).
 
 Local-material authority derives from current authenticated identity through opaque UID/auth-epoch tokens. Sign-out or UID change invalidates old work, including A-to-B-to-A transitions; same-UID token refresh need not change the epoch. AuthGate remounts routed state on UID/epoch change and reconciles identity on storage/focus/resume events. Material APIs recheck persisted ownership and exact block/song scope; stale UI/player callbacks are ignored and object URLs are revoked on invalidation. This application boundary is not encryption or OS/browser-profile security. Browser eviction remains possible; do not clear shared storage, legacy materials or service workers for QA.
 
@@ -123,7 +127,7 @@ Migration `20261003120000_serialize_default_program_continuation.sql` was applie
 - Flexible Programs intentionally uses nullable week dates for unscheduled branch rows; all read paths must filter them before showing visible plan/calendar state.
 - New scheduled weeks are program-owned and carry a required `program_sequence`; the unused `plan_weeks.phase` field is no longer part of the model.
 - `songs.status` and `sessions.source` have validated PostgreSQL domain `CHECK` constraints. Item 15 also constrained the original template keys, but the catalog migration removed that key-domain constraint to support new built-in and owner-specific keys. `block_templates` instead constrains categories and custom-block ownership; `session_blocks.block_key` remains free text for imported/historical snapshots.
-- Pure logic tests use Vitest in Node; the supported runtime range is `^22.12.0 || ^24.0.0 || >=26.0.0`; the latest recorded frontend validation used Node 24.19.0. Plan-week RPC integration tests run against a disposable local Supabase instance only. The isolated local config and historical migration baseline live under `supabase/local-test/supabase/`; run with `npx supabase --workdir supabase/local-test`. The original item-15 slice passed 35 pgTAP tests; the latest recorded local run passed 184 tests across six files (2026-11-01). Never point DB tests at the linked production project or treat the local baseline as remote migration history.
+- Pure logic tests use Vitest in Node; use the runtime range in `package.json`. Database RPC/RLS integration tests run against a disposable local Supabase instance only. The isolated config and historical migration baseline live under `supabase/local-test/supabase/`; follow the [local testing guide](../supabase/LOCAL_TESTING.md). Current test evidence is linked from the handoff. Never point DB tests at the linked production project or treat the local baseline as remote migration history.
 - Microphone pitch detection is deferred. The tuner reference-tone slice and the local learning-materials viewer are live.
 - Mobile pinch zoom is intentionally disabled through the viewport configuration.
 - The language preference and UI string catalog support English, Russian, Italian, and French. User-owned content remains in its stored language by design.

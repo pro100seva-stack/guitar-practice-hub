@@ -288,14 +288,14 @@ export default function Progress() {
           {t('A tree-style overview of where you are, what you have done, and what is coming next.')}
         </p>
         {legacyProgramSchema && <p role="status" className="meta mt-2">{t('Catalog composition is unavailable until the database is updated.')}</p>}
-        {error && <p role="alert" className="msg-error mt-2">{error}</p>}
+        {error && <div role="alert" className="mt-2 space-y-2"><p className="msg-error">{t('ux.progressLoadFailed')}</p><button type="button" onClick={() => { setLoading(true); setRefreshKey((current) => current + 1) }} className="btn btn-secondary">{t('Retry')}</button></div>}
       </div>
 
       <section data-tour="progress-timeline" className="section">
         <h2 className="sr-only">{t('Timeline')}</h2>
         {loading && <p role="status" className="state">{t('Loading practice journey…')}</p>}
         {!loading && !error && journey.length === 0 && (
-          <p className="state">{t('No scheduled practice weeks yet. Start a program from Plan.')}</p>
+          <p className="state">{t(programs.length === 0 ? 'ux.noProgram' : 'ux.noScheduledWeeks')}</p>
         )}
         {!loading && journey.length > 0 && <div className="relative space-y-2 pl-6 before:absolute before:inset-y-4 before:left-2 before:w-px before:bg-slate-700">
           {programGroups.map((group) => {

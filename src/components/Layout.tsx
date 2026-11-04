@@ -22,12 +22,52 @@ export default function Layout() {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const layoutRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
+  const headerRef = useRef<HTMLElement | null>(null)
+  const mainRef = useRef<HTMLElement | null>(null)
+  const focusedPathRef = useRef<string | null>(location.pathname)
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
   const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null)
   const headerSlots = useMemo(() => ({ actions: actionsSlot, panel: panelSlot }), [actionsSlot, panelSlot])
   const { t } = useI18n()
   const tour = useScreenTour(location.pathname)
+
+  useEffect(() => {
+    const header = headerRef.current
+    if (!header) return
+    const updateHeight = () => {
+      layoutRef.current?.style.setProperty('--app-header-h', `${header.getBoundingClientRect().height}px`)
+    }
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(header)
+    updateHeight()
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const screen = navigationItems.find((item) => item.path === location.pathname)
+    document.title = `${t(screen?.key ?? 'Home')} · ${t('Guitar Practice Hub')}`
+    if (navigation.state !== 'idle' || !isRenderedLazyPageReady(pageHandle, navigation.state) || focusedPathRef.current === location.pathname) return
+    const main = mainRef.current
+    if (!main) return
+    const focusHeading = () => {
+      if (focusedPathRef.current === location.pathname) return
+      const heading = main.querySelector<HTMLElement>('h1')
+      if (!heading) return
+      if (document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) {
+        focusedPathRef.current = location.pathname
+        return
+      }
+      heading.tabIndex = -1
+      heading.focus({ preventScroll: true })
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+      focusedPathRef.current = location.pathname
+    }
+    focusHeading()
+    const observer = new MutationObserver(focusHeading)
+    observer.observe(main, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [location.pathname, navigation.state, pageHandle, t])
 
   useEffect(() => {
     const access = captureLocalMaterialAccess()
@@ -51,6 +91,10 @@ export default function Layout() {
   useEffect(() => {
     if (tour.isOpen) setMenuOpen(false)
   }, [tour.isOpen])
+
+  useEffect(() => {
+    if (menuOpen) panelRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+  }, [menuOpen])
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -93,15 +137,18 @@ export default function Layout() {
   return (
     <HeaderSlotsContext.Provider value={headerSlots}>
     <div ref={layoutRef} className="min-h-dvh bg-slate-900 text-slate-100">
-      <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
+      <a href="#main-content" onClick={() => mainRef.current?.focus()} className="skip-link">{t('ux.skipContent')}</a>
+      <header ref={headerRef} className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
         <div className="relative mx-auto max-w-6xl px-[var(--page-px)] py-3">
-          <div className="grid grid-cols-[5.75rem_minmax(0,1fr)_5.75rem] items-center gap-1 sm:grid-cols-[8rem_minmax(0,1fr)_8rem]">
-            <div className="flex items-center gap-1">
+          <div className="app-header-grid">
+            <div className="flex shrink-0 items-center gap-1">
               <button
                 ref={menuButtonRef}
                 type="button"
                 data-tour="menu"
                 aria-label={t('Open navigation menu')}
+                aria-expanded={menuOpen}
+                aria-controls="app-navigation"
                 onClick={() => setMenuOpen((current) => !current)}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
               >
@@ -120,15 +167,15 @@ export default function Layout() {
               )}
             </div>
 
-            <div className="min-w-0 text-center">
-              <p className={['truncate text-xs uppercase tracking-wider text-slate-400', isLandingScreen ? '' : 'max-[359px]:hidden'].join(' ')}>
+            <div className="app-header-title min-w-0 text-center">
+              <p className={['text-xs uppercase tracking-wider text-slate-400', isLandingScreen ? '' : 'hidden'].join(' ')}>
                 {isLandingScreen ? t('Guitar Practice Hub') : t('Current screen')}
               </p>
-              {!isLandingScreen && <p className="truncate text-base font-semibold text-slate-200 max-[359px]:text-sm">{t(currentScreen.key)}</p>}
+              {!isLandingScreen && <p className="text-base font-semibold text-slate-200">{t(currentScreen.key)}</p>}
             </div>
 
-            <div className="flex min-w-0 justify-end">
-              {isPracticeScreen && <div ref={setActionsSlot} data-tour="practice-tools" className="flex items-center gap-1" />}
+            <div className={isPracticeScreen ? 'app-header-tools flex min-w-0 justify-end' : 'flex min-w-0 justify-end'}>
+              {isPracticeScreen && <div ref={setActionsSlot} data-tour="practice-tools" className="flex flex-wrap items-center justify-end gap-1" />}
               {isLandingScreen && (
                 <button
                   type="button"
@@ -158,7 +205,7 @@ export default function Layout() {
           </div>
 
           {menuOpen && (
-            <div ref={panelRef} className="absolute left-4 top-16 z-40 w-[min(18rem,calc(100%-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-slate-950/50">
+            <div ref={panelRef} id="app-navigation" className="absolute left-4 top-full z-40 max-h-[70dvh] w-[min(18rem,calc(100%-2rem))] overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-slate-950/50">
               <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-400">
                 {t('Navigation')}
               </div>
@@ -172,7 +219,8 @@ export default function Layout() {
                       type="button"
                       onClick={() => {
                         setMenuOpen(false)
-                        navigate(item.path)
+                        if (location.pathname === item.path) menuButtonRef.current?.focus()
+                        else navigate(item.path)
                       }}
                       aria-current={isActive ? 'page' : undefined}
                       className={[
@@ -192,7 +240,7 @@ export default function Layout() {
         {isPracticeScreen && <div ref={setPanelSlot} className="absolute inset-x-0 top-full" />}
       </header>
 
-      <main className="mx-auto flex min-h-dvh max-w-6xl flex-col px-[var(--page-px)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(var(--app-header-h)+1rem)]">
+      <main ref={mainRef} id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh max-w-6xl flex-col px-[var(--page-px)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(var(--app-header-h)+1rem)]">
         <div className={isLandingScreen ? 'flex flex-1 flex-col' : 'flex-1'}><Outlet key={location.pathname} /></div>
         {tour.canReplay && (
           <footer className="section mt-6 flex justify-center">

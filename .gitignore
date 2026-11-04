@@ -24,6 +24,9 @@ dist-ssr
 # Supabase local tooling
 supabase/.temp
 
+# Cloudflare local runtime state
+.wrangler/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -2,17 +2,40 @@
 
 Notable changes are recorded here using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) sections and the repository's existing version numbers.
 
-Historical dates below are the version-bearing commit dates, **not verified hosted publication dates**. Entries describe evidenced source history, not GitHub Releases or tags; no GitHub Release was created by this documentation work. Deployment dates and exact hosted snapshots are unknown here. Later commits sometimes retained the same version, so a displayed version alone does not identify a deployed snapshot. The recorded history starts at 0.2.0; no 0.1 release is inferred.
+Historical dates through 0.5.0 below are the version-bearing commit dates, **not verified hosted publication dates**. Entries describe evidenced source history, not GitHub Releases or tags; no GitHub Release was created by this documentation work. Historical deployment dates remain unknown unless separately evidenced; the observed 0.5.0 hosted identity is recorded below. Later commits sometimes retained the same version, so a displayed version alone does not identify a deployed snapshot. The recorded history starts at 0.2.0; no 0.1 release is inferred.
 
 ## [Unreleased]
 
-Future changes will be recorded here. Still deferred: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials and cleanup of historical zero-minute session rows.
+Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
+
+## [0.6.0] - 2026-11-04
+
+**Prepared 2026-11-04.** This minor release adds user-facing accessibility, saving and tool controls alongside the hosting repair and documentation organization. It does not require new backend migrations or dependency changes. Hosted publication is not established by source preparation; the handoff records delivery and public verification separately.
+
+Local UX acceptance passed 649/649 tests across 34 files, lint with zero errors/three existing warnings, and the TypeScript/Vite/PWA build (20 precache entries). Actual Chrome 156/local-Supabase acceptance passed 24/24 distinct scenarios: nine unchanged checks were reused and fifteen affected checks ran after layout/focus repairs. Final 0.6.0 release-version gates also passed: 649/649 tests, lint zero errors/three existing warnings, and TypeScript/Vite/PWA build with 20 precache entries. See the [release acceptance](evidence/acceptance/release-0.6.0-2026-11-04.md) for the final snapshot and artifact. Physical-device, screen-reader, full-contrast and beta-user acceptance remain open. See the [UX acceptance record](evidence/acceptance/ux-implementation-2026-11-04.md), [implementation brief](plans/ux-implementation-2026-11-04.md) and current handoff.
+
+### Added
+
+- Keyboard skip-to-content link, route-specific page titles and heading focus, expanded navigation-menu state, and activity-specific timer/completion/removal labels.
+- Visible Metronome settings action, reference-tone identification for the tuner, and short Practice guidance explaining minutes, Done and explicit session saving.
+- Password visibility control and account-creation password autocomplete; Saving/Saved preference feedback. New interface copy supports EN/RU/IT/FR.
+
+### Changed
+
+- Allow page zoom and adapt Practice tool/header/activity rows to narrower or enlarged-text layouts; the main-content offset follows the actual fixed-header height. Physical-device enlargement remains a separate acceptance check.
+- Plan shows separate unsaved-change states for plan details and block composition, preserving immediate song-link saves and explicit Save actions. File controls explain that files stay in this browser/device and do not sync.
+- Empty and failed plan/progress states use plain, distinct messages and existing retry actions. Home labels a historical fallback as Selected week and opens that same week. New program-recovery flows remain deferred.
+- Preference controls wait for an active save to finish; Stats removes a duplicate total, names the selected-period total, and explains that calendar-month navigation is independent of the filters.
+
+### Fixed
+
+- Implemented Cloudflare asset-first routing with an explicit app-route fallback: missing JavaScript, PDFs and other files return 404 instead of the HTML shell while known app deep links retain the shell without canonicalization redirects. The final config passed 75 real Wrangler/workerd HTTP checks and 47 focused routing tests. Owner-confirmed deployment commands need no change; configuration and Worker are included in this source release; hosted publication and public routing verification are tracked separately. See the [hosting guide](hosting.md).
 
 ## [0.5.0] - 2026-11-01
 
-**PREPARED, not published:** this is the preparation date, not a publication date. No release commit, push, tag or GitHub Release has been created by this preparation; final test/lint/build gates are QA-owned on the frozen release snapshot.
+**Source release:** commit `6776bfd` (`feat: release 0.5.0`), dated 2026-11-01. The initial 2026-11-02 review found HEAD and the existing local `origin/master` reference at this commit (0/0 divergence), without fetching the remote. Later public HTTP verification (`PUBLIC-HTTP-20261102`) independently confirmed served version 0.5.0, commit `6776bfd`, build `2026-11-01 11:52`; this observation does not establish the original publication time. No tag or GitHub Release is inferred. See the [acceptance evidence](evidence/acceptance/acceptance-checks-2026-11-02.md).
 
-**Backend prerequisite:** Duplicate week and the Arpeggios block need two new migrations applied to production with separate owner approval: `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql`. Until then Duplicate week shows a graceful unavailable message and Arpeggios is not in the catalog. Both were verified on a disposable local database only.
+**Backend rollout recorded complete:** the [handoff](project-handoff.md) records owner-approved production application of `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql` on 2026-11-01 (history 25→27), with authenticated-only duplicate RPC and Arpeggios catalog verification. This documentation update relies on that evidence; it did not query production or reapply migrations.
 
 ### Added
 
@@ -43,7 +66,7 @@ Future changes will be recorded here. Still deferred: guitar rotation, verified-
 - Songs created in Plan Repertoire now appear in Practice for the same week (link was lost when leaving Plan without the main Save).
 - Editing YouTube loop bounds no longer jumps playback on partial input, and moving focus into the player no longer pauses it.
 
-Local evidence before the final gate: `npm test` 595/595, lint 0 errors (3 existing warnings), build OK, local pgTAP 184/184 across six files including custom-block isolation. Owner re-tests remain for Plan-to-Practice songs, real YouTube setting changes, audio loudness on devices and real-browser bookmark rename.
+Validation: the recorded release QA gate passed 602/602 tests, lint with 0 errors/3 existing warnings, and the production build. The 2026-11-02 review independently reran the frontend checks on source `6776bfd`: 33 files / 602 tests passed, lint 0 errors/3 warnings, TypeScript/Vite/PWA build passed (Node 24.19.0, npm 11.17.0). Earlier local pgTAP evidence remains 184/184 across six files, including custom-block isolation; it was not rerun by that review. On 2026-11-02 the owner confirmed YouTube and large files work on live 0.5.0; this closes broad playback/upload acceptance, without asserting that every loop-setting transition, quota/crash failure path or device was tested. Separately, `LOCAL-ACCEPTANCE-20261102` passed 31 actual Chrome/local-Supabase checkpoints for session saves, full reloads, scoped clearing, injected request failures/retries, Plan-to-Practice song persistence and week-only unlinking. Four-language Plan/Practice smoke checks passed at 390px. This closes the scoped local client-persistence gaps without claiming atomic writes, authenticated production checks or full accessibility certification. Device audio and real-browser bookmark rename retain their scoped checks. Public HTTP checks confirmed current chunks serve correctly but missing JavaScript returns HTTP 200 with the HTML shell; hosting review remains open. See the [acceptance evidence](evidence/acceptance/acceptance-checks-2026-11-02.md) and [backlog](guitar-hub-v1-scope-and-backlog.md).
 
 ## [0.4.0] - 2026-10-16
 
@@ -53,7 +76,7 @@ Local evidence before the final gate: `npm test` 595/595, lint 0 errors (3 exist
 
 - Configured Blocks v1: ordered configured-program blocks in Plan and initial unsaved Practice days, while preserving saved sessions and explicit saves (local implementation).
 - Block Picker Dialog v1: responsive category/block selection, multi-add, replacement, and the supplied 2-notes-per-string PDF binding (local implementation).
-- Help And Release Foundations v1: expanded contextual tours and persistent materials information (implemented locally; scoped integrated QA passed, not published). Physical installation, real-account onboarding and PDF readability remain separate checks.
+- Help And Release Foundations v1: expanded contextual tours and persistent materials information (included in this source release; scoped integrated QA passed). Physical installation, real-account onboarding and PDF readability remain separate checks.
 - Real SVG-derived 192/512 install PNGs, a separate opaque safe-zone maskable 512 PNG, and an opaque square Apple touch 180 icon, with a dependency-free generator and pixel checks.
 - This changelog and a prominent README Release Updates link.
 - Local security hardening: opaque UID/auth-epoch authority, owned IndexedDB v2 metadata and owner-scoped cache v2; account changes invalidate stale UI/player work and revoke object URLs. Ownerless legacy materials remain preserved but hidden, without fallback or automatic assignment. This is application isolation, not OS/browser-profile security or protection from browser eviction.
@@ -64,7 +87,7 @@ Local evidence before the final gate: `npm test` 595/595, lint 0 errors (3 exist
 
 - Root-scoped PWA identity and root-relative install-icon references; the existing SVG tab artwork and PDF/local-media service-worker exclusions are retained.
 - README shortened to a current product overview, setup, security, and documentation links; obsolete pivot and program-button claims removed.
-- Help And Release Foundations v1 also includes explicit week-removal confirmation and vertically stacked popup block results (implemented locally; scoped integrated QA passed, not published).
+- Help And Release Foundations v1 also includes explicit week-removal confirmation and vertically stacked popup block results (included in this source release; scoped integrated QA passed).
 
 ### Fixed
 

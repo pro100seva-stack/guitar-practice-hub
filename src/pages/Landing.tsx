@@ -27,6 +27,8 @@ export default function Landing() {
   const navigate = useNavigate()
   const [currentWeek, setCurrentWeek] = useState<ScheduledPlanWeek | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [retry, setRetry] = useState(0)
   const [guitarExpanded, setGuitarExpanded] = useState(false)
   const guitarRegionId = useId()
   const { t } = useI18n()
@@ -35,11 +37,14 @@ export default function Landing() {
     let isMounted = true
 
     async function loadCurrentWeek() {
+      setLoading(true)
+      setLoadFailed(false)
       const { data, error } = await supabase.from('plan_weeks').select('*').order('start_date', { ascending: true })
 
       if (!isMounted) return
 
       if (error || !data) {
+        setLoadFailed(true)
         setCurrentWeek(null)
         setLoading(false)
         return
@@ -57,19 +62,20 @@ export default function Landing() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [retry])
 
   const currentWeekDescription = loading
     ? t('Loading current week…')
     : currentWeek
       ? `${t('Week {week}', { week: currentWeek.week_number ?? '?' })} · ${currentWeek.focus?.trim() || t('Current week plan')}`
-      : t('No current week plan yet')
+      : t(loadFailed ? 'ux.planLoadFailed' : 'ux.noCurrentWeek')
+  const isTodayWeek = currentWeek !== null && weekContainingLocalDate([currentWeek]) !== null
 
   const navItems = [
     { label: t('My Progress'), path: '/progress', tone: 'sky', variant: 'default' },
     {
-      label: t('Current Week'),
-      path: '/plan',
+      label: t(currentWeek && !isTodayWeek ? 'Selected week' : 'Current Week'),
+      path: currentWeek ? `/plan?week=${encodeURIComponent(currentWeek.id)}` : '/plan',
       tone: 'violet',
       variant: 'snippet',
       description: currentWeekDescription,
@@ -86,7 +92,7 @@ export default function Landing() {
             <button
               key={item.path}
               type="button"
-              data-tour={item.path === '/progress' ? 'progress' : item.path === '/plan' ? 'current-week' : 'practice'}
+              data-tour={item.path === '/progress' ? 'progress' : item.variant === 'snippet' ? 'current-week' : 'practice'}
               onClick={() => navigate(item.path)}
               className={[
                 'relative z-10 w-full max-w-md rounded-xl border p-4 text-center backdrop-blur-[2px] transition lg:backdrop-blur-none hover:-translate-y-0.5 hover:border-slate-500',
@@ -101,6 +107,7 @@ export default function Landing() {
               ) : null}
             </button>
           ))}
+          {loadFailed && <button type="button" onClick={() => setRetry((value) => value + 1)} className="btn btn-secondary">{t('Retry')}</button>}
         </nav>
       </div>
 

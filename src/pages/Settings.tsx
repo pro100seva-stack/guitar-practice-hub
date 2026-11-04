@@ -38,6 +38,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState<BooleanPreferenceKey | 'language' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   const { t, setLanguage: setInterfaceLanguage } = useI18n()
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function Settings() {
     const nextValue = !preferences[key]
     setPreferences((current) => ({ ...current, [key]: nextValue }))
     setSavingKey(key)
+    setSaved(false)
     setError(null)
 
     const { error: saveError } = await supabase.from('app_settings').upsert({
@@ -74,6 +76,7 @@ export default function Settings() {
       setError(saveError.message)
     }
     setSavingKey(null)
+    setSaved(!saveError)
   }
 
   async function changeLanguage(language: Language) {
@@ -81,6 +84,7 @@ export default function Settings() {
     setPreferences((current) => ({ ...current, language }))
     setInterfaceLanguage(language)
     setSavingKey('language')
+    setSaved(false)
     setError(null)
 
     const { error: saveError } = await supabase.from('app_settings').upsert({ ...preferences, language })
@@ -90,6 +94,7 @@ export default function Settings() {
       setError(saveError.message)
     }
     setSavingKey(null)
+    setSaved(!saveError)
   }
 
   return (
@@ -97,18 +102,19 @@ export default function Settings() {
       <div className="pb-4">
         <h1 className="page-title">{t('Preferences')}</h1>
         <p className="meta mt-1">{t('Preferences are saved to your account.')}</p>
+        <p role="status" className="meta mt-1">{savingKey ? t('Saving…') : saved ? t('ux.preferencesSaved') : ''}</p>
         {error && <p role="alert" className="msg-error mt-2">{error}</p>}
         {loading && <p role="status" className="state pb-0">{t('Loading preferences…')}</p>}
       </div>
       <section data-tour="settings-language" className="section">
         <h2 className="section-title">{t('Language')}</h2>
         <div className="list mt-3">
-          <label className="list-row justify-between text-sm text-slate-200">
+          <label className="list-row flex-wrap justify-between text-sm text-slate-200">
             <span>{t('Interface language')}</span>
             <select
               value={preferences.language}
               onChange={(e) => { if (isLanguage(e.target.value)) void changeLanguage(e.target.value) }}
-              disabled={loading || savingKey === 'language'}
+              disabled={loading || savingKey !== null}
               className="field w-auto disabled:opacity-50"
             >
               {supportedLanguages.map((option) => <option key={option} value={option}>{t(option.toUpperCase())}</option>)}
@@ -126,7 +132,7 @@ export default function Settings() {
                 type="button"
                 role="switch"
                 aria-checked={preferences[key]}
-                disabled={loading || savingKey === key}
+                disabled={loading || savingKey !== null}
                 onClick={() => void togglePreference(key)}
                 className="list-row justify-between text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
               >

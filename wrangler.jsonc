@@ -1,0 +1,13 @@
+{
+  "name": "guitar-practice-hub",
+  "main": "cloudflare/worker.ts",
+  "compatibility_date": "2026-11-02",
+  "keep_vars": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "run_worker_first": false
+  }
+}

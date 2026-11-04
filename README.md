@@ -6,8 +6,11 @@ A responsive guitar practice diary for weekly planning, daily sessions, and prog
 
 **[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
 
-- **0.5.0: prepared on 2026-11-01, not yet published.** Adds Duplicate week, Repertoire song removal and immediate song-link saves, Practice week arrows, metronome volume, louder tuner, scale-key randomizer, named bookmarks, a Stats practice calendar and category breakdown, and an Arpeggios block. Practice now saves only practiced blocks. Fixes the Stats Yearly-to-Monthly crash and Plan songs missing from Practice. Final test/lint/build gates remain QA-owned.
-- **0.5.0 backend prerequisite:** Duplicate week and Arpeggios need `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql` applied to production (separate owner approval). Until then Duplicate week shows an unavailable message.
+- **0.6.0 prepared source release, 2026-11-04:** adds page zoom and enlarged-text layouts, keyboard navigation/focus, clearer save and device-local-file guidance, visible tool settings, password visibility and preference feedback, plus truthful recovery and simpler Stats copy in all four languages. Includes the Cloudflare missing-asset routing repair and organized reviews/evidence. Local UX acceptance passed 649 tests and 24 browser scenarios. Final 0.6.0 release gates passed 649/649 tests, lint with zero errors/three existing warnings, and the TypeScript/Vite/PWA build; see the [release acceptance](docs/evidence/acceptance/release-0.6.0-2026-11-04.md) and [handoff](docs/project-handoff.md) for delivery. Source preparation is not hosted-publication evidence.
+- **0.5.0 source release: `6776bfd`, dated 2026-11-01.** Adds Duplicate week, Repertoire song removal and immediate song-link saves, Practice week arrows, metronome volume, louder tuner, scale-key randomizer, named bookmarks, a Stats practice calendar and category breakdown, and an Arpeggios block. Practice now saves only practiced blocks. Fixes the Stats Yearly-to-Monthly crash and Plan songs missing from Practice. Tests pass 602/602, lint has zero errors/three warnings, and the production build passes.
+- **Last recorded live verification, 2026-11-02:** public HTTP checks independently confirmed served version **0.5.0**, commit **`6776bfd`**, build **2026-11-01 11:52**. The owner confirms YouTube and large files work on live 0.5.0. Current chunks serve correctly; at that check, missing JavaScript returned the HTML shell with HTTP 200. The 0.6.0 source includes a locally validated repair; public routing verification follows publication. See the [acceptance evidence](docs/evidence/acceptance/acceptance-checks-2026-11-02.md) for scope and remaining failure/device checks.
+- **Isolated persistence acceptance, 2026-11-02:** 31 actual-browser/local-Supabase checkpoints passed for session save/reload/clear, injected failures and retries, and Plan-to-Practice song links and week-only removal. EN/RU/IT/FR Plan/Practice smoke checks passed at 390px. These are separate from the 602 unit tests and do not claim authenticated production or complete physical-device acceptance.
+- **0.5.0 backend rollout:** the [handoff](docs/project-handoff.md) records owner-approved production application of `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql` on 2026-11-01 (history 25→27), with RPC/catalog verification. This is recorded evidence, not a new live audit. Browser/device acceptance remains open; see the [current backlog](docs/guitar-hub-v1-scope-and-backlog.md).
 - **0.4.0 first public beta** was delivered to `origin/master` as commit `6707119`; hosted publication was not independently verified. Its backend prerequisites are recorded in the [gateway rollout evidence](supabase/functions/account-gateway/README.md#production-evidence-2026-10-16). See [beta limitations](#beta-limitations) before inviting users.
 
 ## Overview
@@ -51,6 +54,8 @@ npm run dev
 
 Available checks are `npm test`, `npm run lint`, and `npm run build` (TypeScript plus Vite). `npm run preview` serves an existing production build. A frontend build does not provision Supabase, apply migrations, or deploy Edge Functions.
 
+On Windows PowerShell, use `npm.cmd` instead of `npm` if script policy blocks `npm.ps1` (for example, `npm.cmd test`); no execution-policy change is needed.
+
 ## Backend And Security
 
 - The frontend requires only the Supabase URL and publishable key. Never expose service-role credentials, account peppers, or other server secrets through `VITE_*` variables or commit local secrets.
@@ -78,8 +83,11 @@ The script uses no additional dependencies. On other installations, set `ICON_BR
 
 Use **Release app** with Master Planner or the **/release-app** workspace skill (`.github/skills/release-app/SKILL.md`). The [canonical release workflow](docs/release-workflow.md) covers approved scope, one version bump, single-owner QA gates and a scoped commit/normal upstream push. Discussing the command does not execute it. A push hands off to connected deployment automation; it does not independently verify hosted publication or authorize live backend/provider operations.
 
+The local [Cloudflare routing fix](docs/hosting.md) preserves app deep links while returning 404 for missing assets; its final config passed 75 real Wrangler/workerd HTTP checks. The owner-confirmed build/deploy/version commands already discover its root Wrangler config, so no dashboard command change is needed. Keep both existing `VITE_SUPABASE_*` build variables; `keep_vars: true` also preserves dashboard-managed Worker variables. The fix is not deployed; use the existing release workflow for delivery and then verify the public responses.
+
 ## Project Docs
 
+- [Documentation index](docs/README.md): current guides, review reports, plans and supporting evidence.
 - [Changelog](docs/CHANGELOG.md): recorded version history and unpublished work.
 - [Technical overview](docs/technical.md) and [architecture](docs/architecture.md): implementation and domain model.
 - [Scope and backlog](docs/guitar-hub-v1-scope-and-backlog.md): approved work, acceptance status, and open decisions.

@@ -1,6 +1,6 @@
 # Learning Materials Viewer Spike (Historical)
 
-This document records the initial implementation proposal, not the current product contract. The viewer, audio/video controls, YouTube integration, per-block and per-song scoping, and PDF fallback behavior have since evolved. Use the Active Work section in `guitar-hub-v1-scope-and-backlog.md` and the current implementation notes in `project-handoff.md` for present behavior and remaining acceptance checks.
+This document records the initial implementation proposal, not the current product contract. The viewer, audio/video controls, YouTube integration, per-block and per-song scoping, and PDF fallback behavior have since evolved. Use the current [backlog](../../guitar-hub-v1-scope-and-backlog.md) and [handoff](../../project-handoff.md) for present behavior and remaining acceptance checks.
 
 ## First implementation slice
 

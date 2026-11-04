@@ -117,6 +117,7 @@ function PracticeCalendar({ practicedDates, loading, failed }: PracticeCalendarP
           </button>
         )}
       </div>
+      <p className="meta mb-3">{t('ux.calendarIndependent')}</p>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -582,9 +583,9 @@ export default function Stats() {
           </section>
           {!loading && <>
           <section className="section">
-            <dl data-tour="stats-summary" className="grid grid-cols-2 gap-x-4 gap-y-4 md:grid-cols-4">
+            <dl data-tour="stats-summary" className="grid grid-cols-2 gap-x-4 gap-y-4 md:grid-cols-3">
               <div>
-                <dt className="meta">{t('Practice time')}</dt>
+                <dt className="meta">{t('ux.selectedPeriodTime')}</dt>
                 <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.totalMinutes} {t('min')}</dd>
               </div>
               <div>
@@ -594,10 +595,6 @@ export default function Stats() {
               <div>
                 <dt className="meta">{t('Current streak')}</dt>
                 <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.streakDays} {t('days')}</dd>
-              </div>
-              <div>
-                <dt className="meta">{t('Selected period')}</dt>
-                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.selectedPeriodMinutes} {t('min')}</dd>
               </div>
             </dl>
           </section>
