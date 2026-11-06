@@ -8,11 +8,23 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.7.1] - 2026-11-06
+
+**Prepared patch release:** compact Practice layout restoration and alignment documentation; no new feature, dependency upgrade, schema migration or backend deployment. See the [release acceptance](evidence/acceptance/release-0.7.1-2026-11-06.md) for final gates and delivery. Preparation is not hosted-publication evidence.
+
+### Fixed
+
+- Practice: remove the separate Metronome settings button, retain long-touch/right-click and keyboard access, and restore a single header row for menu/back, screen name, metronome and tuner. Previous/next week arrows again flank the Jump to dropdown on one row.
+
+### Changed
+
+- Record the completed 0.7.0 public hosting/frontend verification, production account-gateway revision 28 alignment and isolated local Edge acceptance, with sanitized evidence and current guides. Existing-tester initialization remains separately scoped.
+
 ## [0.7.0] - 2026-11-04
 
-**Prepared 2026-11-04.** Minor version reflects newly supported email account creation and question-based recovery while retaining existing username behavior. This source release also restores the explicit zoom lock and includes the density/registration review evidence. It requires no dependency upgrades or schema migrations. Production gateway rollout is a separate required dependency; source preparation does not establish backend deployment or hosted publication.
+**Source release:** owner commit `f6ec7b742dea6949037ba9141722b62d607a5d23` (`feat: release 0.7.0`), dated 2026-11-04, pushed to `origin/master`. Public HTTP verification on 2026-11-05 confirmed frontend 0.7.0 / `f6ec7b7`, build `2026-11-04 21:35 UTC`, the restored zoom lock and correct missing-asset routing. See the [published-alignment evidence](evidence/acceptance/published-alignment-2026-11-05.md). Minor version reflects email creation/question recovery while preserving usernames; no dependency upgrades or schema migrations. Production account-gateway was separately aligned on 2026-11-05: ACTIVE revision 28, JWT verification unchanged, and downloaded runtime files match this commit after line-ending normalization. Real local Edge/Auth/database validation passed 38/38; no real production account signup/reset or existing-tester repair was performed. See the [gateway evidence](evidence/acceptance/account-gateway-edge-2026-11-05.md).
 
-Local implementation acceptance passed 736/736 tests across 35 files, lint with zero errors/three existing warnings, and TypeScript/Vite/PWA build with 20 precache entries. These checks execute the gateway handler and Login logic with synthetic services; actual Edge/Auth/database integration was not established by that run. Final versioned release gates follow preparation. See the [identifier acceptance](evidence/acceptance/account-identifiers-2026-11-04.md) and current handoff for rollout status.
+Local implementation acceptance passed 736/736 tests across 35 files, lint with zero errors/three existing warnings, and TypeScript/Vite/PWA build with 20 precache entries. These checks execute the gateway handler and Login logic with synthetic services; actual Edge/Auth/database integration was not established by that run. Final versioned gate recovery and committed-source alignment are recorded in the current handoff. See the [identifier acceptance](evidence/acceptance/account-identifiers-2026-11-04.md) and current handoff for rollout status.
 
 ### Added
 

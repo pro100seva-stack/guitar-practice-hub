@@ -1,5 +1,7 @@
 # UX implementation brief — 2026-11-04
 
+**Practice control correction (2026-11-05, item 71):** the owner requires no separate Metronome settings button; keep long-touch/right-click and existing keyboard settings access. Practice tool icons share the navigation/title header row, and week arrows flank the Jump-to dropdown on one row. This overrides the earlier visible-button and multi-row recommendations below.
+
 **Zoom-policy correction (2026-11-04, item 68):** the owner rejects the zoom-enabling change and requires the prior app-wide lock. This supersedes the zoom recommendation/approval interpretation below. Preserve other UX and responsive work; the current backlog/handoff records the correction queued for the next release.
 
 Contract: **UX-Improvements-v1**. Owner approved proceeding with the [six recommendations](ux-improvements-2026-11-03.md) on 2026-11-04. The backlog and handoff retain current execution status. This authorizes local implementation and isolated QA; no release, version bump, Git delivery or live operations.

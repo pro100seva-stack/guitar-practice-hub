@@ -1,29 +1,31 @@
 # Guitar Practice Hub — scope and backlog
 
-Updated 2026-11-04. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
+Updated 2026-11-06. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
 
-The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; future unique item IDs start at 71.
+The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; future unique item IDs start at 72.
 
 ## Current baseline
 
-- **Source:** package 0.6.0 prepared on baseline `6776bfd` (0.5.0). Final release gates passed; scoped commit and normal upstream push are authorized by the actual release invocation. Delivery hash is reported by the release step; hosted publication remains separate.
+- **Source:** owner committed and pushed 0.7.0 as `f6ec7b742dea6949037ba9141722b62d607a5d23`; actual upstream `origin/master` matches. The owner subsequently invoked /release-app for the compact Practice fixes: patch 0.7.1 is now being prepared.
 - **Backend:** the [archived handoff](archive/handoff-through-2026-11-01.md#backlog-execution-run-2026-11-01) records owner-approved production application of `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql`, history 25→27, with RPC/catalog checks. They are not pending approval/application. This is recorded evidence, not a new live audit.
-- **Validation:** latest local `ACCOUNT-ID-20261104`: 736/736 tests across 35 files, lint zero errors/three existing warnings, TypeScript/Vite/PWA build passed. All 167 frozen input hashes stable. This uses synthetic gateway/Auth dependencies; real Edge/Auth/DB integration remains unverified. The delivered 0.6.0 release gate is separately recorded in its release evidence.
-- **Publication:** bounded public HTTP verification on 2026-11-02 confirmed hosted version 0.5.0, commit `6776bfd`, build `2026-11-01 11:52`. Current entry and i18n chunks return JavaScript. Missing `/assets/*.js` still returns the root HTML with 200; this is the remaining hosting follow-up. See [acceptance evidence](evidence/acceptance/acceptance-checks-2026-11-02.md).
+- **Validation:** reused matching 736/736 tests (35 files) and lint zero errors/three warnings after 167-input/environment comparison; fresh committed-source build passed. Real local Edge/Auth/database validation now passes 38/38. Public frontend passes 35 HTTP checks; gateway ACTIVE revision 28 source/configuration verified. See the [alignment summary](evidence/acceptance/project-alignment-2026-11-05.md).
+- **Publication:** 2026-11-05 public frontend 0.7.0 / `f6ec7b7` matches Git and local build; zoom lock/assets/routes pass. Missing JS/PDF/unknown paths return non-HTML 404, closing item 32. Gateway ACTIVE revision 28/JWT false now matches the four committed runtime files. Frontend project configuration points to that same gateway project.
 - **Owner acceptance:** owner confirms YouTube and large files work on live v0.5.0 (2026-11-02). General live playback/upload checks are accepted; this does not assert unreported settings transitions, quota/crash recovery or every device.
 - **Client acceptance:** `LOCAL-ACCEPTANCE-20261102` passed 31 real Chromium → local proxy → Supabase checkpoints, including failed requests/retries, reloads, notes-only/clear, same-week songs and 390px four-language Plan/Practice smoke. Actual-client persistence and Plan-to-Practice local gaps are closed; no new app defect found. [Evidence and cleanup](evidence/acceptance/acceptance-checks-2026-11-02.md#isolated-client-persistence-acceptance).
-- **Current work:** owner invoked `/release-app` for username/email support, zoom-lock restoration and approved documentation/evidence. Prepare 0.7.0 under the minor-version policy. Final versioned gates and real local Edge validation are scheduled; production gateway deployment requires separate approval before Git delivery relying on that dependency. Existing tester-account setup remains excluded.
+- **Current work:** compact Practice controls (71) are implemented and locally verified, included in the 0.7.1 release. Visible settings button removed, icons/header and week controls share rows as requested. Patch release 0.7.1 is being finalized; public 0.7.0 alignment remains the last independently verified deployment.
 
-## Release 0.6.0 preparation
+## Current release - 0.7.1 preparation
 
-The owner invoked `/release-app` on 2026-11-04. Approved new user-facing UX functionality requires a minor bump from 0.5.0 to 0.6.0 under the release policy. This run authorizes the scoped release commit and normal push to the existing upstream after required gates; it does not authorize manual hosting operations or live database access.
+Patch 0.7.1 includes compact Practice controls (71) and approved alignment documentation; final delivery is tracked in the [release evidence](evidence/acceptance/release-0.7.1-2026-11-06.md). Owner-delivered 0.7.0 / f6ec7b7 frontend and gateway alignment was verified on 2026-11-05. See the [combined evidence](evidence/acceptance/project-alignment-2026-11-05.md). Earlier 0.6.0 preparation and validation remain in the changelog and dated release evidence.
 
-| Scope | Readiness / boundary |
+| Scope | Current outcome |
 | --- | --- |
-| 32 — hosting missing-file response | Included. Implemented and locally verified: final 47 focused checks/typecheck and 75 real Wrangler/workerd HTTP cases. Publish through the existing pipeline and verify publicly after release. |
-| 67 - UX improvements | Included. Implemented; 649 tests and 24 actual-browser scenarios passed before release metadata preparation. Final release gates passed; see the release acceptance record. |
-| 66 — whole-app UX/accessibility review | Completed 2026-11-03. Expert report and browser evidence are ready; bounded implementation was separately approved on 2026-11-04 as item 67. |
-| Earlier documentation/acceptance evidence | Included in the approved release inventory, with archives and sanitized screenshots preserved. |
+| 68 - zoom policy | Restored in 0.7.0; published shared viewport verified on 2026-11-05. |
+| 70 - username/email identifiers | Frontend 0.7.0 and gateway ACTIVE revision 28 align with committed code. Real local Edge acceptance 38/38; production account flows not invoked. Existing tester setup remains a separate data task. |
+| 69 - density/guidance review | Completed with recovered browser evidence; simplification recommendations remain proposed implementation. |
+| 32 - hosting missing-file response | Publicly verified: real non-HTML 404s and valid app routes/assets pass. |
+| 71 - compact Practice controls | Accepted locally and included in 0.7.1: shared header/week rows, settings button removed, gestures preserved. |
+| Documentation/evidence | Guides reconciled with observed deployments; approved alignment and compact-control evidence included in 0.7.1. |
 
 ## Item 66 — whole-app UX/accessibility review
 
@@ -48,7 +50,6 @@ Acceptance remains open below. This register does not authorize live accounts, u
 | Priority / IDs | Outstanding outcome | Next check / evidence needed |
 | --- | --- | --- |
 | Decision — 66 | Select a small UX improvement batch from the completed review. | Recommended first: enlargement/navigation accessibility, clearer save-state communication and accurate recovery copy. Do not treat recommendations as approved implementation or ship them as completed changes. |
-| P1 — 32 | Publish and verify the prepared missing-JS hosting fix. | Local implementation complete; real Wrangler/workerd matrix passed 75/75. Existing commands adopt the repository config, preserving dashboard variables. Await actual release and post-deployment public verification; current live 0.5.0 still has the old response. |
 | P2 — 54 | Optional storage resilience follow-up after owner live acceptance. | General large-file behavior accepted. Quota/cancel/interruption/multi-tab fault cases remain unverified, not a reproduced current regression. Never clear owner storage or uncertain legacy bytes. |
 | P2 — 57 | Targeted settings regression after owner live playback acceptance. | General YouTube playback accepted. Exact playing/paused loop/speed transitions were not specified by owner; check in an isolated normal browser when available, without reopening the general playback issue. |
 | P2 — 33, 50, 51 | Device audio and extended background timer acceptance. | Phone/headphones: volume range/live gain, tuner tones, long sleep/stopwatch comparison and failed saves. Earlier owner checks passed narrower cases. |
@@ -124,9 +125,9 @@ Later maintenance recommendations: importable session/Repertoire logic and integ
 
 ## Recommended next steps
 
-1. Item 67 is locally implemented and verified; use its [acceptance evidence](evidence/acceptance/ux-implementation-2026-11-04.md) and consolidate the remaining physical-device/screen-reader/beta-user checks. Item 32 is included in the validated 0.6.0 source release; post-publication checks remain.
-2. Keep passed client persistence/Plan checks and owner-confirmed live YouTube/large-file behavior accepted. P1 means high priority, not a newly reported data-loss bug; those persistence checks are now complete.
-3. After the current release delivery publishes, verify public hosting routes/assets. Consolidate remaining physical-device checks when devices are available. Do not reapply recorded migrations or reopen resolved historical blockers.
+1. Decide whether to approve the existing tester account's guarded app-state initialization; its Auth account/profile and credentials remain untouched. The registration code fix does not initialize a manually created account retroactively.
+2. Select a bounded simplification package from the density review: truthful tours/task-first Practice, routine Plan editing, then conditional media controls. The review itself does not authorize implementation.
+3. Consolidate physical-device, installed-PWA update, screen-reader and beta-user acceptance. Keep completed persistence and owner-confirmed YouTube/large-file checks accepted; do not reapply recorded migrations or reopen historical blockers.
 
 ## Hosting repair brief — item 32 (2026-11-02)
 
@@ -153,7 +154,7 @@ Later maintenance recommendations: importable session/Repertoire logic and integ
 
 ## Item 68 - restore the explicit zoom policy (2026-11-04)
 
-**Status:** implemented locally and queued for the next app release. The owner explicitly requires zoom to remain locked on every screen and rejects the 0.6.0 zoom-enabling change. This supersedes the earlier interpretation in item 67 and the UX plans: broad permission to proceed does not reverse this explicit product choice.
+**Status:** released in 0.7.0 and publicly verified 2026-11-05. The owner explicitly requires zoom to remain locked on every screen and rejects the 0.6.0 zoom-enabling change. This supersedes the earlier interpretation in item 67 and the UX plans: broad permission to proceed does not reverse this explicit product choice.
 
 **Scope:** restore the pre-0.6.0 shared viewport metadata (`maximum-scale=1.0, user-scalable=no` alongside the existing initial scale and safe-area settings). It applies to account entry and every app route. Preserve responsive wrapping, text-enlargement resilience and all other UX work. Do not add gesture interception, global keyboard blocking, dependencies or persistence changes. Browser/accessibility settings can override viewport restrictions; restoring the app policy is not a guarantee that every browser can prohibit zoom.
 
@@ -174,7 +175,7 @@ Later maintenance recommendations: importable session/Repertoire logic and integ
 
 ## Item 70 - registration identifier mismatch and manual-account setup (2026-11-04)
 
-**Status:** username/email support implemented and locally verified; queued for next release with separate gateway-deployment dependency. Owner reported a real signup failure and authorized a bounded read-only Supabase check of the manually created account. Do not copy the supplied screenshot or its visible credentials/recovery answer into repository evidence.
+**Status:** identifier fix released in frontend 0.7.0 and gateway revision 28, source/configuration verified 2026-11-05 after 38 real local Edge checks. Existing manually created account setup remains separately outstanding. Owner reported a real signup failure and authorized a bounded read-only Supabase check of the manually created account. Do not copy the supplied screenshot or its visible credentials/recovery answer into repository evidence.
 
 **Cause in current source:** account creation/recovery gateway validates username-only syntax (3-32 ASCII letters/digits/dot/underscore/hyphen, starting with a letter/digit). The shared client field instead advertises username or email. An email is rejected as INVALID_REQUEST before Auth creation; the client shows a generic input error. Email sign-in is intentionally supported for existing accounts and must remain compatible.
 
@@ -186,7 +187,7 @@ Later maintenance recommendations: importable session/Repertoire logic and integ
 **Item 69 outcome:** [completed density/guidance report](reviews/ux/ux-density-and-guidance-review-2026-11-04.md) and [recovered evidence](evidence/acceptance/ux-density-2026-11-04.md). Seven surfaces, 23 captures, zero runtime errors; actual manual five-minute entry/save, rendered contradictory tour text and irrelevant loop-off A/B fields confirmed. Practice/Plan simplification and truthful guidance are prioritized; Home/Settings remain restrained. All recommendations remain proposed implementation. Cleanup verified; no app or live-data changes occurred in UX QA.
 
 
-**Item 70 diagnosis completed:** [sanitized registration report](reviews/technical/registration-failure-2026-11-04.md) records the username/email mismatch and read-only account findings. Recommendation is consistent username/email creation and recovery while preserving username compatibility; owner policy choice remains pending. Existing-account setup proposal is settings +1, localized Default program +1, ordered program blocks +4 and scheduled weeks +5, with no Auth/profile/credential changes, strict preconditions and transaction rollback. Exact transaction/local validation must precede a future live-write approval request. No live data or backend/frontend account behavior was changed.
+**Item 70 diagnosis completed:** [sanitized registration report](reviews/technical/registration-failure-2026-11-04.md) records the username/email mismatch and read-only account findings. Recommendation is consistent username/email creation and recovery while preserving username compatibility; owner subsequently selected both usernames and email; the decision and delivery are recorded below. Existing-account setup proposal is settings +1, localized Default program +1, ordered program blocks +4 and scheduled weeks +5, with no Auth/profile/credential changes, strict preconditions and transaction rollback. Exact transaction/local validation must precede a future live-write approval request. The diagnosis itself made no live changes; later implementation and rollout are recorded separately.
 
 
 **Item 70 decision/brief:** owner selected both usernames and email addresses. [AccountIdentifier-v1](plans/account-identifiers-2026-11-04.md) governs bounded validation, canonical Auth/profile/recovery/rate identifiers, reserved internal-domain aliases, existing sign-in compatibility and four-language feedback. Backend owns gateway/tests; frontend owns Login/helper/i18n/tests; QA alone owns final full gates/build after freeze. No migration, account repair, live write, function deployment, version bump or Git delivery is included. Earlier policy-pending notes describe the pre-decision diagnosis.
@@ -203,4 +204,36 @@ Owner invoked `/release-app`. Highest included category is new username/email re
 
 Release Engineer owns version/lock metadata, assigned release notes/guides and eventual explicit-file Git delivery. QA owns sole `RELEASE-ACCOUNT-20261104` full gates/build after freeze. Backend Developer owns an isolated existing local Edge validation environment and a concrete rollout plan, preserving JWT/configuration and all production secrets. Existing function-junction aliases must be inventoried together with canonical changes. Planner owns current status documents and release evidence.
 
-The command authorizes the scoped commit/normal upstream push after gates; it does not authorize existing-account bootstrap, credentials, migrations or manual provider changes. This prepared client depends on the gateway update. Do not commit/push a dependent release without resolving the production gateway deployment approval and integration prerequisite. All prior staged/remote/CLI-marker preservation rules remain in force.
+The command authorizes the scoped commit/normal upstream push after gates; it does not authorize existing-account bootstrap, credentials, migrations or manual provider changes. This prepared client depends on the gateway update. That preparation blocker was resolved by the subsequent owner alignment instruction, real local Edge acceptance and scoped gateway deployment on 2026-11-05. All prior staged/remote/CLI-marker preservation rules remain in force.
+
+
+## Owner-delivered 0.7.0 alignment - 2026-11-05
+
+Owner committed/pushed 0.7.0 and requested that working and published builds be aligned. Actual local/upstream hash `f6ec7b742dea6949037ba9141722b62d607a5d23` matches the public frontend commit. Public HTTP checks pass 35 cases, including restored viewport lock, entry/i18n/lazy assets, shell deep links and non-HTML missing-asset 404s. Hosting item 32 is now publicly accepted.
+
+The live gateway preflight is revision 27, ACTIVE, `verify_jwt=false`. Downloaded source lacks the identifier helper and retains username-only validation; it does not match the committed fix. The current instruction to align published builds scopes deployment to this already approved gateway implementation after local validation, preserving current JWT/configuration/secrets. It does not authorize changing the tester account, credentials, schema, migrations or provider configuration. No new version bump or duplicate release commit.
+
+
+**Alignment completed 2026-11-05:** [combined evidence](evidence/acceptance/project-alignment-2026-11-05.md), [35 public HTTP checks](evidence/acceptance/published-alignment-2026-11-05.md) and [38 real local Edge checks/deployment](evidence/acceptance/account-gateway-edge-2026-11-05.md). Gateway revision 28 is ACTIVE with JWT false, and all four downloaded runtime files match committed f6ec7b7 after line-ending normalization. Production signup/reset using real/disposable accounts was not exercised. All local owned fixtures/resources/private captures were cleaned; volumes and owner CLI baseline preserved. Source fix is complete; missing setup/recovery-secret validity of the existing tester account remains a separate data task.
+
+
+## Item 71 - compact Practice controls (2026-11-05)
+
+**Status:** implemented locally, focused QA passed; queued for the next release. Contract **PracticeCompactControls-v1**: remove the added visible Metronome settings button; keep long touch/right-click and existing keyboard access to its settings. Menu, Back, Practice title, metronome and tuner share one header row. Previous-week arrow, Jump-to dropdown and next-week arrow share one row, preserving selected-week context and existing save/discard guards.
+
+**Ownership:** Frontend Developer owns `src/pages/Sessions.tsx`, `src/components/Layout.tsx`, `src/index.css` and narrow Unreleased/technical-guide updates. No backend, persistence, zoom, locale-content or unrelated-screen redesign. QA alone owns focused regressions, required lint/build and isolated local browser fixtures at port 4186/profile `PRACTICE-COMPACT-20261105`, after source freeze. Planner owns current status documents.
+
+**Acceptance:** actual 320px/390px/desktop default-font row alignment and tool bounds, translated Practice label spot check, no visible settings button, long-touch/right-click/keyboard settings access and Escape return, quick metronome toggle and unchanged week navigation/save guards. Reuse unrelated accepted evidence; no repeat full UX/media/backend audits or production operations. Preserve all earlier documentation edits. No version bump, commit/push or live deployment requested. This explicit owner correction supersedes earlier visible-settings and separate-row recommendations; retain unrelated activity wrapping and zoom lock.
+
+
+**Item 71 acceptance:** [PRACTICE-COMPACT-20261105](evidence/acceptance/practice-compact-controls-2026-11-05.md): 9/9 real Chrome/local-fixture scenarios, 31/31 focused tests reused, lint zero errors/three existing warnings, TypeScript/Vite/PWA build passed. Default 320/390/desktop and Russian-label rows verified, plus long-touch/right-click/keyboard access and week/save guards. Two fixtures/process runs and four private captures cleaned; volumes and owner CLI marker preserved. Prepared locally, not published; no backend, zoom, version or Git changes.
+
+
+## Release 0.7.1 continuation - 2026-11-06
+
+The interrupted /release-app run resumes with the approved compact Practice restoration (71) and alignment documentation. Classification: fixes/documentation, so 0.7.0 to 0.7.1 PATCH. No additional feature, backend deployment, migration, account repair, dependency upgrade or zoom change. Prior preparation statements above are dated stages.
+
+Release Engineer owns version metadata and explicit-file Git delivery; QA is sole RELEASE-071-20261106 full-gate/build owner. Planner owns status and [final release evidence](evidence/acceptance/release-0.7.1-2026-11-06.md). Final gates, delivery and publication evidence are recorded separately; a successful push alone does not prove the hosted build updated.
+
+
+**0.7.1 final gate:** RELEASE-071-20261106 passed 736/736 tests in 35 files, lint zero errors/three existing warnings, and TypeScript/Vite/PWA build (20 precache entries). All 168 input hashes unchanged; 33 artifact files and 79 matched references audited. [Release evidence](evidence/acceptance/release-0.7.1-2026-11-06.md) records the local pre-commit identity and boundaries. Cleared for the authorized scoped commit/normal upstream push; post-push hosted identity is a separate observation. No backend/data operation is required.

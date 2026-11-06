@@ -1,6 +1,6 @@
 # Cloudflare asset routing
 
-The repository contains the local hosting fix in [wrangler.jsonc](../wrangler.jsonc) and [cloudflare/worker.ts](../cloudflare/worker.ts). It is included in the prepared 0.6.0 source release; hosted publication is tracked separately in the handoff. The owner confirmed the current dashboard commands: build `npm run build`, deploy `npx wrangler deploy`, and version upload `npx wrangler versions upload`. Those Wrangler commands discover the root configuration without command changes. The compatibility date `2026-11-02` is the chosen baseline for this new Worker, not a claim that it matches the previously deployed configuration. No account, route/domain, credential or backend settings are added to this fix.
+The repository contains the hosting fix in [wrangler.jsonc](../wrangler.jsonc) and [cloudflare/worker.ts](../cloudflare/worker.ts). It originated in the 0.6.0 source release. Public HTTP verification on 2026-11-05 confirmed its behavior with frontend 0.7.0 / `f6ec7b7`. The prepared 0.7.1 patch retains that hosting implementation; its delivery record is separate from this dated public observation. The owner confirmed the current dashboard commands: build `npm run build`, deploy `npx wrangler deploy`, and version upload `npx wrangler versions upload`. Those Wrangler commands discover the root configuration without command changes. The compatibility date `2026-11-02` is the chosen baseline for this new Worker, not a claim that it matches the previously deployed configuration. No account, route/domain, credential or backend settings are added to this fix.
 
 ## Behavior
 
@@ -48,7 +48,9 @@ QA passed **75/75 HTTP cases** against real Wrangler 4.156.2/workerd using the f
 
 Final focused routing tests passed **47/47** and hosting TypeScript checking passed. The earlier broad gate passed **648 tests across 34 files**, lint with zero errors/three existing warnings, and the production build, before the config/test-only repair. That full suite was not rerun as a claimed 649-test pass; QA reran the affected focused checks and actual Workers runtime after repair. No Worker/app/build logic changed during the repair. See the [acceptance record](evidence/acceptance/acceptance-checks-2026-11-02.md) for the distinct evidence scopes.
 
-The fix is included in the prepared 0.6.0 source release. Post-deployment public checks are still required to confirm live behavior; source preparation and local runtime success are not production verification.
+## Public validation - 2026-11-05
+
+Bounded public reads confirmed frontend 0.7.0 / `f6ec7b7`, build `2026-11-04 21:35 UTC`. All six checked app deep links returned the exact root shell with 200 and no server redirect; HEAD returned 200 with no body. Missing JavaScript (including navigation Fetch metadata), PDF, local-media and unknown-route requests returned plain-text 404. Current entry/i18n/lazy chunks, CSS, manifest, icons, service-worker scripts and the retained PDF had correct statuses/content types. This verifies the earlier hosting repair in production within that scope; authenticated account behavior and installed-client cache updates are separate. See the [published-alignment evidence](evidence/acceptance/published-alignment-2026-11-05.md).
 
 ## Rollback
 

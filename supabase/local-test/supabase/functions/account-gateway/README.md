@@ -1,6 +1,6 @@
 # Account gateway
 
-This function is the server-only boundary for username and email account creation/recovery. The `AccountIdentifier-v1` extension is included in the prepared 0.7.0 source. Production gateway deployment is a required rollout dependency before released clients rely on email creation/recovery; function deployment and existing-account repair require separate scoped approval. Source preparation is not deployment evidence. It supports:
+This function is the server-only boundary for username and email account creation/recovery. The `AccountIdentifier-v1` extension is included in owner commit `f6ec7b7`, and the corresponding frontend was publicly verified as 0.7.0 on 2026-11-05. Production alignment completed on 2026-11-05: ACTIVE revision 28 preserves the prior JWT setting and its downloaded runtime files match the committed source. Existing-account repair and production account probes remain separate scoped operations; see the alignment evidence below. It supports:
 
 - `create-account`: creates a Supabase Auth user using the supplied real email, or a project-scoped internal email for a username, and stores an owner profile.
 - `reset-password`: verifies the normalized security answer and sets a new password without revealing the old one.
@@ -59,6 +59,10 @@ Errors use `{error:string,code:string,retryAfterSeconds?:number,field?:string}`:
 Retaining security questions and weak-answer compatibility is an explicit owner decision. Throttling is not strong recovery authentication. Question content still reveals whether a login has a configured question; signup also reports duplicate names. Uniform negative reset responses do not eliminate all timing/enumeration or weak-answer risks. Verified-email recovery would be separate scope.
 
 ## Rollout And Rotation
+
+### Production alignment (2026-11-05)
+
+The separately coordinated 0.7.0 alignment deployed only `account-gateway` to ACTIVE revision 28, preserving `verify_jwt=false` and existing secrets/configuration. Freshly downloaded `index.ts`, `identifier.ts`, `security.ts` and `default-program.ts` match source commit `f6ec7b7` after line-ending normalization. Real local Edge/Auth/database acceptance passed 38/38 with two isolated fixtures cleaned. No production signup/reset, account bootstrap, credential change or migration was performed. Public and local frontend bundles point to the same expected project. See [gateway evidence](../../../docs/evidence/acceptance/account-gateway-edge-2026-11-05.md) and [published frontend alignment](../../../docs/evidence/acceptance/published-alignment-2026-11-05.md).
 
 ### Production Evidence (2026-10-16)
 

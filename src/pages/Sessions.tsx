@@ -184,7 +184,6 @@ export default function Sessions() {
   const [includeDefaultExercises, setIncludeDefaultExercises] = useState(true)
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false)
   const [isMetronomeSettingsOpen, setIsMetronomeSettingsOpen] = useState(false)
-  const metronomeSettingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const [currentBeat, setCurrentBeat] = useState(0)
   const [bpmInput, setBpmInput] = useState('100')
   const [bpm, setBpm] = useState(100)
@@ -1473,7 +1472,7 @@ export default function Sessions() {
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node
-      if (metronomeButtonRef.current?.contains(target) || metronomeSettingsButtonRef.current?.contains(target) || tunerButtonRef.current?.contains(target) || toolPanelRef.current?.contains(target)) return
+      if (metronomeButtonRef.current?.contains(target) || tunerButtonRef.current?.contains(target) || toolPanelRef.current?.contains(target)) return
       closePanels()
     }
 
@@ -1953,14 +1952,6 @@ export default function Sessions() {
           >
             <TuningForkIcon className="h-6 w-auto" />
           </button>
-          <button
-            type="button"
-            ref={metronomeSettingsButtonRef}
-            aria-expanded={isMetronomeSettingsOpen}
-            aria-controls="practice-tool-panel"
-            onClick={() => { toggleMetronomeSettings(); lastToolButtonRef.current = metronomeSettingsButtonRef.current }}
-            className="btn btn-secondary max-w-full whitespace-normal rounded-lg px-2 text-xs"
-          >{t('Metronome settings')}</button>
         </>,
         headerSlots.actions,
       )}
@@ -2135,6 +2126,16 @@ export default function Sessions() {
         <div className="mt-3">
           <label htmlFor="practice-week-select" className="block text-xs text-slate-400">{t('Jump to')}</label>
           <div className="practice-week-navigation mt-1 items-center">
+          <button
+            type="button"
+            disabled={saving || !adjacentWeeks.previous}
+            onClick={() => { const target = adjacentWeeks.previous; if (target) confirmDiscard(() => handleSelectWeek(target)) }}
+            aria-label={adjacentWeeks.previous ? t('practice.previousWeekLabel', { week: adjacentWeeks.previous.week_number }) : t('practice.previousWeek')}
+            title={t('practice.previousWeek')}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5l-5 5 5 5" /></svg>
+          </button>
           <select
             id="practice-week-select"
             value={planWeek?.id ?? ''}
@@ -2150,16 +2151,6 @@ export default function Sessions() {
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            disabled={saving || !adjacentWeeks.previous}
-            onClick={() => { const target = adjacentWeeks.previous; if (target) confirmDiscard(() => handleSelectWeek(target)) }}
-            aria-label={adjacentWeeks.previous ? t('practice.previousWeekLabel', { week: adjacentWeeks.previous.week_number }) : t('practice.previousWeek')}
-            title={t('practice.previousWeek')}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5l-5 5 5 5" /></svg>
-          </button>
           <button
             type="button"
             disabled={saving || !adjacentWeeks.next}

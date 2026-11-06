@@ -140,7 +140,7 @@ export default function Layout() {
       <a href="#main-content" onClick={() => mainRef.current?.focus()} className="skip-link">{t('ux.skipContent')}</a>
       <header ref={headerRef} className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
         <div className="relative mx-auto max-w-6xl px-[var(--page-px)] py-3">
-          <div className="app-header-grid">
+          <div className={isPracticeScreen ? 'app-header-grid app-header-practice' : 'app-header-grid'}>
             <div className="flex shrink-0 items-center gap-1">
               <button
                 ref={menuButtonRef}
@@ -175,7 +175,7 @@ export default function Layout() {
             </div>
 
             <div className={isPracticeScreen ? 'app-header-tools flex min-w-0 justify-end' : 'flex min-w-0 justify-end'}>
-              {isPracticeScreen && <div ref={setActionsSlot} data-tour="practice-tools" className="flex flex-wrap items-center justify-end gap-1" />}
+              {isPracticeScreen && <div ref={setActionsSlot} data-tour="practice-tools" className="flex items-center justify-end gap-1" />}
               {isLandingScreen && (
                 <button
                   type="button"

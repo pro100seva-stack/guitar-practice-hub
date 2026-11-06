@@ -1,5 +1,7 @@
 # Proposed UX improvements — 2026-11-03
 
+**Practice control correction (2026-11-05, item 71):** the owner requires no separate Metronome settings button; keep long-touch/right-click and existing keyboard settings access. Practice tool icons share the navigation/title header row, and week arrows flank the Jump-to dropdown on one row. This overrides the earlier visible-button and multi-row recommendations below.
+
 **Zoom-policy correction (2026-11-04, item 68):** the owner rejects the zoom-enabling change and requires the prior app-wide lock. This supersedes the zoom recommendation/approval interpretation below. Preserve the other UX and responsive-layout work; use the current backlog/handoff for delivery.
 
 Status: originally proposed 2026-11-03; owner approved the bounded recommendations on 2026-11-04. See the [implementation brief](ux-implementation-2026-11-04.md) for scope and the current status documents for delivery and QA. See the [UX review](../reviews/ux/ux-review-2026-11-02.md) and [screenshots](../evidence/ux/2026-11-03); the [backlog](../guitar-hub-v1-scope-and-backlog.md) and [handoff](../project-handoff.md) own current status.

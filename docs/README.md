@@ -47,6 +47,12 @@ Maintained guides, release notes and the two current status documents remain at 
 
 | Record | Contents |
 | --- | --- |
+| [Release 0.7.1 acceptance, 2026-11-06](evidence/acceptance/release-0.7.1-2026-11-06.md) | Final versioned gates, artifact identity, scoped delivery and publication boundary. |
+| [Compact Practice controls, 2026-11-05](evidence/acceptance/practice-compact-controls-2026-11-05.md) | Owner-requested compact rows/settings-button removal, focused browser/gate evidence and captures; included in the prepared 0.7.1 release. |
+| [Project build alignment, 2026-11-05](evidence/acceptance/project-alignment-2026-11-05.md) | Owner-delivered 0.7.0 across Git/local/public/frontend/backend, recovered gates and remaining limits. |
+| [Published frontend checks, 2026-11-05](evidence/acceptance/published-alignment-2026-11-05.md) | Version/commit/configuration, 35 HTTP cases, zoom and live missing-asset repair. |
+| [Real Edge/gateway alignment, 2026-11-05](evidence/acceptance/account-gateway-edge-2026-11-05.md) | 38 real local Edge/Auth/DB assertions, revision 28 source/configuration verification and cleanup. |
+| [Gateway rollout record, 2026-11-05](plans/account-gateway-rollout-2026-11-05.md) | Bounded completed gateway deployment and excluded user-data scope. |
 | [UX density evidence, 2026-11-04](evidence/acceptance/ux-density-2026-11-04.md) | Recovered 23 captures, action positions, metric limits and cleanup. |
 | [Acceptance checks, 2026-11-02](evidence/acceptance/acceptance-checks-2026-11-02.md) | Public build identity, actual client/local-database checks and local Workers routing validation, with separate evidence tags. |
 | [UX screenshots, 2026-11-03](evidence/ux/2026-11-03) | Six selected, sanitized browser captures linked and interpreted in the UX review. |
