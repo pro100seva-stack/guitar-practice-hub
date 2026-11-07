@@ -1,22 +1,22 @@
 # Guitar Practice Hub — scope and backlog
 
-Updated 2026-11-06. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
+Updated 2026-11-07. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
 
-The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; future unique item IDs start at 72.
+The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; 72 is allocated to the approved Practice presentation cleanup; future unique item IDs start at 73.
 
 ## Current baseline
 
-- **Source:** owner committed and pushed 0.7.0 as `f6ec7b742dea6949037ba9141722b62d607a5d23`; actual upstream `origin/master` matches. The owner subsequently invoked /release-app for the compact Practice fixes: patch 0.7.1 is now being prepared.
+- **Source:** released 0.7.1 / `cad315292db9d39242488461d6eb42c83915bf60`. Owner-approved Practice UI cleanup (72) is prepared for patch 0.7.2 under /release-app.
 - **Backend:** the [archived handoff](archive/handoff-through-2026-11-01.md#backlog-execution-run-2026-11-01) records owner-approved production application of `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql`, history 25→27, with RPC/catalog checks. They are not pending approval/application. This is recorded evidence, not a new live audit.
-- **Validation:** reused matching 736/736 tests (35 files) and lint zero errors/three warnings after 167-input/environment comparison; fresh committed-source build passed. Real local Edge/Auth/database validation now passes 38/38. Public frontend passes 35 HTTP checks; gateway ACTIVE revision 28 source/configuration verified. See the [alignment summary](evidence/acceptance/project-alignment-2026-11-05.md).
-- **Publication:** 2026-11-05 public frontend 0.7.0 / `f6ec7b7` matches Git and local build; zoom lock/assets/routes pass. Missing JS/PDF/unknown paths return non-HTML 404, closing item 32. Gateway ACTIVE revision 28/JWT false now matches the four committed runtime files. Frontend project configuration points to that same gateway project.
+- **Validation:** 0.7.1 final gates passed 736/736 tests (35 files), lint zero errors/three warnings and TypeScript/Vite/PWA build; 168 input hashes stable. 0.7.2 final gates and focused UI checks are tracked in [release evidence](evidence/acceptance/release-0.7.2-2026-11-07.md). Earlier real local Edge/Auth/database 38/38 remains accepted; no backend change is included.
+- **Publication:** 0.7.1 / `cad3152` publicly verified 2026-11-06, build 19:03 UTC; seven reads/eleven static checks passed, including compact rows, assets, zoom lock and routing. Gateway revision 28 remains aligned with the previously committed runtime files. 0.7.2 publication is a separate post-push check.
 - **Owner acceptance:** owner confirms YouTube and large files work on live v0.5.0 (2026-11-02). General live playback/upload checks are accepted; this does not assert unreported settings transitions, quota/crash recovery or every device.
 - **Client acceptance:** `LOCAL-ACCEPTANCE-20261102` passed 31 real Chromium → local proxy → Supabase checkpoints, including failed requests/retries, reloads, notes-only/clear, same-week songs and 390px four-language Plan/Practice smoke. Actual-client persistence and Plan-to-Practice local gaps are closed; no new app defect found. [Evidence and cleanup](evidence/acceptance/acceptance-checks-2026-11-02.md#isolated-client-persistence-acceptance).
-- **Current work:** compact Practice controls (71) are implemented and locally verified, included in the 0.7.1 release. Visible settings button removed, icons/header and week controls share rows as requested. Patch release 0.7.1 is being finalized; public 0.7.0 alignment remains the last independently verified deployment.
+- **Current work:** approved Practice presentation cleanup (72) is implemented and undergoing final release validation. This changes layout/disclosure content, with existing timers, saves, navigation and backend contracts preserved.
 
-## Current release - 0.7.1 preparation
+## Current release - 0.7.2 preparation
 
-Patch 0.7.1 includes compact Practice controls (71) and approved alignment documentation; final delivery is tracked in the [release evidence](evidence/acceptance/release-0.7.1-2026-11-06.md). Owner-delivered 0.7.0 / f6ec7b7 frontend and gateway alignment was verified on 2026-11-05. See the [combined evidence](evidence/acceptance/project-alignment-2026-11-05.md). Earlier 0.6.0 preparation and validation remain in the changelog and dated release evidence.
+Patch 0.7.2 includes the owner-approved Practice presentation cleanup (72); final delivery is tracked in [release evidence](evidence/acceptance/release-0.7.2-2026-11-07.md). Prior 0.7.1 / cad3152 was committed, pushed and publicly verified on 2026-11-06. Owner-delivered 0.7.0 / f6ec7b7 frontend and gateway alignment was verified on 2026-11-05. See the [combined evidence](evidence/acceptance/project-alignment-2026-11-05.md). Earlier 0.6.0 preparation and validation remain in the changelog and dated release evidence.
 
 | Scope | Current outcome |
 | --- | --- |
@@ -24,7 +24,8 @@ Patch 0.7.1 includes compact Practice controls (71) and approved alignment docum
 | 70 - username/email identifiers | Frontend 0.7.0 and gateway ACTIVE revision 28 align with committed code. Real local Edge acceptance 38/38; production account flows not invoked. Existing tester setup remains a separate data task. |
 | 69 - density/guidance review | Completed with recovered browser evidence; simplification recommendations remain proposed implementation. |
 | 32 - hosting missing-file response | Publicly verified: real non-HTML 404s and valid app routes/assets pass. |
-| 71 - compact Practice controls | Accepted locally and included in 0.7.1: shared header/week rows, settings button removed, gestures preserved. |
+| 71 - compact Practice controls | Released and publicly verified in 0.7.1: shared header/week rows, settings button removed, gestures preserved. |
+| 72 - Practice presentation cleanup | Owner-approved 2026-11-07; implemented and included in 0.7.2 preparation. Final tests/lint/build passed; static UI review/owner approval below; rendered automation blocked by the local environment. |
 | Documentation/evidence | Guides reconciled with observed deployments; approved alignment and compact-control evidence included in 0.7.1. |
 
 ## Item 66 — whole-app UX/accessibility review
@@ -237,3 +238,19 @@ Release Engineer owns version metadata and explicit-file Git delivery; QA is sol
 
 
 **0.7.1 final gate:** RELEASE-071-20261106 passed 736/736 tests in 35 files, lint zero errors/three existing warnings, and TypeScript/Vite/PWA build (20 precache entries). All 168 input hashes unchanged; 33 artifact files and 79 matched references audited. [Release evidence](evidence/acceptance/release-0.7.1-2026-11-06.md) records the local pre-commit identity and boundaries. Cleared for the authorized scoped commit/normal upstream push; post-push hosted identity is a separate observation. No backend/data operation is required.
+
+
+## Item 72 - approved Practice presentation cleanup (2026-11-07)
+
+The owner iterated on UI only, then explicitly approved the complete draft and invoked /release-app. Existing behavior/data contracts remain in place. This is a presentation refinement of existing controls, not a new practice/account feature.
+
+- Week navigation appears directly below the shared header, then Session date with the existing calculated minutes total in a bordered badge.
+- Week options show translated Week number and saved focus, without dates; the actual calendar week has a translated Current week marker and styling where native pickers support it.
+- The focus heading toggles one initially collapsed program/date-range/description block. Native keyboard operation, expanded state and controlled-content reference remain available.
+- The guarded CURRENT WEEK link is visible at the far right of the focus row, after the disclosure arrow, under its existing current-week condition.
+- Remove both explanatory cues, the redundant Practice weeks strip, duplicate date heading, Practice materials-info control and green Today header badge. Day-strip Today indicators remain.
+
+Frontend owns Sessions.tsx only. Release Engineer owns version/lock metadata, README/changelog/affected technical guide and scoped Git delivery. QA owns sole RELEASE-PRACTICE-20261107 gates/artifact plus isolated focused rendered checks; Planner owns status/evidence. No dependencies, backend/schema/data changes, zoom-policy change or unrelated redesign. Earlier exploratory checks were TypeScript/whitespace only; approval now authorizes normal validation and this release. See [release acceptance](evidence/acceptance/release-0.7.2-2026-11-07.md).
+
+
+**Item 72 release gate:** RELEASE-PRACTICE-20261107 passed 736/736 tests in 35 files, lint zero errors/three existing warnings (Sessions.tsx:286/405, i18n.tsx:1108), TypeScript/Vite/PWA build with 20 precache entries and artifact audit (33 files, 79 references). All 168 inputs and protected CLI marker unchanged. Owner visual approval and static UI review are accepted; no new rendered browser pass is claimed: Windows DB-port restriction and a bounded Chrome harness hang blocked local execution. Owned resources were cleaned, no fixtures created and volumes preserved. [Evidence](evidence/acceptance/release-0.7.2-2026-11-07.md) records boundaries and pre-commit identity. Cleared for the authorized scoped commit/normal upstream push; post-push publication is verified separately.

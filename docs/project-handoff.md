@@ -1,21 +1,21 @@
 # Project handoff
 
-Updated 2026-11-06. Read this snapshot first, then the [backlog](guitar-hub-v1-scope-and-backlog.md) for scope, priorities and acceptance. These are the two status sources of truth. The full [handoff through 2026-11-01](archive/handoff-through-2026-11-01.md) preserves contracts, approvals and QA/rollout evidence; pending actions there describe historical stages.
+Updated 2026-11-07. Read this snapshot first, then the [backlog](guitar-hub-v1-scope-and-backlog.md) for scope, priorities and acceptance. These are the two status sources of truth. The full [handoff through 2026-11-01](archive/handoff-through-2026-11-01.md) preserves contracts, approvals and QA/rollout evidence; pending actions there describe historical stages.
 
 ## Current snapshot
 
 | Field | Current evidence |
 | --- | --- |
 | Product | React/Vite/Supabase PWA: weekly planning, daily practice, Progress, Stats, accounts, four-language UI and device-local learning materials. |
-| Source | Owner-delivered 0.7.0, commit `f6ec7b742dea6949037ba9141722b62d607a5d23`; actual `origin/master` matches. The subsequent authorized release prepares patch 0.7.1 for compact Practice controls and alignment documentation. |
-| Hosted frontend | Public checks 2026-11-05: 0.7.0 / `f6ec7b7`, embedded build `2026-11-04 21:35 UTC`; viewport locked, current assets/deep links valid, missing assets non-HTML 404. 35 bounded checks passed. |
+| Source | Preparing 0.7.2 from released 0.7.1 / `cad315292db9d39242488461d6eb42c83915bf60`, for the owner-approved Practice presentation cleanup (72). Final release evidence records validation/delivery. |
+| Hosted frontend | Last verified 2026-11-06: 0.7.1 / `cad3152`, build `2026-11-06 19:03 UTC`. Seven public reads and eleven static checks passed: identity, assets, compact rows, locked viewport, deep route and missing-file 404. Current release publication is tracked separately. |
 | November backend | Recorded owner-approved apply of duplicate-week 20261101120000 and Arpeggios 20261101121000 complete, history 25→27. Prior evidence, not a new live audit. |
-| Executable checks | Matching 736/736 tests and lint zero errors/three warnings reused; fresh committed-head TypeScript/Vite/PWA build passed. Real local Edge/Auth/DB now 38/38; public HTTP 35/35. |
+| Executable checks | Previous 0.7.1 release: 736/736 tests, lint zero errors/three warnings, TypeScript/Vite/PWA build passed; 168 inputs stable. 0.7.2 final tests/lint/build passed; static UI review and owner approval are recorded below; rendered automation was blocked by the local environment. Earlier real local Edge/Auth/DB 38/38 and public routing acceptance remain dated evidence. |
 | Local database | Recorded 2026-11-01 pgTAP 184/184 across six files, including duplicate/catalog and custom-block isolation. Earlier four-language Default signup acceptance passed. No current Docker blocker is established. |
 | Client acceptance | `LOCAL-ACCEPTANCE-20261102` passed 31 real Chrome/local-Supabase checkpoints: save/failure/retry/reload/notes-only/clear, same-week Plan songs/unlink and four-language 390px Plan/Practice smoke. No app defect found. This is separate from historical pgTAP, not a new full-suite result. |
 | Hosting repair | Item 32 publicly verified on 2026-11-05: missing JS/PDF/unknown paths return non-HTML 404; valid deep links and existing assets/PWA files pass. Earlier local Wrangler acceptance remains historical evidence. |
-| Release | Patch 0.7.1 prepared on 2026-11-06 under the owner release command; final gate/delivery evidence below. Last verified hosted frontend: 0.7.0 / f6ec7b7. Gateway revision 28 remains aligned; no backend redeployment needed. |
-| Current work | Item 71 compact Practice controls implemented and locally accepted; included in the 0.7.1 release. Earlier 0.7.0 public/frontend/gateway alignment remains accepted. |
+| Release | Owner approved the Practice draft and invoked /release-app on 2026-11-07. Patch 0.7.2 prepares existing-UI simplification; no new data/tool capability or backend change. Last published release: 0.7.1. |
+| Current work | Item 72 approved and implemented: simpler week navigation/details, Session minutes badge and removed duplicate/help UI. Final QA/release in progress. Item 71 is released in 0.7.1. |
 
 The [review report](reviews/technical/project-review-2026-11-02.md) captures findings before this cleanup. It remains a dated report; its proposed document fixes are implemented here, not tracked as another status source.
 
@@ -205,3 +205,19 @@ Release Engineer owns version metadata and explicit-file Git delivery; QA is sol
 
 
 **0.7.1 final gate:** RELEASE-071-20261106 passed 736/736 tests in 35 files, lint zero errors/three existing warnings, and TypeScript/Vite/PWA build (20 precache entries). All 168 input hashes unchanged; 33 artifact files and 79 matched references audited. [Release evidence](evidence/acceptance/release-0.7.1-2026-11-06.md) records the local pre-commit identity and boundaries. Cleared for the authorized scoped commit/normal upstream push; post-push hosted identity is a separate observation. No backend/data operation is required.
+
+
+## Item 72 - approved Practice presentation cleanup (2026-11-07)
+
+The owner iterated on UI only, then explicitly approved the complete draft and invoked /release-app. Existing behavior/data contracts remain in place. This is a presentation refinement of existing controls, not a new practice/account feature.
+
+- Week navigation appears directly below the shared header, then Session date with the existing calculated minutes total in a bordered badge.
+- Week options show translated Week number and saved focus, without dates; the actual calendar week has a translated Current week marker and styling where native pickers support it.
+- The focus heading toggles one initially collapsed program/date-range/description block. Native keyboard operation, expanded state and controlled-content reference remain available.
+- The guarded CURRENT WEEK link is visible at the far right of the focus row, after the disclosure arrow, under its existing current-week condition.
+- Remove both explanatory cues, the redundant Practice weeks strip, duplicate date heading, Practice materials-info control and green Today header badge. Day-strip Today indicators remain.
+
+Frontend owns Sessions.tsx only. Release Engineer owns version/lock metadata, README/changelog/affected technical guide and scoped Git delivery. QA owns sole RELEASE-PRACTICE-20261107 gates/artifact plus isolated focused rendered checks; Planner owns status/evidence. No dependencies, backend/schema/data changes, zoom-policy change or unrelated redesign. Earlier exploratory checks were TypeScript/whitespace only; approval now authorizes normal validation and this release. See [release acceptance](evidence/acceptance/release-0.7.2-2026-11-07.md).
+
+
+**Item 72 release gate:** RELEASE-PRACTICE-20261107 passed 736/736 tests in 35 files, lint zero errors/three existing warnings (Sessions.tsx:286/405, i18n.tsx:1108), TypeScript/Vite/PWA build with 20 precache entries and artifact audit (33 files, 79 references). All 168 inputs and protected CLI marker unchanged. Owner visual approval and static UI review are accepted; no new rendered browser pass is claimed: Windows DB-port restriction and a bounded Chrome harness hang blocked local execution. Owned resources were cleaned, no fixtures created and volumes preserved. [Evidence](evidence/acceptance/release-0.7.2-2026-11-07.md) records boundaries and pre-commit identity. Cleared for the authorized scoped commit/normal upstream push; post-push publication is verified separately.

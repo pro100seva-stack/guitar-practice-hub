@@ -8,9 +8,19 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.7.2] - 2026-11-07
+
+**Prepared patch release:** owner-approved Practice presentation simplification; existing session calculations, saving/navigation guards, tools and zoom policy remain unchanged. No dependency, schema or backend changes. See the [release acceptance](evidence/acceptance/release-0.7.2-2026-11-07.md) for final gates, delivery and publication boundaries.
+
+### Changed
+
+- Place week navigation below the screen header and the Session date immediately after it. Week options show the week number and saved focus instead of dates, with a localized current-week marker and styling where native pickers support it.
+- Collapse program, date range and description into one block opened from the week focus heading. Keep the Current week Plan link at the far right after the disclosure arrow.
+- Show the existing minutes total in a bordered badge beside the Session date. Remove the Practice time label, repeated instructional cues, Practice weeks strip, duplicate date heading, information control and green Today header badge; day-strip Today indicators remain.
+
 ## [0.7.1] - 2026-11-06
 
-**Prepared patch release:** compact Practice layout restoration and alignment documentation; no new feature, dependency upgrade, schema migration or backend deployment. See the [release acceptance](evidence/acceptance/release-0.7.1-2026-11-06.md) for final gates and delivery. Preparation is not hosted-publication evidence.
+**Source release:** commit `cad315292db9d39242488461d6eb42c83915bf60`, pushed to origin/master on 2026-11-06; public reads confirmed 0.7.1 / cad3152, build 2026-11-06 19:03 UTC. Compact Practice layout restoration and alignment documentation; no new feature, dependency upgrade, schema migration or backend deployment. See the [release acceptance](evidence/acceptance/release-0.7.1-2026-11-06.md) for final gates and delivery. Preparation is not hosted-publication evidence.
 
 ### Fixed
 

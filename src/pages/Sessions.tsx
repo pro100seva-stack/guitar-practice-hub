@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useHeaderSlots } from '../components/headerSlots'
 import BlockGallery from '../components/BlockGallery'
 import PickerDialog from '../components/PickerDialog'
-import MaterialsInfo from '../components/MaterialsInfo'
 import RemoveBlockIcon from '../components/icons/RemoveBlockIcon'
 import { supabase } from '../lib/supabase'
 import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from '../lib/localMaterialAccess'
@@ -174,7 +173,6 @@ export default function Sessions() {
   const [announcement, setAnnouncement] = useState('')
   const [removedBlock, setRemovedBlock] = useState<RemovedBlock | null>(null)
   const [pendingDiscardAction, setPendingDiscardAction] = useState<{ run: () => void } | null>(null)
-  const [isWeekStripOpen, setIsWeekStripOpen] = useState(false)
   const [isWeekDetailsOpen, setIsWeekDetailsOpen] = useState(false)
   const [isTodoOpen, setIsTodoOpen] = useState(false)
   const [todoError, setTodoError] = useState<string | null>(null)
@@ -1802,7 +1800,6 @@ export default function Sessions() {
   }, 0)
 
   const selectedWeekDates = getWeekDates(planWeek ?? weeks[selectedWeekIndex] ?? null)
-  const visibleWeeks = weeks.slice(Math.max(0, selectedWeekIndex - 2), Math.min(weeks.length, selectedWeekIndex + 3))
   const adjacentWeeks = adjacentPracticeWeeks(weeks, planWeek?.id)
   const todayDate = toLocalIsoDate()
   const actualCurrentWeek = weeks.find((week) => week.start_date <= todayDate && week.end_date >= todayDate)
@@ -2119,11 +2116,7 @@ export default function Sessions() {
       )}
 
       <section className="py-4">
-        <h1 className="text-xl font-semibold">{t('Session {date}', { date: formatHeadingDate(date, language) })}</h1>
-        <p className="meta mt-2">{t('ux.practiceCue')}</p>
-        <p className="meta mt-1">{t('ux.doneCue')}</p>
-
-        <div className="mt-3">
+        <div>
           <label htmlFor="practice-week-select" className="block text-xs text-slate-400">{t('Jump to')}</label>
           <div className="practice-week-navigation mt-1 items-center">
           <button
@@ -2146,8 +2139,8 @@ export default function Sessions() {
             className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 text-base text-slate-200 focus:border-slate-500"
           >
             {weeks.map((weekItem) => (
-              <option key={weekItem.id} value={weekItem.id}>
-                {t('Week {week}', { week: weekItem.week_number })} · {formatDateRange(weekItem.start_date, weekItem.end_date, language)}
+              <option key={weekItem.id} value={weekItem.id} className={weekItem.id === actualCurrentWeek?.id ? 'font-semibold text-sky-300' : undefined}>
+                {t('Week {week}', { week: weekItem.week_number })}{weekItem.focus ? ` · ${weekItem.focus}` : ''}{weekItem.id === actualCurrentWeek?.id ? ` · ${t('Current week')}` : ''}
               </option>
             ))}
           </select>
@@ -2164,77 +2157,44 @@ export default function Sessions() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsWeekStripOpen((current) => !current)}
-          aria-expanded={isWeekStripOpen}
-          aria-controls="practice-week-strip"
-          className="mt-1 flex min-h-11 w-full items-center justify-between gap-2 text-left text-sm text-slate-300"
-        >
-          <span>{t('Practice weeks')}</span>
-          <span className="text-sm text-slate-400">{t(isWeekStripOpen ? 'Hide' : 'Show')}</span>
-        </button>
+      </section>
 
-        {isWeekStripOpen && (
-          <div id="practice-week-strip" className="mb-2 flex flex-wrap gap-3">
-            {visibleWeeks.map((weekItem) => {
-              const isCurrentWeek = weekItem.start_date <= todayDate && weekItem.end_date >= todayDate
-              const isSelected = weekItem.id === (planWeek?.id ?? weeks[selectedWeekIndex]?.id)
+      <section className="pb-4">
+        <div className="flex items-center gap-3">
+          <h1 id="practice-session-heading" className="min-w-0 text-xl font-semibold">{t('Session {date}', { date: formatHeadingDate(date, language) })}</h1>
+          <span aria-label={t('Practice time')} className="shrink-0 rounded-lg border border-slate-600 bg-slate-900 px-3 py-1 text-xl font-semibold tabular-nums text-slate-100">{t('{minutes} min', { minutes: totalBlockMinutes })}</span>
+        </div>
 
-              return (
-                <button
-                  key={weekItem.id}
-                  type="button"
-                  onClick={() => confirmDiscard(() => handleSelectWeek(weekItem))}
-                  aria-pressed={isSelected}
-                  className={`min-h-11 min-w-[150px] flex-1 rounded-lg border p-3 text-left transition ${
-                    isSelected
-                      ? 'border-sky-500 bg-sky-500/10 text-sky-100'
-                      : 'border-slate-700 bg-slate-950/80 text-slate-200 hover:border-slate-500'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t('Week {week}', { week: weekItem.week_number })}</p>
-                    {isCurrentWeek && (
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">
-                        {t('Today')}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-2 text-lg font-semibold">{weekItem.focus || t('Focus')}</p>
-                  <p className="mt-1 text-xs text-slate-400">{formatDateRange(weekItem.start_date, weekItem.end_date, language)}</p>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="min-w-0 max-w-full text-base font-semibold text-slate-100 [overflow-wrap:anywhere]">{planWeek?.focus ?? t('No week selected')}</h2>
+        <div className="mt-2">
+          <div className="flex items-center gap-2">
+          <h2 className="min-w-0 flex-1 text-base font-semibold text-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsWeekDetailsOpen((current) => !current)}
+              aria-expanded={isWeekDetailsOpen}
+              aria-controls="practice-week-details"
+              className="flex min-h-11 w-full items-center justify-between gap-2 rounded text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+            >
+              <span className="min-w-0 [overflow-wrap:anywhere]">{planWeek?.focus ?? t('No week selected')}</span>
+              <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${isWeekDetailsOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 7.5l5 5 5-5" /></svg>
+            </button>
+          </h2>
           {actualCurrentWeek && planWeek?.id === actualCurrentWeek.id && (
-            <button type="button" disabled={saving} onClick={() => confirmDiscard(() => navigate(`/plan?week=${encodeURIComponent(actualCurrentWeek.id)}`))} className="min-h-11 max-w-full whitespace-normal rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium uppercase tracking-normal text-sky-300 hover:text-sky-100">
+            <button type="button" disabled={saving} onClick={() => confirmDiscard(() => navigate(`/plan?week=${encodeURIComponent(actualCurrentWeek.id)}`))} className="min-h-11 max-w-[45%] shrink-0 whitespace-normal rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium uppercase tracking-normal text-sky-300 hover:text-sky-100">
               {t('Current week')}
             </button>
           )}
+          </div>
+          <div id="practice-week-details" hidden={!isWeekDetailsOpen} className="pb-2">
+            <p className="text-sm text-slate-400">
+              {programName ?? '—'} · {planWeek ? formatDateRange(planWeek.start_date, planWeek.end_date, language) : '—'}
+            </p>
+            <h3 className="mt-2 text-sm text-slate-300">{t('Week description')}</h3>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">
+              {planWeek?.tasks?.trim() || t('No description recorded for this week yet.')}
+            </p>
+          </div>
         </div>
-        <p className="text-sm text-slate-400">
-          {programName ?? '—'} · {planWeek ? formatDateRange(planWeek.start_date, planWeek.end_date, language) : '—'}
-        </p>
-        <button
-          type="button"
-          onClick={() => setIsWeekDetailsOpen((current) => !current)}
-          aria-expanded={isWeekDetailsOpen}
-          aria-controls="practice-week-details"
-          className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-sm text-slate-300"
-        >
-          <span>{t('Week description')}</span>
-          <span className="text-sm text-slate-400">{t(isWeekDetailsOpen ? 'Hide' : 'Show')}</span>
-        </button>
-        {isWeekDetailsOpen && (
-          <p id="practice-week-details" className="whitespace-pre-wrap pb-2 text-sm text-slate-300">
-            {planWeek?.tasks?.trim() || t('No description recorded for this week yet.')}
-          </p>
-        )}
 
         <div data-tour="practice-days" role="group" aria-label={t('Days in selected week')} className="mt-2">
           <div ref={dayStripRef} className="relative flex snap-x gap-2 overflow-x-auto pb-1">
@@ -2279,24 +2239,9 @@ export default function Sessions() {
       <section
         ref={blocksSectionRef}
         tabIndex={-1}
-        aria-labelledby="practice-blocks-heading"
+        aria-labelledby="practice-session-heading"
         className="border-t border-slate-800 py-4 focus:outline-none"
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h2 id="practice-blocks-heading" className="text-lg font-semibold text-slate-100">{formatHeadingDate(date, language)}</h2>
-            <MaterialsInfo />
-          </div>
-          {isTodayDate(date) && (
-            <span className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">
-              {t('Today')}
-            </span>
-          )}
-        </div>
-        <p className="text-base text-slate-300">
-          {t('Practice time')}: <span className="text-xl font-semibold tabular-nums text-slate-100">{t('{minutes} min', { minutes: totalBlockMinutes })}</span>
-        </p>
-
         {selectedBlocks.length === 0 && (
           <div data-tour="practice-block-picker" className="mt-3">
             <p className="text-base font-medium text-slate-100">{t('No blocks yet')}</p>
