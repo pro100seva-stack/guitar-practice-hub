@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import evhImage from '../assets/EVH_Frankenstrat.jpg'
+import { frankenstratHitArea } from '../assets/frankenstratHitArea'
 import { useI18n } from '../lib/i18n'
 import { toLocalIsoDate } from '../lib/dateFormat'
 
@@ -31,6 +32,8 @@ export default function Landing() {
   const [retry, setRetry] = useState(0)
   const [guitarExpanded, setGuitarExpanded] = useState(false)
   const guitarRegionId = useId()
+  const guitarClipId = useId()
+  const guitarButtonRef = useRef<HTMLButtonElement | null>(null)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -80,79 +83,78 @@ export default function Landing() {
       variant: 'snippet',
       description: currentWeekDescription,
     },
-    { label: t('Practice!'), path: '/practice', tone: 'emerald', variant: 'ellipse' },
+    { label: t('Practice'), path: '/practice', tone: 'emerald', variant: 'ellipse' },
   ]
 
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden py-4 lg:py-8">
+    <div className="home-scene">
       <h1 className="sr-only">{t('Guitar Practice Hub')}</h1>
-      <div className="relative z-10 flex w-full max-w-5xl items-center justify-center">
-        <nav className="flex w-full max-w-md flex-col items-center gap-3 pb-14 pt-4 lg:pb-8">
+        <nav className="home-navigation">
           {navItems.map((item) => (
             <button
               key={item.path}
               type="button"
               data-tour={item.path === '/progress' ? 'progress' : item.variant === 'snippet' ? 'current-week' : 'practice'}
               onClick={() => navigate(item.path)}
-              className={[
-                'relative z-10 w-full max-w-md rounded-xl border p-4 text-center backdrop-blur-[2px] transition lg:backdrop-blur-none hover:-translate-y-0.5 hover:border-slate-500',
-                item.variant === 'default' && 'border-sky-700/60 bg-sky-950/85 text-sky-100 lg:bg-sky-500/10',
-                item.variant === 'snippet' && 'border-violet-700/60 bg-violet-950/85 py-3 text-violet-100 lg:bg-violet-500/10',
-                item.variant === 'ellipse' && 'mt-4 border-emerald-700/60 bg-emerald-950/85 py-5 text-emerald-100 lg:mt-8 lg:bg-emerald-500/10 [@media(min-height:700px)]:mt-8',
-              ].join(' ')}
+              className={'home-wood home-card home-card-' + item.variant}
             >
-              <span className={`block font-semibold ${item.variant === 'ellipse' ? 'text-2xl' : 'text-xl'}`}>{item.label}</span>
+              <span className="home-card-label">{item.label}</span>
               {item.variant === 'snippet' && item.description ? (
-                <p className="mt-2 line-clamp-2 text-sm text-current/80">{item.description}</p>
+                <p className="home-week-description">{item.description}</p>
               ) : null}
             </button>
           ))}
-          {loadFailed && <button type="button" onClick={() => setRetry((value) => value + 1)} className="btn btn-secondary">{t('Retry')}</button>}
+          {loadFailed && <button type="button" onClick={() => setRetry((value) => value + 1)} className="home-wood home-retry">{t('Retry')}</button>}
         </nav>
-      </div>
 
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-16 right-[-14%] top-0 z-0 flex w-[52vw] min-w-[200px] max-w-[260px] items-center justify-end overflow-hidden opacity-40 [-webkit-mask-image:linear-gradient(to_right,transparent_0%,#000_55%)] [mask-image:linear-gradient(to_right,transparent_0%,#000_55%)] sm:right-[-8%] sm:w-[40vw] sm:min-w-[230px] sm:max-w-[430px] lg:opacity-100 lg:[-webkit-mask-image:none] lg:[mask-image:none]"
+      <svg width="0" height="0" aria-hidden="true" focusable="false" className="absolute">
+        <defs>
+          <clipPath id={guitarClipId} clipPathUnits="objectBoundingBox">
+            <path d={frankenstratHitArea} />
+          </clipPath>
+        </defs>
+      </svg>
+      <div className="home-guitar-frame">
+      <button
+        ref={guitarButtonRef}
+        type="button"
+        aria-expanded={guitarExpanded}
+        aria-controls={guitarRegionId}
+        aria-label={t('Frankenstrat')}
+        data-tour="featured-guitar"
+        onClick={() => setGuitarExpanded((expanded) => !expanded)}
+        className="home-guitar"
+        style={{ clipPath: `url(#${guitarClipId})` }}
       >
-        <img
-          src={evhImage}
-          alt={t('Frankenstrat')}
-          className="h-full w-auto max-h-full object-contain"
-          style={{
-            display: 'block',
-            filter: 'brightness(1)',
-            transform: 'scale(0.92)',
-            transformOrigin: 'right center',
-          }}
-        />
+        <img src={evhImage} alt="" />
+      </button>
       </div>
 
       <aside
-        className={`absolute bottom-4 right-4 z-20 max-h-[60dvh] max-w-[min(92vw,20rem)] overflow-y-auto rounded-xl border border-slate-700/80 bg-slate-950 text-left lg:right-8 ${guitarExpanded ? 'w-[min(92vw,20rem)]' : 'w-auto'}`}
+        id={guitarRegionId}
+        hidden={!guitarExpanded}
+        aria-label={t('Featured guitar')}
+        className="home-guitar-note"
       >
-        <div id={guitarRegionId} hidden={!guitarExpanded} className="px-4 pt-3">
-          <p className="text-xs uppercase tracking-[0.24em] text-slate-400">{t('Featured guitar')}</p>
-          <p className="mt-2 text-sm text-slate-200">
-            <span className="font-semibold text-white">{t('Frankenstrat')}</span> {t('Frankenstrat became famous because Eddie Van Halen used it to popularize the two-handed tapping technique, turning a familiar guitar into a new voice for rock.')}
+        <div className="home-guitar-note-heading">
+          <p className="home-note-title">{t('Featured guitar')}</p>
+          <button
+            type="button"
+            aria-label={t('Close')}
+            onClick={() => { setGuitarExpanded(false); guitarButtonRef.current?.focus() }}
+            className="home-note-close"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="m5 5 10 10M15 5 5 15" /></svg>
+          </button>
+        </div>
+        <div className="px-3 pb-3">
+          <p className="home-note-copy">
+            <span className="font-semibold">{t('Frankenstrat')}</span> {t('Frankenstrat became famous because Eddie Van Halen used it to popularize the two-handed tapping technique, turning a familiar guitar into a new voice for rock.')}
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-slate-300">
+          <p className="home-note-copy">
             {t('Its significance was part practicality and part rebellion: a homemade body, modified pickups, and a slim, fast neck gave it punchy attack, sustain, and a bright, expressive tone that helped define 80s hard rock.')}
           </p>
         </div>
-        <button
-          type="button"
-          aria-expanded={guitarExpanded}
-          aria-controls={guitarRegionId}
-          data-tour="featured-guitar"
-          onClick={() => setGuitarExpanded((expanded) => !expanded)}
-          className="sticky bottom-0 flex min-h-11 w-full items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-left text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-400"
-        >
-          <span>*{t('Frankenstrat')}</span>
-          <span aria-hidden="true" className={`text-xs text-slate-400 transition-transform ${guitarExpanded ? 'rotate-180' : ''}`}>
-            ▾
-          </span>
-        </button>
       </aside>
     </div>
   )

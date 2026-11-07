@@ -39,6 +39,14 @@ The floating navigation menu exposes Home, Progress, Plan, Practice, Stats, and 
 
 The prepared compact Practice header keeps menu/back, screen name, metronome and tuner on one row; other screens retain their existing responsive shell layout. A `ResizeObserver` updates the content offset from the actual header height, including enlarged text. The owner requires the page-zoom lock on every screen: shared viewport metadata specifies `initial-scale=1.0, maximum-scale=1.0, user-scalable=no`. This restores the pre-0.6.0 policy in source commit `f6ec7b7` and the publicly verified 0.7.0 HTML. Browsers or accessibility settings may override viewport zoom restrictions; the metadata does not guarantee prevention of every browser zoom mechanism. The other UX changes passed scoped [local acceptance](evidence/acceptance/ux-implementation-2026-11-04.md), including Chrome 156 narrow/enlarged-text and navigation checks. Those historical checks preceded this viewport correction: 649/649 tests, lint with zero errors/three existing warnings, and the TypeScript/Vite/PWA build. The 24 distinct browser scenarios combine nine unchanged checks with fifteen checks after the layout/focus repairs. Actual screen readers, exhaustive contrast and beta-user comprehension remain unverified; local acceptance does not imply publication.
 
+### Home presentation and guitar interaction
+
+Home-specific `.app-home` styles in `src/index.css`, conditional shell classes in `Layout.tsx` and `Landing.tsx` implement the owner mobile/wide reference without restyling other screens. The green scene uses dynamic viewport height with a short-screen minimum and flow-sized navigation; longer translations or week descriptions can extend the page. Menu, note, navigation and Help share a local procedural wood SVG and mint text. Current-week selection/loading/retry and route/tour handlers retain their existing contracts.
+
+Aldrich and Asar are self-hosted from `src/assets/fonts/` with `font-display: swap`, accompanying OFL text files and system fallbacks for unsupported glyphs. Aldrich styles the Home brand; Asar styles other Home text. There is no runtime font-service request or package dependency.
+
+The native guitar button toggles the existing note and carries its expanded state, controlled-region ID and tour target. `src/assets/frankenstratHitArea.ts` stores normalized SVG clip geometry derived from every nontransparent pixel of the unchanged photograph (a 184 x 804 RGBA PNG despite its .jpg extension). The clip follows the real silhouette and gaps as the image scales. Its non-intercepting wrapper provides visible keyboard focus; Close returns focus to the guitar button. Regenerate the clip if that source image changes; no runtime canvas or image mutation is used. Wood grain/color matching remains a screenshot approximation because direct Figma inspection was unavailable.
+
 ### Practice screen
 
 Files: `src/pages/Sessions.tsx`, `src/lib/database.types.ts`.

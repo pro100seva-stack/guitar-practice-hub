@@ -182,3 +182,152 @@ body {
 .plan-week-list::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(148, 163, 184, 0.9), rgba(71, 85, 105, 0.9));
 }
+
+@font-face {
+  font-family: 'Aldrich';
+  src: url('./assets/fonts/Aldrich-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Asar';
+  src: url('./assets/fonts/Asar-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* Home design draft. Every rule is scoped so other app screens retain their UI. */
+.app-home {
+  --home-height: max(100dvh, 700px);
+  --home-mint: #a4eac0;
+  --home-card-width: min(46.3vw, 15.8125rem);
+  font-family: 'Asar', Georgia, 'Times New Roman', serif;
+  background: linear-gradient(180deg, #5c875f 0%, #639c79 51%, #71bca1 100%);
+}
+.app-home .home-main { position: relative; min-height: var(--home-height); width: 100%; }
+.app-home .home-outlet { min-height: var(--home-height); }
+.app-home .home-scene { position: relative; min-height: var(--home-height); overflow: hidden; }
+.app-home .home-wood,
+.app-home .home-menu,
+.app-home .home-guitar-note {
+  color: var(--home-mint);
+  background-color: #493323;
+  background-image: linear-gradient(100deg, rgb(27 16 8 / 0.08), rgb(25 15 8 / 0.2)), url('./assets/home-wood.svg');
+  background-size: cover;
+}
+.app-home .home-wood {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.app-home .home-wood:hover { filter: brightness(1.1); }
+.app-home .home-wood:disabled { cursor: default; filter: none; opacity: 0.6; }
+.app-home .home-header-inner { padding: 0.65rem max(5.5vw, env(safe-area-inset-right), env(safe-area-inset-left)); }
+.app-home .home-header-grid { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; }
+.app-home .home-header-button { display: flex; width: 2.75rem; height: 2.75rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 0.65rem; padding: 0; }
+.app-home .home-header-button > svg { width: 2rem; height: 2rem; }
+.app-home .home-brand {
+  color: var(--home-mint);
+  font-family: 'Aldrich', Arial, sans-serif;
+  font-size: clamp(0.625rem, 2.9vw, 1rem);
+  line-height: 1.5;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.app-home .home-navigation {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  justify-items: start;
+  row-gap: max(1rem, calc(var(--home-height) * 0.164 - 6.5625rem));
+  padding: calc(var(--home-height) * 0.238) 1% 6.25rem;
+  pointer-events: none;
+}
+.app-home .home-card {
+  width: var(--home-card-width);
+  min-height: 6.5625rem;
+  border-radius: 1.75rem;
+  padding: 0.75rem;
+  text-align: center;
+  pointer-events: auto;
+}
+.app-home .home-card-label { display: block; font-size: clamp(1.15rem, 6vw, 1.625rem); line-height: 1.12; overflow-wrap: anywhere; }
+.app-home .home-week-description { margin-top: 0.5rem; font-size: clamp(0.7rem, 3vw, 0.875rem); line-height: 1.35; overflow-wrap: anywhere; }
+.app-home .home-card-ellipse {
+  justify-self: center;
+  margin-top: calc(var(--home-height) * 0.069);
+  width: clamp(6.375rem, 25vw, 8.5rem);
+  min-height: 0;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  padding: 0.4rem;
+}
+.app-home .home-card-ellipse .home-card-label { font-size: clamp(1rem, 4.3vw, 1.625rem); letter-spacing: 0.12em; }
+.app-home .home-retry { min-height: 2.75rem; border-radius: 0.6rem; padding: 0.4rem 1rem; pointer-events: auto; }
+.app-home .home-guitar-frame {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: -0.5rem;
+  height: calc(var(--home-height) * 0.95);
+  aspect-ratio: 184 / 804;
+  pointer-events: none;
+}
+.app-home .home-guitar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.app-home .home-guitar img { display: block; width: 100%; height: 100%; max-width: none; object-fit: contain; }
+.app-home .home-guitar-frame:has(.home-guitar:focus-visible) { filter: drop-shadow(0 0 2px #e0ffe8) drop-shadow(0 0 4px #172b23); }
+.app-home .home-guitar:focus-visible { outline: none; }
+.app-home .home-menu { border: 1px solid rgb(164 234 192 / 0.45); border-radius: 1rem; box-shadow: 0 0.75rem 2rem rgb(20 39 29 / 0.3); }
+.app-home .home-menu-heading { border-bottom: 1px solid rgb(164 234 192 / 0.25); padding: 0.5rem 0.9rem; font-size: 0.9rem; letter-spacing: 0.08em; }
+.app-home .home-menu-item { display: flex; width: 100%; min-height: 2.75rem; align-items: center; justify-content: space-between; gap: 0.5rem; border-block: 1px solid transparent; padding: 0.5rem 0.9rem; color: inherit; text-align: left; font-family: inherit; font-size: 1.125rem; }
+.app-home .home-menu-item:hover,
+.app-home .home-menu-item.is-active { border-color: rgb(164 234 192 / 0.3); background: rgb(164 234 192 / 0.12); }
+.app-home .home-menu-item:focus-visible { outline-color: #e0ffe8; outline-offset: -3px; }
+.app-home .home-menu-current { color: inherit; font-size: 0.75rem; }
+.app-home .home-guitar-note {
+  position: absolute;
+  z-index: 20;
+  top: calc(var(--app-header-h) + 0.75rem);
+  right: 0.5rem;
+  width: calc(50% - 1rem);
+  max-height: calc(var(--home-height) * 0.44);
+  overflow-y: auto;
+  border: 1px solid #9de0b3;
+  border-radius: 0.75rem;
+  box-shadow: 0 0.75rem 2rem rgb(20 39 29 / 0.25);
+  overflow-wrap: anywhere;
+}
+.app-home .home-guitar-note-heading { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; border-bottom: 1px solid rgb(164 234 192 / 0.25); background: #493323 url('./assets/home-wood.svg') center / cover; padding-left: 0.75rem; }
+.app-home .home-note-title { font-size: 0.9rem; letter-spacing: 0.04em; }
+.app-home .home-note-close { display: flex; width: 2.75rem; height: 2.75rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 0.5rem; color: inherit; }
+.app-home .home-note-close:hover { background: rgb(164 234 192 / 0.12); }
+.app-home .home-note-copy { margin-top: 0.6rem; font-size: 1rem; line-height: 1.45; }
+.app-home .home-footer { position: absolute; z-index: 10; bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); left: 50%; transform: translateX(-50%); }
+.app-home .home-help { min-width: 3rem; min-height: 3rem; border-radius: 0.5rem; padding: 0.5rem; font-size: 0.75rem; }
+.app-home .home-version { position: absolute; z-index: 10; right: 0.75rem; bottom: max(0.25rem, env(safe-area-inset-bottom)); left: 0.75rem; color: #244b38; text-align: center; font-size: 0.625rem; }
+
+@media (min-width: 48rem) {
+  .app-home { --home-height: max(100dvh, 760px); }
+  .app-home .home-header-inner { padding: 0.6rem max(5vw, env(safe-area-inset-right), env(safe-area-inset-left)); }
+  .app-home .home-header-button { width: 3rem; height: 3rem; }
+  .app-home .home-brand { font-size: clamp(1rem, 1.6vw, 1.5rem); }
+  .app-home .home-navigation { justify-items: center; row-gap: max(1rem, calc(var(--home-height) * 0.117 - 6.5625rem)); padding-top: calc(var(--home-height) * 0.353); }
+  .app-home .home-card { width: 15.8125rem; }
+  .app-home .home-card-label { font-size: clamp(1.75rem, 2.5vw, 2.375rem); }
+  .app-home .home-card-ellipse { width: 8.5rem; margin-top: calc(var(--home-height) * 0.048); }
+  .app-home .home-card-ellipse .home-card-label { font-size: 1.625rem; letter-spacing: 0.1em; }
+  .app-home .home-guitar-frame { top: calc(var(--home-height) * 0.05); height: calc(var(--home-height) * 0.876); }
+  .app-home .home-guitar-note { right: auto; left: 1.5rem; width: 20rem; max-height: 60vh; }
+}

@@ -47,6 +47,7 @@ Maintained guides, release notes and the two current status documents remain at 
 
 | Record | Contents |
 | --- | --- |
+| [Release 0.7.3 acceptance, 2026-11-07](evidence/acceptance/release-0.7.3-2026-11-07.md) | Responsive Home design, self-hosted fonts, silhouette interaction, final validation and release boundary. |
 | [Release 0.7.2 acceptance, 2026-11-07](evidence/acceptance/release-0.7.2-2026-11-07.md) | Approved Practice UI cleanup, final gates, focused acceptance and delivery boundary. |
 | [Release 0.7.1 acceptance, 2026-11-06](evidence/acceptance/release-0.7.1-2026-11-06.md) | Final versioned gates, artifact identity, scoped delivery and publication boundary. |
 | [Compact Practice controls, 2026-11-05](evidence/acceptance/practice-compact-controls-2026-11-05.md) | Owner-requested compact rows/settings-button removal, focused browser/gate evidence and captures; included in the prepared 0.7.1 release. |

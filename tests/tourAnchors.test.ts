@@ -29,12 +29,17 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe('guided tour anchors', () => {
-  it.each([false, true])('keeps Help rendered during an active tour without replay recursion: %s', (isOpen) => {
+  it.each([
+    { isLandingScreen: false, isOpen: false },
+    { isLandingScreen: false, isOpen: true },
+    { isLandingScreen: true, isOpen: false },
+    { isLandingScreen: true, isOpen: true },
+  ])('keeps Help rendered without replay recursion (Home: $isLandingScreen, tour open: $isOpen)', ({ isLandingScreen, isOpen }) => {
     const source = readFileSync('src/components/Layout.tsx', 'utf8')
     const footer = source.slice(source.indexOf('        {tour.canReplay && ('), source.indexOf('        {isLandingScreen && <p'))
     const replay = vi.fn()
     const node = runInNewContext(transpileModule(`const node = <>${footer}</>; node`, { fileName: 'fixture.tsx', compilerOptions: { jsx: JsxEmit.React } }).outputText, {
-      React: { createElement, Fragment }, tour: { canReplay: true, isOpen, replay }, t: (key: string) => key,
+      React: { createElement, Fragment }, tour: { canReplay: true, isOpen, replay }, isLandingScreen, t: (key: string) => key,
     }) as ReactElement<{ children: ReactNode }>
     const html = renderToStaticMarkup(node)
     expect(html).toContain('data-tour="help"')

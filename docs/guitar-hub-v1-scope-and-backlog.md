@@ -2,21 +2,21 @@
 
 Updated 2026-11-07. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
 
-The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; 72 is allocated to the approved Practice presentation cleanup; future unique item IDs start at 73.
+The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; 72 is allocated to the approved Practice presentation cleanup; 73 is allocated to the Home screenshot design and silhouette interaction; future unique item IDs start at 74.
 
 ## Current baseline
 
-- **Source:** released 0.7.1 / `cad315292db9d39242488461d6eb42c83915bf60`. Owner-approved Practice UI cleanup (72) is prepared for patch 0.7.2 under /release-app.
+- **Source:** published 0.7.2 / `c36376b8c00ddf85c94e942922efca1df829a179`, plus owner-approved Home presentation scope (73), now included in patch 0.7.3 under /release-app.
 - **Backend:** the [archived handoff](archive/handoff-through-2026-11-01.md#backlog-execution-run-2026-11-01) records owner-approved production application of `20261101120000_duplicate_plan_week.sql` and `20261101121000_arpeggios_block.sql`, history 25→27, with RPC/catalog checks. They are not pending approval/application. This is recorded evidence, not a new live audit.
-- **Validation:** 0.7.1 final gates passed 736/736 tests (35 files), lint zero errors/three warnings and TypeScript/Vite/PWA build; 168 input hashes stable. 0.7.2 final gates and focused UI checks are tracked in [release evidence](evidence/acceptance/release-0.7.2-2026-11-07.md). Earlier real local Edge/Auth/database 38/38 remains accepted; no backend change is included.
-- **Publication:** 0.7.1 / `cad3152` publicly verified 2026-11-06, build 19:03 UTC; seven reads/eleven static checks passed, including compact rows, assets, zoom lock and routing. Gateway revision 28 remains aligned with the previously committed runtime files. 0.7.2 publication is a separate post-push check.
+- **Validation:** 0.7.3 final snapshot passed 738/738 tests (35 files), lint zero errors/three existing warnings and TypeScript/Vite/PWA build; 174 input hashes stable. Fonts, assets and exact alpha geometry pass. Rendered-browser checks remain environment-blocked. [Release evidence](evidence/acceptance/release-0.7.3-2026-11-07.md) distinguishes initial fixture failure, repair and final gate. No backend change.
+- **Publication:** 0.7.2 / `c36376b` publicly verified 2026-11-07, CI build 10:18 UTC; seven reads/fourteen static checks passed. Existing gateway revision 28 remains aligned with the previously committed runtime files. 0.7.3 public identity is a separate post-push observation.
 - **Owner acceptance:** owner confirms YouTube and large files work on live v0.5.0 (2026-11-02). General live playback/upload checks are accepted; this does not assert unreported settings transitions, quota/crash recovery or every device.
 - **Client acceptance:** `LOCAL-ACCEPTANCE-20261102` passed 31 real Chromium → local proxy → Supabase checkpoints, including failed requests/retries, reloads, notes-only/clear, same-week songs and 390px four-language Plan/Practice smoke. Actual-client persistence and Plan-to-Practice local gaps are closed; no new app defect found. [Evidence and cleanup](evidence/acceptance/acceptance-checks-2026-11-02.md#isolated-client-persistence-acceptance).
-- **Current work:** approved Practice presentation cleanup (72) is implemented and undergoing final release validation. This changes layout/disclosure content, with existing timers, saves, navigation and backend contracts preserved.
+- **Current work:** owner-approved Home design (73) is implemented for 0.7.3: responsive screenshot composition, fonts, wood/mint surfaces and silhouette-only guitar activation. Existing navigation, data, note content and tour actions remain.
 
-## Current release - 0.7.2 preparation
+## Current release - 0.7.3
 
-Patch 0.7.2 includes the owner-approved Practice presentation cleanup (72); final delivery is tracked in [release evidence](evidence/acceptance/release-0.7.2-2026-11-07.md). Prior 0.7.1 / cad3152 was committed, pushed and publicly verified on 2026-11-06. Owner-delivered 0.7.0 / f6ec7b7 frontend and gateway alignment was verified on 2026-11-05. See the [combined evidence](evidence/acceptance/project-alignment-2026-11-05.md). Earlier 0.6.0 preparation and validation remain in the changelog and dated release evidence.
+Patch 0.7.3 includes the owner-approved Home presentation scope (73); final checks and delivery boundary are tracked in [release evidence](evidence/acceptance/release-0.7.3-2026-11-07.md). Practice cleanup (72) was delivered as 0.7.2 / c36376b and publicly verified on 2026-11-07. Prior 0.7.1 / cad3152 was committed, pushed and publicly verified on 2026-11-06. Owner-delivered 0.7.0 / f6ec7b7 frontend and gateway alignment was verified on 2026-11-05. See the [combined evidence](evidence/acceptance/project-alignment-2026-11-05.md). Earlier 0.6.0 preparation and validation remain in the changelog and dated release evidence.
 
 | Scope | Current outcome |
 | --- | --- |
@@ -25,8 +25,9 @@ Patch 0.7.2 includes the owner-approved Practice presentation cleanup (72); fina
 | 69 - density/guidance review | Completed with recovered browser evidence; simplification recommendations remain proposed implementation. |
 | 32 - hosting missing-file response | Publicly verified: real non-HTML 404s and valid app routes/assets pass. |
 | 71 - compact Practice controls | Released and publicly verified in 0.7.1: shared header/week rows, settings button removed, gestures preserved. |
-| 72 - Practice presentation cleanup | Owner-approved 2026-11-07; implemented and included in 0.7.2 preparation. Final tests/lint/build passed; static UI review/owner approval below; rendered automation blocked by the local environment. |
-| Documentation/evidence | Guides reconciled with observed deployments; approved alignment and compact-control evidence included in 0.7.1. |
+| 72 - Practice presentation cleanup | Released/publicly verified in 0.7.2; required gates and owner visual approval passed. Rendered automation remained environment-blocked. |
+| 73 - Home design | Owner-approved screenshot/font/menu/note/silhouette draft, included in 0.7.3. Required gates passed; detailed results and rendered-browser limits below. |
+| Documentation/evidence | Guides record completed 0.7.2 publication and approved 0.7.3 Home scope, with dated gate/publication boundaries and retained acceptance gaps. |
 
 ## Item 66 — whole-app UX/accessibility review
 
@@ -254,3 +255,19 @@ Frontend owns Sessions.tsx only. Release Engineer owns version/lock metadata, RE
 
 
 **Item 72 release gate:** RELEASE-PRACTICE-20261107 passed 736/736 tests in 35 files, lint zero errors/three existing warnings (Sessions.tsx:286/405, i18n.tsx:1108), TypeScript/Vite/PWA build with 20 precache entries and artifact audit (33 files, 79 references). All 168 inputs and protected CLI marker unchanged. Owner visual approval and static UI review are accepted; no new rendered browser pass is claimed: Windows DB-port restriction and a bounded Chrome harness hang blocked local execution. Owned resources were cleaned, no fixtures created and volumes preserved. [Evidence](evidence/acceptance/release-0.7.2-2026-11-07.md) records boundaries and pre-commit identity. Cleared for the authorized scoped commit/normal upstream push; post-push publication is verified separately.
+
+
+## Item 73 - Home design and silhouette interaction (2026-11-07)
+
+Owner supplied mobile/wide Figma frames and screenshots, requested direct guitar-image activation, then specified Aldrich/Asar, silhouette-only targeting and matching navigation-menu/guitar-note styling. The actual /release-app invocation approves the complete local draft for release.
+
+**HomeScreenshot-v1 scope:** Home-only green gradient/full-width composition; wood/mint controls; mobile left-aligned cards and wide centered cards; round Practice action; full-opacity right-edge guitar; Help/version placement. Existing current-week selection, loading/error/retry, navigation, sign-out and tour handlers remain. Aldrich styles the uppercase visible brand; self-hosted Asar styles other Home text with system fallbacks for unsupported glyphs. Font files and original OFL licenses are included. The note and menu share the theme.
+
+The native guitar button retains keyboard activation, expanded/controlled-content state and tour targeting. A static normalized clip path derives from every nontransparent pixel of the unchanged 184x804 RGBA source image (historical .jpg extension). Geometry uses 317 combined rectangles and covers 73,969 pixels with zero mismatches/overlaps; transparent gaps pass pointer targeting through. A non-intercepting wrapper preserves focus indication, and Close returns focus to the guitar.
+
+**References/limits:** Figma file FatDzZtqRB9T2s92uhrGgO, mobile node 1:3 and wide node 7:124. Direct Figma inspection was unavailable; composition/wood/colors were based on attached screenshots. Named fonts are now the actual font assets, while wood/color matching remains an approximation accepted within the draft. No full rendered conformance or physical-device acceptance is inferred.
+
+**Ownership:** Frontend owns source fixes; Release Engineer owns metadata, assigned guides and scoped delivery; QA owns sole RELEASE-HOME-20261107 gates/artifact; Planner owns status/evidence. No dependency install, backend/data/schema/hosting/zoom change. [Release acceptance](evidence/acceptance/release-0.7.3-2026-11-07.md) records final results and boundaries.
+
+
+**Item 73 final acceptance:** RELEASE-HOME-20261107 passed **738/738 tests**, lint zero errors/three existing warnings and production build (35 files/81 references/20 precache entries). All 174 inputs and protected marker unchanged. The initial two Help fixture errors were repaired by adding Home/non-Home VM context without weakening assertions; no application repair was needed for them. Canonical translated hidden heading was restored during preflight. Exact alpha coverage, real font assets/OFL metadata and static Home isolation checks passed. No rendered browser pass is claimed: bounded isolated Chrome readiness produced no DOM; owned profile cleaned, no DB/Auth used and user preview retained. [Release record](evidence/acceptance/release-0.7.3-2026-11-07.md) contains source/build identity and publication limits. Required gates are cleared for the scoped commit and normal upstream push.

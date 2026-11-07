@@ -136,11 +136,11 @@ export default function Layout() {
 
   return (
     <HeaderSlotsContext.Provider value={headerSlots}>
-    <div ref={layoutRef} className="min-h-dvh bg-slate-900 text-slate-100">
+    <div ref={layoutRef} className={isLandingScreen ? 'app-home min-h-dvh text-slate-100' : 'min-h-dvh bg-slate-900 text-slate-100'}>
       <a href="#main-content" onClick={() => mainRef.current?.focus()} className="skip-link">{t('ux.skipContent')}</a>
-      <header ref={headerRef} className="fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
-        <div className="relative mx-auto max-w-6xl px-[var(--page-px)] py-3">
-          <div className={isPracticeScreen ? 'app-header-grid app-header-practice' : 'app-header-grid'}>
+      <header ref={headerRef} className={isLandingScreen ? 'home-header fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)]' : 'fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm'}>
+        <div className={isLandingScreen ? 'home-header-inner relative' : 'relative mx-auto max-w-6xl px-[var(--page-px)] py-3'}>
+          <div className={isLandingScreen ? 'home-header-grid' : isPracticeScreen ? 'app-header-grid app-header-practice' : 'app-header-grid'}>
             <div className="flex shrink-0 items-center gap-1">
               <button
                 ref={menuButtonRef}
@@ -150,9 +150,9 @@ export default function Layout() {
                 aria-expanded={menuOpen}
                 aria-controls="app-navigation"
                 onClick={() => setMenuOpen((current) => !current)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white"
+                className={isLandingScreen ? 'home-wood home-header-button' : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-xl text-slate-200 transition hover:border-slate-500 hover:text-white'}
               >
-                ☰
+                {isLandingScreen ? <svg aria-hidden="true" viewBox="0 0 32 32" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round"><path d="M4 7h24M4 16h24M4 25h24" /></svg> : '☰'}
               </button>
 
               {!isLandingScreen && (
@@ -168,7 +168,7 @@ export default function Layout() {
             </div>
 
             <div className="app-header-title min-w-0 text-center">
-              <p className={['text-xs uppercase tracking-wider text-slate-400', isLandingScreen ? '' : 'hidden'].join(' ')}>
+              <p className={isLandingScreen ? 'home-brand' : 'hidden text-xs uppercase tracking-wider text-slate-400'}>
                 {isLandingScreen ? t('Guitar Practice Hub') : t('Current screen')}
               </p>
               {!isLandingScreen && <p className="text-base font-semibold text-slate-200">{t(currentScreen.key)}</p>}
@@ -182,12 +182,11 @@ export default function Layout() {
                   aria-label={t('Sign out')}
                   title={t('Sign out')}
                   onClick={() => void signOutLocalMaterialIdentity()}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white sm:w-auto sm:px-3"
+                  className="home-wood home-header-button"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
                   </svg>
-                  <span className="hidden whitespace-nowrap sm:inline">{t('Sign out')}</span>
                 </button>
               )}
 
@@ -205,8 +204,8 @@ export default function Layout() {
           </div>
 
           {menuOpen && (
-            <div ref={panelRef} id="app-navigation" className="absolute left-4 top-full z-40 max-h-[70dvh] w-[min(18rem,calc(100%-2rem))] overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-slate-950/50">
-              <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-400">
+            <div ref={panelRef} id="app-navigation" className={isLandingScreen ? 'home-menu absolute left-4 top-full z-40 max-h-[70dvh] w-[min(18rem,calc(100%-2rem))] overflow-y-auto' : 'absolute left-4 top-full z-40 max-h-[70dvh] w-[min(18rem,calc(100%-2rem))] overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-slate-950/50'}>
+              <div className={isLandingScreen ? 'home-menu-heading' : 'border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-400'}>
                 {t('Navigation')}
               </div>
 
@@ -223,13 +222,13 @@ export default function Layout() {
                         else navigate(item.path)
                       }}
                       aria-current={isActive ? 'page' : undefined}
-                      className={[
+                      className={isLandingScreen ? `home-menu-item${isActive ? ' is-active' : ''}` : [
                         'flex w-full items-center justify-between border-y border-transparent px-3 py-3 text-left text-sm transition',
                         isActive ? 'border-y border-sky-500/60 bg-slate-800/80 text-sky-200' : 'text-slate-300 hover:bg-slate-900 hover:text-white',
                       ].join(' ')}
                     >
                       <span>{t(item.key)}</span>
-                      {isActive ? <span className="text-sky-300">●</span> : null}
+                      {isActive ? <span className={isLandingScreen ? 'home-menu-current' : 'text-sky-300'}>●</span> : null}
                     </button>
                   )
                 })}
@@ -240,23 +239,23 @@ export default function Layout() {
         {isPracticeScreen && <div ref={setPanelSlot} className="absolute inset-x-0 top-full" />}
       </header>
 
-      <main ref={mainRef} id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh max-w-6xl flex-col px-[var(--page-px)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(var(--app-header-h)+1rem)]">
-        <div className={isLandingScreen ? 'flex flex-1 flex-col' : 'flex-1'}><Outlet key={location.pathname} /></div>
+      <main ref={mainRef} id="main-content" tabIndex={-1} className={isLandingScreen ? 'home-main' : 'mx-auto flex min-h-dvh max-w-6xl flex-col px-[var(--page-px)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(var(--app-header-h)+1rem)]'}>
+        <div className={isLandingScreen ? 'home-outlet' : 'flex-1'}><Outlet key={location.pathname} /></div>
         {tour.canReplay && (
-          <footer className="section mt-6 flex justify-center">
+          <footer className={isLandingScreen ? 'home-footer' : 'section mt-6 flex justify-center'}>
             <button
               type="button"
               data-tour="help"
               disabled={tour.isOpen}
               title={t('Guided tour')}
               onClick={() => { if (!tour.isOpen) tour.replay() }}
-              className="btn btn-secondary rounded-lg text-xs"
+              className={isLandingScreen ? 'home-wood home-help' : 'btn btn-secondary rounded-lg text-xs'}
             >
               {t('Help')}
             </button>
           </footer>
         )}
-        {isLandingScreen && <p translate="no" className="pt-2 text-center text-xs text-slate-400">{versionLabel}</p>}
+        {isLandingScreen && <p translate="no" className="home-version">{versionLabel}</p>}
       </main>
 
       {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} />}

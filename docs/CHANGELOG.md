@@ -8,9 +8,19 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.7.3] - 2026-11-07
+
+**Prepared patch release:** owner-approved Home presentation and existing-action target refinements. No new practice/account capability, dependency upgrade, schema change or backend operation. See the [release acceptance](evidence/acceptance/release-0.7.3-2026-11-07.md) for versioned gates, delivery and publication boundaries.
+
+### Changed
+
+- Match the owner mobile/wide Home reference with a green gradient, wood-and-mint navigation, round Practice control and viewport-aware guitar placement. Apply the same Home styling to the navigation menu and Frankenstrat note.
+- Use self-hosted Aldrich for the uppercase Home header and Asar for other Home text, with supplied font licenses and fallback fonts for unsupported glyphs.
+- Make the guitar image open the existing note instead of a separate Frankenstrat button. Restrict pointer clicks to its nontransparent silhouette, retaining keyboard operation, visible focus and Close focus return. Existing routes, week selection/loading/retry, Help and other screens retain their behavior.
+
 ## [0.7.2] - 2026-11-07
 
-**Prepared patch release:** owner-approved Practice presentation simplification; existing session calculations, saving/navigation guards, tools and zoom policy remain unchanged. No dependency, schema or backend changes. See the [release acceptance](evidence/acceptance/release-0.7.2-2026-11-07.md) for final gates, delivery and publication boundaries.
+**Source release:** commit `c36376b8c00ddf85c94e942922efca1df829a179`, pushed to origin/master on 2026-11-07; public reads verified 0.7.2 / c36376b, build 10:18 UTC. Owner-approved Practice presentation simplification; existing session calculations, saving/navigation guards, tools and zoom policy remain unchanged. No dependency, schema or backend changes. See the [release acceptance](evidence/acceptance/release-0.7.2-2026-11-07.md) for final gates, delivery and publication boundaries.
 
 ### Changed
 
