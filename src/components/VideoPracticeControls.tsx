@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import AppSelect from './AppSelect'
 import { useI18n } from '../lib/i18n'
 import { bookmarkNameMaxLength, normalizeBookmarkName, normalizeBookmarks, type PlaybackBookmark } from '../lib/localMaterials'
 import { bookmarkSeek, formatPracticeTime, loopRange, validDuration, type LoopMode, type LoopRange } from '../lib/youtubePractice'
@@ -100,8 +101,8 @@ export default function VideoPracticeControls({ kind = 'video', usable, playing,
           <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">{playing ? <path d="M6 4h4v16H6zM14 4h4v16h-4z" /> : <path d="m7 3 15 9-15 9z" />}</svg>
         </button>
         <span className="py-3 text-sm tabular-nums text-slate-300">{formatPracticeTime(position)}</span>
-        <label className="min-w-0 text-sm text-slate-300">{t('Playback speed')}<select value={rates.includes(rate) ? rate : ''} disabled={!usable || rates.length < 2} onChange={(event) => onRate(Number(event.target.value))} className={`${videoControlClass} block max-w-full bg-slate-950`}>{!rates.includes(rate) && <option value="">{t('Speed unavailable')}</option>}{rates.map((value) => <option key={value} value={value}>{t('{rate}x', { rate: value })}</option>)}</select></label>
-        <label className="min-w-0 text-sm text-slate-300">{isAudio ? t('Audio loop') : t('Video loop')}<select value={mode} disabled={!usable} onChange={(event) => setMode(event.target.value as LoopMode)} className={`${videoControlClass} block max-w-full bg-slate-950`}><option value="off">{t('Loop off')}</option><option value="whole">{isAudio ? t('Whole track') : t('Whole video')}</option><option value="section">{t('Loop A-B')}</option></select></label>
+        <label className="min-w-0 text-sm text-slate-300">{t('Playback speed')}<AppSelect value={rates.includes(rate) ? String(rate) : ''} disabled={!usable || rates.length < 2} onValueChange={(value) => onRate(Number(value))} className={`${videoControlClass} block max-w-full bg-slate-950`} options={[...(!rates.includes(rate) ? [{ value: '', label: t('Speed unavailable') }] : []), ...rates.map((value) => ({ value: String(value), label: t('{rate}x', { rate: value }) }))]} aria-label={t('Playback speed')} /></label>
+        <label className="min-w-0 text-sm text-slate-300">{isAudio ? t('Audio loop') : t('Video loop')}<AppSelect value={mode} disabled={!usable} onValueChange={(value) => setMode(value as LoopMode)} className={`${videoControlClass} block max-w-full bg-slate-950`} options={[{ value: 'off', label: t('Loop off') }, { value: 'whole', label: isAudio ? t('Whole track') : t('Whole video') }, { value: 'section', label: t('Loop A-B') }]} aria-label={isAudio ? t('Audio loop') : t('Video loop')} /></label>
       </div>
       <div className="flex flex-wrap items-end gap-2 py-2">
         <label className="text-sm text-slate-300">{t('A (seconds)')}<input type="number" min="0" max={validDuration(duration) ? duration : undefined} step="0.1" value={start} disabled={!usable} onChange={(event) => setStart(event.target.value)} onBlur={() => setApplied({ start, end })} className={`${videoControlClass} block w-28 bg-slate-950`} /></label>

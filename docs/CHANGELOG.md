@@ -6,7 +6,35 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 ## [Unreleased]
 
-Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, key-specific scale materials, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
+Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
+
+## [0.8.0] - 2026-11-09
+
+**Prepared minor release:** new account-wide Songs and date-specific song practice capabilities alongside the approved UI/material refinements. Version 0.7.3 becomes 0.8.0 once; no dependency upgrades or Git tags. Final release gates and production rollout evidence are recorded in the [handoff](project-handoff.md). Preparation is not proof of publication.
+
+**Backend rollout:** after separate owner approval, `20261109120000_practice_day_songs.sql` was applied and verified on 2026-11-09, advancing recorded migration history from 27 to 28. It adds song archival, owner/date/song assignments and three authenticated owner-checked RPCs. Its isolated rollback-only SQL checks passed 53/53 after loading 40 local migrations. Production column/table/RLS/function/grant checks passed, with existing aggregate counts unchanged; no live fixtures or account setup were performed. Do not reapply this or older recorded migrations. Existing ToDo rows/policies, week-song links, sessions and recorded time are retained. Frontend release delivery resumed on 2026-11-10.
+
+### Added
+
+- Account-wide Songs in Practice: add/reuse a named song, reversibly remove it from the active library, and choose Practice to attach it to the selected day's Repertoire. Day selections persist independently of saved sessions and do not start timers, mark Done or count as practice activity.
+- Learn a new song accepts a name, creates/reuses the owned song immediately and selects it for that day. Repertoire and Learn a new song share device-local files, links and bookmarks by song identity; existing owned song metadata migrates without copying bytes. Unassigned block materials remain available for explicit reassignment.
+- Owner-authored Chromatic PDF and all 24 Major/Minor scale sheets. Scale references follow the randomized key, including explicit equivalent-key mappings and safe sharp-sign URLs; open sheets follow re-rolls. Updated the owner's two-notes-per-string PDF.
+- Compact Add learning materials chooser: Choose file or Paste YouTube link. Clipboard reads occur only on the explicit action; valid YouTube links save directly, and denied/unavailable clipboard access exposes a manual paste fallback.
+
+### Changed
+
+- Retire ToDo UI, reads and writes from Practice and Plan while retaining the physical table, its data and older-client compatibility. Practice song lists follow explicit dates; Plan week-song links remain separately editable. Removed songs keep existing history and links.
+- Replace native dropdowns in Practice, Login, Plan, Progress, Settings, Stats and media playback controls with the shared in-app selector, including keyboard operation and viewport-contained options.
+- Practice block headings keep the collapsed timer and Start/Pause beside the block name with inline dividers. Remove Details text/chevron while retaining name-based expansion. Remove Week repertoire and the generic Repertoire reference paragraphs; show readable song titles with expandable materials and inline players.
+- Home uses a viewport-height, non-scrolling scene on mobile and wider screens, including Help. Home call-outs use the wood/mint styling and reposition around their targets without scrolling the page. Other long screens remain scrollable.
+
+### Fixed
+
+- Restore the approved Practice top layout: week navigation first, week-number/focus selector with current-week emphasis, Session date with bordered minute total, and one focus disclosure for program/dates/description. Preserve the Current week Plan link, discard guards and day markers; remove the redundant week strip and duplicate date/info/Today heading.
+- Center mobile header names independently of unequal control groups, and suppress header text selection/callouts during metronome long press without disabling editable field selection.
+- Guard song/day mutations against stale account/date responses and repeated taps; reconcile partial removal/undo failures. Shared song viewers preserve playback, bookmarks and actual block/day timer context.
+
+Physical iPhone/Safari, screen-reader, complete layout and real-user playback acceptance remain manual gaps. Local focused frontend checks passed 87/87 before the final presentation-only repair; no-emit TypeScript passed after that repair. These scoped results do not replace the final test/lint/build gates or production migration/publication evidence.
 
 ## [0.7.3] - 2026-11-07
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
 import { useI18n } from '../lib/i18n'
+import AppSelect from '../components/AppSelect'
 
 type Preferences = {
   language: Language
@@ -111,14 +112,14 @@ export default function Settings() {
         <div className="list mt-3">
           <label className="list-row flex-wrap justify-between text-sm text-slate-200">
             <span>{t('Interface language')}</span>
-            <select
+            <AppSelect
+              aria-label={t('Interface language')}
               value={preferences.language}
-              onChange={(e) => { if (isLanguage(e.target.value)) void changeLanguage(e.target.value) }}
+              onValueChange={(value) => { if (isLanguage(value)) void changeLanguage(value) }}
               disabled={loading || savingKey !== null}
               className="field w-auto disabled:opacity-50"
-            >
-              {supportedLanguages.map((option) => <option key={option} value={option}>{t(option.toUpperCase())}</option>)}
-            </select>
+              options={supportedLanguages.map((option) => ({ value: option, label: t(option.toUpperCase()) }))}
+            />
           </label>
         </div>
       </section>

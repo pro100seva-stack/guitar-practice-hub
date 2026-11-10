@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
 import { useI18n } from '../lib/i18n'
+import AppSelect from '../components/AppSelect'
 import { isValidAccountIdentifier, normalizeAccountIdentifier } from '../lib/accountIdentifier'
 
 type LoginMode = 'sign-in' | 'create-account' | 'reset-password'
@@ -233,13 +234,13 @@ export default function Login() {
         {isCreateMode && (
           <label className="block">
             <span className="label">{t('Language')}</span>
-            <select
+            <AppSelect
+              aria-label={t('Language')}
               value={language}
-              onChange={(e) => { if (isLanguage(e.target.value)) { setLanguage(e.target.value); setInterfaceLanguage(e.target.value) } }}
+              onValueChange={(value) => { if (isLanguage(value)) { setLanguage(value); setInterfaceLanguage(value) } }}
               className="field"
-            >
-              {supportedLanguages.map((option) => <option key={option} value={option}>{t(option.toUpperCase())}</option>)}
-            </select>
+              options={supportedLanguages.map((option) => ({ value: option, label: t(option.toUpperCase()) }))}
+            />
           </label>
         )}
         <label className="block">

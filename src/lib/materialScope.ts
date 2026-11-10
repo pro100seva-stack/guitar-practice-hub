@@ -1,11 +1,16 @@
 import type { LocalMaterial, MaterialMetadataPatch, MaterialScope } from './localMaterials'
+import { normalizeMaterialScope } from './localMaterials'
 
 export type MaterialsByBlock = Record<string, LocalMaterial[]>
 
 export type ActiveMaterial = { blockKey: string; id: string }
 
 export function filterMaterialsByBlock(materials: LocalMaterial[], blockKey: string, songId?: string) {
-  return materials.filter((material) => material.blockKey === blockKey && material.songId === songId)
+  const scope = normalizeMaterialScope({ blockKey, songId })
+  return materials.filter((material) => {
+    const candidate = normalizeMaterialScope(material)
+    return candidate.blockKey === scope.blockKey && candidate.songId === scope.songId
+  })
 }
 
 export function setBlockMaterials(state: MaterialsByBlock, blockKey: string, materials: LocalMaterial[], scope: MaterialScope = { blockKey }): MaterialsByBlock {

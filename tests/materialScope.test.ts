@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, readdirSync } from 'node:fs'
 import { getDefaultMaterials } from '../src/lib/defaultMaterials'
+import { practiceKeyPools } from '../src/lib/practiceKey'
 import * as localApi from '../src/lib/localMaterials'
 import { normalizeBookmarks, type LocalMaterial, type OwnedLocalMaterial } from '../src/lib/localMaterials'
 import { captureLocalMaterialAccess, watchLocalMaterialIdentity, type LocalMaterialAccess } from '../src/lib/localMaterialAccess'
@@ -24,10 +25,11 @@ function material(id: string, blockKey: string): OwnedLocalMaterial {
 }
 
 describe('default material asset synchronization', () => {
-  it('keeps text guidance without missing PDFs and binds only the owner-retained PDF', () => {
+  it('keeps text guidance and binds the supplied exercise PDFs', () => {
     for (const language of ['en', 'ru', 'it', 'fr'] as const) {
       expect(getDefaultMaterials(language, 'warmup')).toEqual([])
-      expect(getDefaultMaterials(language, 'chromatic')[0].filePath).toBeUndefined()
+      expect(getDefaultMaterials(language, 'chromatic')[0].filePath).toBe('/default-exercises/chromatic/chromatic.pdf')
+      expect(existsSync(`public${getDefaultMaterials(language, 'chromatic')[0].filePath}`)).toBe(true)
       expect(getDefaultMaterials(language, 'learning')[0].filePath).toBeUndefined()
       expect(getDefaultMaterials(language, 'chromatic')).toHaveLength(2)
       const retained = getDefaultMaterials(language, 'two_notes_per_string')[0].filePath
@@ -35,7 +37,37 @@ describe('default material asset synchronization', () => {
       expect(existsSync(`public${retained}`)).toBe(true)
     }
     const pdfs = readdirSync('public/default-exercises', { recursive: true }).filter((path) => String(path).toLowerCase().endsWith('.pdf'))
-    expect(pdfs.map(String)).toEqual(['2-notes-per-string\\2-notes-per-string.pdf'].map((path) => path.replaceAll('\\', process.platform === 'win32' ? '\\' : '/')))
+    expect(pdfs).toHaveLength(26)
+  })
+
+  it('matches every randomized scale key to an existing PDF in every language', () => {
+    const expected = {
+      major_scales: ['c', 'g', 'd', 'a', 'e', 'b', 'gb', 'db', 'ab', 'eb', 'bb', 'f'],
+      minor_scales: ['am', 'em', 'bm', 'f#m', 'c#m', 'g#m', 'dm', 'gm', 'cm', 'fm', 'a#m', 'd#m'],
+    }
+    for (const language of ['en', 'ru', 'it', 'fr'] as const) {
+      for (const blockKey of ['major_scales', 'minor_scales'] as const) {
+        const folder = blockKey.replace('_', '-')
+        const reached = new Set<string>()
+        practiceKeyPools[blockKey].forEach((key, index) => {
+          const material = getDefaultMaterials(language, blockKey, key)[0]
+          const expectedPath = `/default-exercises/${folder}/${folder}-${expected[blockKey][index]}.pdf`
+          expect(decodeURIComponent(material.filePath!)).toBe(expectedPath)
+          expect(existsSync(`public${expectedPath}`)).toBe(true)
+          expect(new URL(material.filePath!, 'https://example.com').hash).toBe('')
+          expect(material.filePath).not.toContain('%2523')
+          expect(material.title.length).toBeGreaterThan(0)
+          reached.add(material.filePath!)
+        })
+        expect(reached.size).toBe(12)
+        expect(getDefaultMaterials(language, blockKey)).toEqual([])
+        expect(getDefaultMaterials(language, blockKey, 'unknown')).toEqual([])
+      }
+    }
+    expect(getDefaultMaterials('en', 'minor_scales', 'F#')[0].filePath).toContain('f%23m.pdf')
+    expect(getDefaultMaterials('en', 'major_scales', 'F#')[0].detail).toContain('Gb')
+    expect(getDefaultMaterials('en', 'minor_scales', 'Bb')[0].detail).toContain('A#')
+    expect(getDefaultMaterials('en', 'minor_scales', 'Eb')[0].detail).toContain('D#')
   })
 })
 
@@ -588,6 +620,33 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     await expect(localApi.loadLocalMaterialBlob(access, { id: legacy.id, blockKey: 'warmup' })).rejects.toThrow()
   })
 
+  it('migrates owned song attachments across roles without copying or changing cache bytes', async () => {
+    const cache = installFakeCache(database.events)
+    const saved = await saveLocalMaterial({ ...material('shared-video', 'learning'), source: 'file', type: 'video/mp4', blob: new Blob(['same bytes']), bookmarks: [{ seconds: 3, name: 'Verse' }] })
+    database.seed({ ...saved, blockKey: 'repertoire', songId: 'shared-song' })
+    const beforeKeys = [...cache.storage('guitar-practice-hub-media-v2').keys()]
+    const migrated = await listLocalMaterials('learn_song', 'shared-song')
+    expect(migrated).toEqual([{ ...saved, blockKey: 'song', songId: 'shared-song' }])
+    expect(await listLocalMaterials('repertoire', 'shared-song')).toEqual(migrated)
+    expect([...cache.storage('guitar-practice-hub-media-v2').keys()]).toEqual(beforeKeys)
+    expect(await (await localApi.loadLocalMaterialBlob(access, { id: saved.id, blockKey: 'learn_song', songId: 'shared-song' })).text()).toBe('same bytes')
+    expect(await listLocalMaterials('learning')).toEqual([])
+    expect(await listLocalMaterials('repertoire', 'other-song')).toEqual([])
+  })
+
+  it('moves only an explicitly chosen owned block attachment to its song', async () => {
+    const original = { ...material('unassigned', 'repertoire'), blob: new Blob(['reference']), source: 'file' as const, bookmarks: [9] }
+    database.seed(original)
+    const moved = await localApi.assignLocalMaterialToSong(access, original, 'my-song')
+    expect(moved).toEqual({ ...original, blockKey: 'song', songId: 'my-song' })
+    expect(await listLocalMaterials('repertoire')).toEqual([])
+    expect(await listLocalMaterials('learn_song', 'my-song')).toEqual([moved])
+    expect(await (await localApi.loadLocalMaterialBlob(access, moved)).text()).toBe('reference')
+    await expect(localApi.assignLocalMaterialToSong(access, moved, 'different-song')).rejects.toThrow()
+    await expect(localApi.assignLocalMaterialToSong(access, material('missing', 'repertoire'), 'my-song')).rejects.toThrow()
+    await expect(localApi.assignLocalMaterialToSong(access, material('unassigned', 'learning'), 'my-song')).rejects.toThrow()
+  })
+
   it('isolates repertoire materials by song and keeps block-level materials separate', async () => {
     const firstSongMaterial = { ...material('song-one-file', 'repertoire'), songId: 'song-one' }
     const secondSongMaterial = { ...material('song-two-file', 'repertoire'), songId: 'song-two' }
@@ -596,15 +655,15 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     await saveLocalMaterial(secondSongMaterial)
     await saveLocalMaterial(blockMaterial)
 
-    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([firstSongMaterial])
-    expect(await listLocalMaterials('repertoire', 'song-two')).toEqual([secondSongMaterial])
+    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, blockKey: 'song' }])
+    expect(await listLocalMaterials('repertoire', 'song-two')).toEqual([{ ...secondSongMaterial, blockKey: 'song' }])
     expect(await listLocalMaterials('repertoire')).toEqual([blockMaterial])
 
     await patchLocalMaterialMetadata('song-one-file', 'repertoire', { name: 'Updated' }, 'song-one')
-    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, name: 'Updated' }])
+    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, blockKey: 'song', name: 'Updated' }])
     await expect(patchLocalMaterialMetadata('song-one-file', 'repertoire', { name: 'Leak' }, 'song-two')).rejects.toThrow()
     await expect(deleteLocalMaterial('song-one-file', 'repertoire', 'song-two')).rejects.toThrow()
-    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, name: 'Updated' }])
+    expect(await listLocalMaterials('repertoire', 'song-one')).toEqual([{ ...firstSongMaterial, blockKey: 'song', name: 'Updated' }])
     await deleteLocalMaterial('song-two-file', 'repertoire', 'song-two')
     expect(await listLocalMaterials('repertoire', 'song-one')).toHaveLength(1)
     expect(await listLocalMaterials('repertoire', 'song-two')).toEqual([])

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transpileModule } from 'typescript'
+import { toYouTubeEmbedUrl } from '../src/lib/youtube'
 
 type AuthResult = { data: { session: { user: { id: string }; access_token?: string } | null }; error: null }
 const auth = vi.hoisted(() => ({ change: (_event: string, _session: { user: { id: string }; access_token?: string } | null) => {}, bootstrap: Promise.resolve({ data: { session: null }, error: null }) as Promise<AuthResult>, signOut: vi.fn(async () => ({ error: null })) }))
@@ -21,6 +22,56 @@ beforeEach(() => {
 afterEach(() => { stop?.(); stop = undefined; vi.unstubAllGlobals() })
 
 describe('authenticated local material authority', () => {
+  it.each(['valid', 'empty', 'invalid', 'denied', 'unavailable', 'identity', 'navigation', 'duplicate'])('handles an explicit YouTube clipboard action: %s', async (scenario) => {
+    const source = readFileSync('src/pages/Sessions.tsx', 'utf8')
+    const start = source.indexOf('  function addYouTubeMaterial(')
+    const end = source.indexOf('  function renderMaterialAddControls(', start)
+    const handler = transpileModule(source.slice(start, end), { compilerOptions: { target: 9 } }).outputText
+    let release: (value: string) => void = () => {}
+    const wait = new Promise<string>((resolve) => { release = resolve })
+    const readText = vi.fn(() => scenario === 'denied' ? Promise.reject(new DOMException('Denied', 'NotAllowedError')) : wait)
+    const save = vi.fn()
+    const feedback = vi.fn()
+    const manual = vi.fn()
+    let current = true
+    const navigation = { current: 1 }
+    const context = {
+      localMaterialScopeKey: (blockKey: string, songId?: string) => songId ? `${blockKey}:song:${songId}` : blockKey,
+      clipboardReadsRef: { current: new Set<string>() },
+      urlSavesRef: { current: new Set<string>() },
+      uploadControllersRef: { current: {} },
+      captureMaterialAccess: () => ({}),
+      isLocalMaterialAccessCurrent: () => current,
+      materialNavigationRef: navigation,
+      materialsMountedRef: { current: true },
+      setMaterialAddScope: vi.fn(),
+      setManualYouTubeScopes: manual,
+      patchMaterialFeedback: feedback,
+      navigator: scenario === 'unavailable' ? {} : { clipboard: { readText } },
+      toYouTubeEmbedUrl,
+      addMaterialUrl: save,
+      t: (key: string) => key,
+    }
+    const create = new Function(...Object.keys(context), `${handler}; return pasteYouTubeMaterial`) as (...values: unknown[]) => (blockKey: string, songId?: string) => Promise<void>
+    const run = create(...Object.values(context))
+    const pending = run('repertoire', 'song-one')
+    if (scenario !== 'unavailable') expect(readText).toHaveBeenCalledOnce()
+    if (scenario === 'duplicate') { await run('repertoire', 'song-one'); expect(readText).toHaveBeenCalledOnce() }
+    if (scenario === 'identity') current = false
+    if (scenario === 'navigation') navigation.current++
+    release(scenario === 'empty' ? '  ' : scenario === 'invalid' ? 'https://example.com/video' : '  https://youtu.be/dQw4w9WgXcQ  ')
+    await pending
+    if (scenario === 'valid' || scenario === 'duplicate') expect(save).toHaveBeenCalledWith('repertoire', 'song-one', 'https://youtu.be/dQw4w9WgXcQ')
+    else expect(save).not.toHaveBeenCalled()
+    if (scenario === 'denied' || scenario === 'unavailable') {
+      expect(manual).toHaveBeenCalledOnce()
+      expect(manual.mock.calls[0][0]({})).toEqual({ 'repertoire:song:song-one': true })
+      expect(feedback).toHaveBeenCalledWith('repertoire:song:song-one', expect.objectContaining({ notice: 'materials.pasteManually' }))
+    } else expect(manual).not.toHaveBeenCalled()
+    if (scenario === 'empty' || scenario === 'invalid') expect(feedback).toHaveBeenCalledWith('repertoire:song:song-one', expect.objectContaining({ error: 'materials.youtubeRequired' }))
+    expect(context.clipboardReadsRef.current.size).toBe(0)
+  })
+
   it.each(['.', '..'])('rejects dot-segment owner %s rather than granting a cache namespace', (uid) => {
     stop = watchLocalMaterialIdentity(vi.fn())
     auth.change('SIGNED_IN', sessionFor(uid))
@@ -180,12 +231,15 @@ describe('authenticated local material authority', () => {
       materialNavigationRef: { current: 1 },
       materialsMountedRef: { current: true },
       uploadControllersRef: { current: {} },
+      clipboardReadsRef: { current: new Set<string>() },
+      urlSavesRef: { current: new Set<string>() },
       retryUploadsRef: { current: {} },
       practiceMediaKind: () => null,
       saveLocalMaterial: save,
       loadBlockMaterials: vi.fn(),
       setActiveMaterial: activate,
       setMaterialUrlInputs: vi.fn(),
+      setManualYouTubeScopes: vi.fn(),
       crypto: { randomUUID: () => 'late-upload' },
       URL, DOMException,
       t: (key: string) => key,

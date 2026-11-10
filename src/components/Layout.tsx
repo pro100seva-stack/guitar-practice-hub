@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useMatches, useNavigate, useNavigation } from 'react-router'
 import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, onLocalMaterialInvalidation, signOutLocalMaterialIdentity } from '../lib/localMaterialAccess'
 import { useI18n } from '../lib/i18n'
@@ -15,6 +15,8 @@ const navigationItems = [
 
 export default function Layout() {
   const location = useLocation()
+  const isLandingScreen = location.pathname === '/landing'
+  const isPracticeScreen = location.pathname === '/practice'
   const navigate = useNavigate()
   const matches = useMatches()
   const navigation = useNavigation()
@@ -23,6 +25,8 @@ export default function Layout() {
   const layoutRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
   const headerRef = useRef<HTMLElement | null>(null)
+  const leadingControlsRef = useRef<HTMLDivElement | null>(null)
+  const trailingControlsRef = useRef<HTMLDivElement | null>(null)
   const mainRef = useRef<HTMLElement | null>(null)
   const focusedPathRef = useRef<string | null>(location.pathname)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -37,12 +41,40 @@ export default function Layout() {
     if (!header) return
     const updateHeight = () => {
       layoutRef.current?.style.setProperty('--app-header-h', `${header.getBoundingClientRect().height}px`)
+      const sideWidth = Math.max(leadingControlsRef.current?.getBoundingClientRect().width ?? 0, trailingControlsRef.current?.getBoundingClientRect().width ?? 0)
+      layoutRef.current?.style.setProperty('--app-header-side-width', `${sideWidth}px`)
     }
     const observer = new ResizeObserver(updateHeight)
     observer.observe(header)
+    if (leadingControlsRef.current) observer.observe(leadingControlsRef.current)
+    if (trailingControlsRef.current) observer.observe(trailingControlsRef.current)
     updateHeight()
     return () => observer.disconnect()
   }, [])
+
+  useLayoutEffect(() => {
+    if (!isLandingScreen) return
+    const html = document.documentElement
+    const body = document.body
+    const scrollPosition = { left: window.scrollX, top: window.scrollY }
+    function preserveProperties(style: CSSStyleDeclaration, names: string[]) {
+      const properties = names.map((name) => ({ name, value: style.getPropertyValue(name), priority: style.getPropertyPriority(name) }))
+      return () => properties.forEach(({ name, value, priority }) => {
+        if (value) style.setProperty(name, value, priority)
+        else style.removeProperty(name)
+      })
+    }
+    const restoreHtml = preserveProperties(html.style, ['overflow', 'height', 'overscroll-behavior'])
+    const restoreBody = preserveProperties(body.style, ['position', 'top', 'left', 'right', 'width', 'height', 'overflow', 'overscroll-behavior'])
+    window.scrollTo({ left: 0, top: 0, behavior: 'instant' })
+    Object.assign(html.style, { overflow: 'hidden', height: '100%', overscrollBehavior: 'none' })
+    Object.assign(body.style, { position: 'fixed', top: '0', left: '0', right: '0', width: '100%', height: '100%', overflow: 'hidden', overscrollBehavior: 'none' })
+    return () => {
+      restoreHtml()
+      restoreBody()
+      window.scrollTo({ ...scrollPosition, behavior: 'instant' })
+    }
+  }, [isLandingScreen])
 
   useEffect(() => {
     const screen = navigationItems.find((item) => item.path === location.pathname)
@@ -131,8 +163,6 @@ export default function Layout() {
     key: 'Home',
     path: '/landing',
   }
-  const isLandingScreen = location.pathname === '/landing'
-  const isPracticeScreen = location.pathname === '/practice'
 
   return (
     <HeaderSlotsContext.Provider value={headerSlots}>
@@ -141,7 +171,7 @@ export default function Layout() {
       <header ref={headerRef} className={isLandingScreen ? 'home-header fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)]' : 'fixed inset-x-0 top-0 z-30 border-b border-slate-800 bg-slate-900/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm'}>
         <div className={isLandingScreen ? 'home-header-inner relative' : 'relative mx-auto max-w-6xl px-[var(--page-px)] py-3'}>
           <div className={isLandingScreen ? 'home-header-grid' : isPracticeScreen ? 'app-header-grid app-header-practice' : 'app-header-grid'}>
-            <div className="flex shrink-0 items-center gap-1">
+            <div ref={leadingControlsRef} className="app-header-leading flex shrink-0 items-center gap-1">
               <button
                 ref={menuButtonRef}
                 type="button"
@@ -174,7 +204,7 @@ export default function Layout() {
               {!isLandingScreen && <p className="text-base font-semibold text-slate-200">{t(currentScreen.key)}</p>}
             </div>
 
-            <div className={isPracticeScreen ? 'app-header-tools flex min-w-0 justify-end' : 'flex min-w-0 justify-end'}>
+            <div ref={trailingControlsRef} className={isPracticeScreen ? 'app-header-trailing app-header-tools flex min-w-0 justify-end' : 'app-header-trailing flex min-w-0 justify-end'}>
               {isPracticeScreen && <div ref={setActionsSlot} data-tour="practice-tools" className="flex items-center justify-end gap-1" />}
               {isLandingScreen && (
                 <button
@@ -258,7 +288,7 @@ export default function Layout() {
         {isLandingScreen && <p translate="no" className="home-version">{versionLabel}</p>}
       </main>
 
-      {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} />}
+      {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} isHome={isLandingScreen} />}
     </div>
     </HeaderSlotsContext.Provider>
   )

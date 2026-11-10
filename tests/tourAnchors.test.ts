@@ -51,10 +51,17 @@ describe('guided tour anchors', () => {
     expect(replay).toHaveBeenCalledTimes(isOpen ? 0 : 1)
   })
 
-  it('anchors Details on its existing disclosure and keeps information available without blocks', () => {
+  it('anchors the block disclosure and keeps the song library available without blocks', () => {
     const source = readFileSync('src/pages/Sessions.tsx', 'utf8')
     expect(source).toMatch(/id=\{`block-header-\$\{template.id\}`\}\s+data-tour="practice-details"\s+aria-expanded=\{isExpanded\}/)
-    expect(source.indexOf('<MaterialsInfo />')).toBeLessThan(source.indexOf('{selectedBlocks.length === 0 && ('))
+    const emptyBlocks = source.indexOf('{selectedBlocks.length === 0 && (')
+    const sessionFormEnd = source.lastIndexOf('</form>')
+    const songsAnchor = source.indexOf('data-tour="practice-songs"')
+    expect(emptyBlocks).toBeGreaterThanOrEqual(0)
+    expect(sessionFormEnd).toBeGreaterThan(emptyBlocks)
+    expect(songsAnchor).toBeGreaterThan(sessionFormEnd)
+    expect(source).toMatch(/<\/form>\s*<section data-tour="practice-songs"/)
+    expect(source).not.toContain('MaterialsInfo')
     expect(source.indexOf('data-tour="practice-details"')).toBeLessThan(source.indexOf('{isExpanded && ('))
     const plan = readFileSync('src/pages/Plan.tsx', 'utf8')
     expect(plan).toContain("data-tour={week ? 'plan-repertoire' : undefined}")
@@ -156,15 +163,15 @@ describe('guided tour anchors', () => {
 
   it('registers the approved cards in screen order on all six screens', () => {
     expect(Object.fromEntries(Object.entries(tourSteps).map(([path, steps]) => [path, steps.length])))
-      .toEqual({ '/landing': 6, '/plan': 7, '/practice': 6, '/progress': 2, '/stats': 2, '/settings': 2 })
+      .toEqual({ '/landing': 6, '/plan': 6, '/practice': 6, '/progress': 2, '/stats': 2, '/settings': 2 })
     expect(tourSteps['/landing'].map((step) => step.target)).toEqual(
       ['menu', 'progress', 'current-week', 'practice', 'featured-guitar', 'help'].map((anchor) => `[data-tour="${anchor}"]`),
     )
     expect(tourSteps['/plan'].map((step) => step.target)).toEqual(
-      ['plan-weeks', 'plan-week', 'plan-tasks', 'plan-todos', 'plan-repertoire', 'plan-save', 'plan-practice'].map((anchor) => `[data-tour="${anchor}"]`),
+      ['plan-weeks', 'plan-week', 'plan-tasks', 'plan-repertoire', 'plan-save', 'plan-practice'].map((anchor) => `[data-tour="${anchor}"]`),
     )
     expect(tourSteps['/practice'].map((step) => step.target)).toEqual(
-      ['practice-days', 'practice-block-picker', 'practice-details', 'materials-info', 'practice-tools', 'practice-save'].map((anchor) => `[data-tour="${anchor}"]`),
+      ['practice-days', 'practice-block-picker', 'practice-details', 'practice-songs', 'practice-tools', 'practice-save'].map((anchor) => `[data-tour="${anchor}"]`),
     )
     const stats = readFileSync('src/pages/Stats.tsx', 'utf8')
     expect(stats.indexOf('data-tour="stats-filters"')).toBeLessThan(stats.indexOf('data-tour="stats-summary"'))

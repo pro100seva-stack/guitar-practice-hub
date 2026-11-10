@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useHeaderSlots } from '../components/headerSlots'
 import BlockGallery from '../components/BlockGallery'
+import AppSelect from '../components/AppSelect'
 import PickerDialog from '../components/PickerDialog'
 import RemoveBlockIcon from '../components/icons/RemoveBlockIcon'
 import { supabase } from '../lib/supabase'
 import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from '../lib/localMaterialAccess'
-import { deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, localMaterialCleanupPending, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, retryPendingLocalMaterialCleanup, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate, type PlaybackBookmark } from '../lib/localMaterials'
+import { assignLocalMaterialToSong, deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, localMaterialCleanupPending, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, retryPendingLocalMaterialCleanup, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate, type PlaybackBookmark } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
+import { archivePracticeSong, createPracticeSong, fetchDaySongs, fetchPracticeSongs, isSongBlock, selectDaySong, withDaySongBlocks, type DaySong, type PracticeSong, type SongBlockKey } from '../lib/songPracticeApi'
 import { catalogBlockLabel, createOtherBlock, isSelectableCatalogBlock, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadSessionRestorationCatalog, readProgramBlockMode, type CatalogBlock } from '../lib/catalogApi'
 import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
@@ -18,7 +20,7 @@ import { hasUnsupportedSessionBlocks, planSessionBlockSave, selectPracticedSessi
 import { getPracticedDates } from '../lib/sessionActivity'
 import { resolvePracticeDeepLink } from '../lib/practiceDeepLink'
 import { canInitializeSessionDefaults, getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SelectedBlock, type SessionEditorState } from '../lib/sessionEditorState'
-import { queryWeekSongsWithSortOrder, sameWeekSongs, shouldRefreshWeekSongs, toWeekSongs, type WeekSong, type WeekSongRow, type WeekSongsInFlight } from '../lib/weekSongsApi'
+import type { WeekSong } from '../lib/weekSongsApi'
 import { activateBlockTimer, completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, toggleBlockTimer } from '../lib/sessionBlockTimer'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../lib/materialScope'
 import MetronomeIcon from '../components/icons/MetronomeIcon'
@@ -54,7 +56,6 @@ function MaterialSaveStatus({ saveState, savingLabel, savedLabel }: { saveState:
 type BlockTemplate = CatalogBlock
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
-type Todo = Database['public']['Tables']['todos']['Row']
 type ScheduledPlanWeek = PlanWeek & {
   end_date: string
   start_date: string
@@ -66,7 +67,7 @@ type SessionWithBlocks = Database['public']['Tables']['sessions']['Row'] & {
 }
 
 function localMaterialScopeKey(blockKey: string, songId?: string) {
-  return songId ? `${blockKey}:song:${songId}` : blockKey
+  return songId && (isSongBlock(blockKey) || blockKey === 'song') ? `song:${songId}` : songId ? `${blockKey}:song:${songId}` : blockKey
 }
 
 function isScheduledWeek(week: PlanWeek): week is ScheduledPlanWeek {
@@ -149,9 +150,6 @@ export default function Sessions() {
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [planWeek, setPlanWeek] = useState<ScheduledPlanWeek | null>(null)
-  const [weekSongs, setWeekSongs] = useState<WeekSong[]>([])
-  const [weekSongsLoading, setWeekSongsLoading] = useState(false)
-  const [weekSongsError, setWeekSongsError] = useState<string | null>(null)
   const [programName, setProgramName] = useState<string | null>(null)
   const [programs, setPrograms] = useState<Program[]>([])
   const [membership, setMembership] = useState<{ weekId: string; keys: string[]; status: 'pending' | 'ready' | 'error'; error?: string } | null>(null)
@@ -160,12 +158,28 @@ export default function Sessions() {
   const [weeks, setWeeks] = useState<ScheduledPlanWeek[]>([])
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
-  const [todos, setTodos] = useState<Todo[]>([])
+  const [songLibrary, setSongLibrary] = useState<PracticeSong[]>([])
+  const [daySongs, setDaySongs] = useState<DaySong[]>([])
+  const [songsDate, setSongsDate] = useState('')
+  const [songsError, setSongsError] = useState<string | null>(null)
+  const [songsLoading, setSongsLoading] = useState(false)
+  const [songBusy, setSongBusy] = useState(false)
+  const [newSongName, setNewSongName] = useState('')
+  const [learnSongName, setLearnSongName] = useState('')
+  const [songToRemove, setSongToRemove] = useState<string | null>(null)
+  const [openSongRows, setOpenSongRows] = useState<Set<string>>(new Set())
+  const [legacySongChoices, setLegacySongChoices] = useState<Record<string, string>>({})
+  const songRequestRef = useRef(0)
+  const songOperationRef = useRef(false)
+  const songDateRef = useRef('')
+  const removedDaySongsRef = useRef<DaySong[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [date, setDate] = useState(toLocalIsoDate())
+  songDateRef.current = date
+  const selectedDaySongs = songsDate === date ? daySongs : []
   const [comment, setComment] = useState('')
   const [selectedBlocks, setSelectedBlocks] = useState<SelectedBlock[]>([])
   const [expandedBlockIds, setExpandedBlockIds] = useState<Set<string>>(new Set())
@@ -174,8 +188,7 @@ export default function Sessions() {
   const [removedBlock, setRemovedBlock] = useState<RemovedBlock | null>(null)
   const [pendingDiscardAction, setPendingDiscardAction] = useState<{ run: () => void } | null>(null)
   const [isWeekDetailsOpen, setIsWeekDetailsOpen] = useState(false)
-  const [isTodoOpen, setIsTodoOpen] = useState(false)
-  const [todoError, setTodoError] = useState<string | null>(null)
+  const [isSongsOpen, setIsSongsOpen] = useState(true)
   const [timers, setTimers] = useState<Record<string, BlockTimerState>>({})
   const [isRecentSessionsOpen, setIsRecentSessionsOpen] = useState(false)
   const [showTargetPracticeTime, setShowTargetPracticeTime] = useState(true)
@@ -198,8 +211,12 @@ export default function Sessions() {
   const [activeReferenceTone, setActiveReferenceTone] = useState<string | null>(null)
   const [materialsByBlock, setMaterialsByBlock] = useState<MaterialsByBlock>({})
   const [materialUrlInputs, setMaterialUrlInputs] = useState<Record<string, string>>({})
+  const [materialAddScope, setMaterialAddScope] = useState<string | null>(null)
+  const [manualYouTubeScopes, setManualYouTubeScopes] = useState<Record<string, boolean>>({})
+  const clipboardReadsRef = useRef(new Set<string>())
+  const urlSavesRef = useRef(new Set<string>())
   const [materialFeedback, setMaterialFeedback] = useState<Record<string, MaterialFeedback>>({})
-  const [localStorageEstimate, setLocalStorageEstimate] = useState<LocalStorageEstimate>({ usage: null, quota: null })
+  const [, setLocalStorageEstimate] = useState<LocalStorageEstimate>({ usage: null, quota: null })
   const [activeMaterial, setActiveMaterialState] = useState<ActiveMaterial | null>(null)
   const [activeDefaultMaterial, setActiveDefaultMaterial] = useState<{ blockKey: string; title: string; url: string } | null>(null)
   const [activeMaterialUrl, setActiveMaterialUrl] = useState<string | null>(null)
@@ -229,8 +246,6 @@ export default function Sessions() {
   const materialsRequestTrackerRef = useRef(createRequestTracker())
   const materialNavigationRef = useRef(0)
   const materialsMountedRef = useRef(false)
-  const weekSongsRequestRef = useRef(0)
-  const weekSongsInFlightRef = useRef<WeekSongsInFlight | null>(null)
   const dayStripRef = useRef<HTMLDivElement | null>(null)
   const blocksSectionRef = useRef<HTMLElement | null>(null)
   const addBlockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -295,7 +310,6 @@ export default function Sessions() {
       if (!isLocalMaterialAccessCurrent(materialAccess)) {
         materialsMountedRef.current = false
         materialNavigationRef.current++
-        weekSongsRequestRef.current++
         dataRequestRef.current++
       }
     })
@@ -330,59 +344,6 @@ export default function Sessions() {
     if (id) setActiveDefaultMaterial(null)
   }
 
-  async function loadWeekSongs(weekId: string | null, refresh = false) {
-    const requestId = ++weekSongsRequestRef.current
-    weekSongsInFlightRef.current = weekId ? { weekId, requestId } : null
-    if (!refresh) {
-      setWeekSongs([])
-      setWeekSongsLoading(Boolean(weekId))
-      setWeekSongsError(null)
-    }
-    if (!weekId) return
-
-    const { data, error: songsError } = await queryWeekSongsWithSortOrder(async (orderBySortOrder) => {
-      const query = supabase
-        .from('week_songs')
-        .select('song_id, songs(name)')
-        .eq('week_id', weekId)
-      return orderBySortOrder ? query.order('sort_order', { ascending: true }) : query
-    })
-    if (requestId !== weekSongsRequestRef.current) return
-    weekSongsInFlightRef.current = null
-    if (songsError) {
-      // A failed background refresh keeps the last loaded list.
-      if (!refresh) setWeekSongsError(t('Could not load this week’s repertoire.'))
-      setWeekSongsLoading(false)
-      return
-    }
-    const next = toWeekSongs(data as WeekSongRow[] | null)
-    setWeekSongs((current) => sameWeekSongs(current, next) ? current : next)
-    setWeekSongsError(null)
-    setWeekSongsLoading(false)
-  }
-
-  const refreshWeekSongs = useEffectEvent(() => {
-    const weekId = planWeek?.id ?? null
-    if (shouldRefreshWeekSongs(weekId, weekSongsInFlightRef.current, weekSongsRequestRef.current, navigator.onLine)) void loadWeekSongs(weekId, true)
-  })
-
-  useEffect(() => {
-    function handleVisible() {
-      if (document.visibilityState === 'visible') refreshWeekSongs()
-    }
-    function handlePageShow(event: PageTransitionEvent) {
-      if (event.persisted) refreshWeekSongs()
-    }
-    document.addEventListener('visibilitychange', handleVisible)
-    window.addEventListener('focus', handleVisible)
-    window.addEventListener('pageshow', handlePageShow)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisible)
-      window.removeEventListener('focus', handleVisible)
-      window.removeEventListener('pageshow', handlePageShow)
-    }
-  }, [])
-
   async function loadBlockMaterials(blockKey: string, songId?: string) {
     const scopeKey = localMaterialScopeKey(blockKey, songId)
     const requestId = materialsRequestTrackerRef.current.begin(scopeKey)
@@ -399,12 +360,6 @@ export default function Sessions() {
     }
   }
 
-  const hasSelectedRepertoireBlock = selectedBlocks.some((block) => block.key === 'repertoire')
-  useEffect(() => {
-    if (hasSelectedRepertoireBlock) return
-    weekSongs.forEach((song) => { void loadBlockMaterials('repertoire', song.id) })
-  }, [hasSelectedRepertoireBlock, weekSongs])
-
   const activeMaterialRecord = findActiveMaterial(materialsByBlock, activeMaterial)
   const bookmarks = normalizeBookmarks(activeMaterialRecord?.bookmarks ?? [])
   const activeMaterialRecordRef = useRef<LocalMaterial | null>(null)
@@ -414,14 +369,15 @@ export default function Sessions() {
   const activeMaterialSourceUrl = activeMaterialRecord?.url ?? null
   const activeMaterialHasBlob = Boolean(activeMaterialRecord?.blob)
 
-  const playbackScopeRef = useRef({ date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord })
-  useEffect(() => { playbackScopeRef.current = { date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord } })
+  const playbackScopeRef = useRef({ date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord, selectedDaySongs })
+  useEffect(() => { playbackScopeRef.current = { date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord, selectedDaySongs } })
 
-  function confirmMaterialPlayback(sessionDate: string, weekId: string | null, blockId: string, blockKey: string, materialId: string, intent: PlaybackIntent) {
-    const { date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord } = playbackScopeRef.current
+  function confirmMaterialPlayback(sessionDate: string, weekId: string | null, blockId: string, blockKey: string, materialId: string, intent: PlaybackIntent, scopeKey: string = blockKey, songId?: string) {
+    const { date, planWeek, expandedBlockIds, selectedBlocks, activeMaterial, activeMaterialRecord, selectedDaySongs } = playbackScopeRef.current
     if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(materialAccess) || sessionDate !== date || weekId !== (planWeek?.id ?? null)
       || !expandedBlockIds.has(blockId) || !selectedBlocks.some((block) => block.id === blockId && block.key === blockKey)
-      || activeMaterial?.blockKey !== blockKey || activeMaterial.id !== materialId || activeMaterialRecord?.id !== materialId) return
+      || activeMaterial?.blockKey !== scopeKey || activeMaterial.id !== materialId || activeMaterialRecord?.id !== materialId
+      || (songId && !selectedDaySongs.some((row) => row.song_id === songId && row.block_key === blockKey))) return
     const key = `${sessionDate}:${blockId}`
     const blocked = playbackBlockedRef.current.has(key) || selectedBlocks.some((block) => block.id === blockId && block.done)
     if (intent === 'explicit') playbackBlockedRef.current.delete(key)
@@ -488,7 +444,7 @@ export default function Sessions() {
     let access: LocalMaterialAccess
     try { access = captureMaterialAccess() } catch { return }
     const scopeKey = localMaterialScopeKey(blockKey, songId)
-    if (uploadControllersRef.current[scopeKey]) return
+    if (uploadControllersRef.current[scopeKey] || clipboardReadsRef.current.has(scopeKey) || urlSavesRef.current.has(scopeKey)) return
     delete retryUploadsRef.current[scopeKey]
     patchMaterialFeedback(scopeKey, { error: null, notice: null, saveState: 'saving', cancellable: false, retryUpload: false })
     const detectedType = detectMaterialType(file.name, file.type)
@@ -590,13 +546,15 @@ export default function Sessions() {
     if (file) void handleLocalMaterialUpload(blockKey, file, songId)
   }
 
-  async function addMaterialUrl(blockKey: string, songId?: string) {
+  async function addMaterialUrl(blockKey: string, songId?: string, input?: string) {
     let access: LocalMaterialAccess
     try { access = captureMaterialAccess() } catch { return }
     const scopeKey = localMaterialScopeKey(blockKey, songId)
-    const value = (materialUrlInputs[scopeKey] ?? '').trim()
+    if (urlSavesRef.current.has(scopeKey) || uploadControllersRef.current[scopeKey]) return
+    const value = (input ?? materialUrlInputs[scopeKey] ?? '').trim()
     if (!value) return
     const navigation = materialNavigationRef.current
+    urlSavesRef.current.add(scopeKey)
     patchMaterialFeedback(scopeKey, { error: null, saveState: 'saving' })
     try {
       const youTubeEmbedUrl = toYouTubeEmbedUrl(value)
@@ -611,7 +569,7 @@ export default function Sessions() {
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error(t('Only HTTP and HTTPS URLs are supported.'))
       const materialId = crypto.randomUUID()
       const name = youTubeEmbedUrl ? await lookupYouTubeTitle(youTubeEmbedUrl) ?? youTubeTitleFallback(youTubeEmbedUrl) : url.hostname
-      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access) || navigation !== materialNavigationRef.current) return
       await saveLocalMaterial(access, {
         id: materialId,
         blockKey,
@@ -625,11 +583,15 @@ export default function Sessions() {
       })
       if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
       setMaterialUrlInputs((current) => ({ ...current, [scopeKey]: '' }))
+      setManualYouTubeScopes((current) => ({ ...current, [scopeKey]: false }))
       patchMaterialFeedback(scopeKey, { error: null, notice: null, saveState: 'idle' })
       await loadBlockMaterials(blockKey, songId)
       if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access) && navigation === materialNavigationRef.current) setActiveMaterial(scopeKey, materialId)
     } catch (urlError) {
       if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) patchMaterialFeedback(scopeKey, { error: urlError instanceof Error && [t('This YouTube link is not valid.'), t('Enter a valid web URL.'), t('Only HTTP and HTTPS URLs are supported.')].includes(urlError.message) ? urlError.message : t('Could not save the local material.'), saveState: 'idle' })
+    } finally {
+      urlSavesRef.current.delete(scopeKey)
+      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) patchMaterialFeedback(scopeKey, { saveState: 'idle' })
     }
   }
 
@@ -686,12 +648,6 @@ export default function Sessions() {
     }
   }
 
-  function formatStorageSize(bytes: number | null) {
-    if (bytes == null) return t('Storage estimate unavailable')
-    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
   async function saveMaterialBookmarks(blockKey: string, id: string, next: PlaybackBookmark[], songId?: string) {
     const access = captureMaterialAccess()
     const scopeKey = localMaterialScopeKey(blockKey, songId)
@@ -722,76 +678,166 @@ export default function Sessions() {
     return null
   }
 
-  function renderSongMaterials(song: WeekSong, blockKey: string) {
-    const scopeKey = localMaterialScopeKey(blockKey, song.id)
-    const songMaterials = materialsByBlock[scopeKey] ?? []
-    const songFeedback = materialFeedback[scopeKey] ?? emptyMaterialFeedback
+  function addYouTubeMaterial(blockKey: string, value: string, songId?: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    if (clipboardReadsRef.current.has(scopeKey) || urlSavesRef.current.has(scopeKey) || uploadControllersRef.current[scopeKey]) return
+    const trimmed = value.trim()
+    if (!toYouTubeEmbedUrl(trimmed)) {
+      patchMaterialFeedback(scopeKey, { error: t('materials.youtubeRequired'), notice: null, saveState: 'idle' })
+      return
+    }
+    void addMaterialUrl(blockKey, songId, trimmed)
+  }
+
+  async function pasteYouTubeMaterial(blockKey: string, songId?: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    if (clipboardReadsRef.current.has(scopeKey) || urlSavesRef.current.has(scopeKey) || uploadControllersRef.current[scopeKey]) return
+    let access: LocalMaterialAccess
+    try { access = captureMaterialAccess() } catch { return }
+    const navigation = materialNavigationRef.current
+    const isCurrent = () => materialsMountedRef.current && isLocalMaterialAccessCurrent(access) && navigation === materialNavigationRef.current
+    clipboardReadsRef.current.add(scopeKey)
+    setMaterialAddScope(null)
+    patchMaterialFeedback(scopeKey, { error: null, notice: null, saveState: 'saving' })
+    let value: string
+    try {
+      // Keep this read in the click's user activation; do not await anything first.
+      if (!navigator.clipboard?.readText) throw new Error('Clipboard unavailable')
+      value = await navigator.clipboard.readText()
+    } catch {
+      if (isCurrent()) {
+        setManualYouTubeScopes((current) => ({ ...current, [scopeKey]: true }))
+        patchMaterialFeedback(scopeKey, { error: null, notice: t('materials.pasteManually'), saveState: 'idle' })
+      }
+      return
+    } finally {
+      clipboardReadsRef.current.delete(scopeKey)
+      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) patchMaterialFeedback(scopeKey, { saveState: 'idle' })
+    }
+    if (!isCurrent()) return
+    addYouTubeMaterial(blockKey, value, songId)
+  }
+
+  function renderMaterialAddControls(blockKey: string, songId?: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    const busy = materialFeedback[scopeKey]?.saveState === 'saving'
+    const menuId = `material-add-${scopeKey}`
+    return (
+      <div onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setMaterialAddScope(null) } }} className="flex min-w-0 flex-wrap items-center gap-2 text-sm normal-case tracking-normal">
+        <button type="button" aria-expanded={materialAddScope === scopeKey} aria-controls={menuId} disabled={busy} onClick={() => setMaterialAddScope((current) => current === scopeKey ? null : scopeKey)} className="min-h-11 rounded border border-slate-700 px-3 text-sky-300 hover:border-slate-500 disabled:opacity-50">
+          {t('materials.addLearning')}
+        </button>
+        {materialAddScope === scopeKey && <div id={menuId} className="flex flex-wrap items-center gap-1 rounded border border-slate-700 bg-slate-950 p-1">
+          <button type="button" disabled={busy} onClick={() => { setMaterialAddScope(null); materialFileInputRefs.current[scopeKey]?.click() }} className="min-h-11 rounded px-3 text-slate-100 hover:bg-slate-800 disabled:opacity-50">{t('Choose file')}</button>
+          <button type="button" disabled={busy} onClick={() => { void pasteYouTubeMaterial(blockKey, songId) }} className="min-h-11 rounded px-3 text-slate-100 hover:bg-slate-800 disabled:opacity-50">{t('materials.pasteYouTube')}</button>
+        </div>}
+        <input ref={(element) => { materialFileInputRefs.current[scopeKey] = element }} type="file" accept={materialFileAccept} onChange={(event) => { void handleLocalMaterialUpload(blockKey, event.target.files?.[0], songId); event.currentTarget.value = '' }} hidden />
+        {manualYouTubeScopes[scopeKey] && <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+          <input type="url" aria-label={t('materials.youTubeLink')} placeholder={t('materials.youTubeLink')} value={materialUrlInputs[scopeKey] ?? ''} disabled={busy} onChange={(event) => setMaterialUrlInputs((current) => ({ ...current, [scopeKey]: event.target.value }))} onPaste={(event) => { event.preventDefault(); const value = event.clipboardData.getData('text'); setMaterialUrlInputs((current) => ({ ...current, [scopeKey]: value })); addYouTubeMaterial(blockKey, value, songId) }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addYouTubeMaterial(blockKey, materialUrlInputs[scopeKey] ?? '', songId) } }} className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200" />
+          <button type="button" disabled={busy} onClick={() => addYouTubeMaterial(blockKey, materialUrlInputs[scopeKey] ?? '', songId)} className="min-h-11 rounded border border-slate-700 px-3 text-sky-300 disabled:opacity-50">{t('materials.addYouTube')}</button>
+        </div>}
+      </div>
+    )
+  }
+
+  function renderMaterialViewer(scopeKey: string, blockKey: string, songId?: string) {
+    if (activeMaterial?.blockKey !== scopeKey || !activeMaterialUrl) return null
+    const templateId = templates.find((template) => template.key === blockKey)?.id
+    if (!templateId) return null
+
+    const viewingMaterial = activeMaterialRecord
+    if (!viewingMaterial) return null
+    const uploadedMediaKind = practiceMediaKind(viewingMaterial.type)
+    const isImage = viewingMaterial.type.startsWith('image/')
+    const externalMediaKind = getExternalMediaKind(viewingMaterial)
+    const isExternalPage = externalMediaKind === 'page'
 
     return (
-      <article key={song.id} className="space-y-2 border-b border-slate-800 pb-3 last:border-0">
-        <h5 className="break-words text-sm font-medium text-slate-100">{song.name}</h5>
-        <p className="text-xs text-slate-400">{t('materials.accountScope')}</p>
-        <p className="text-xs text-slate-400">{t('ux.localFiles')}</p>
-        <p className="text-xs text-slate-400">{t('materials.legacy')}</p>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="mt-3 overflow-hidden bg-slate-950">
+        <div className="flex items-center justify-between gap-2 px-2">
+          <span className="min-w-0 truncate text-sm text-slate-300">{viewingMaterial.name}</span>
           <button
             type="button"
-            disabled={songFeedback.saveState === 'saving'}
-            onClick={() => materialFileInputRefs.current[scopeKey]?.click()}
-            className="inline-flex min-h-11 items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500 disabled:opacity-50"
+            onClick={() => setActiveMaterial(scopeKey, null)}
+            className="min-h-11 min-w-11 shrink-0 px-2 text-sm text-slate-300 hover:text-slate-100"
           >
-            {t('Choose file')}
-          </button>
-          <input
-            ref={(element) => { materialFileInputRefs.current[scopeKey] = element }}
-            id={`song-material-file-${song.id}`}
-            type="file"
-            accept={materialFileAccept}
-            onChange={(event) => { void handleLocalMaterialUpload(blockKey, event.target.files?.[0], song.id); event.currentTarget.value = '' }}
-            className="sr-only"
-          />
-          <MaterialSaveStatus saveState={songFeedback.saveState} savingLabel={t('Saving locally…')} savedLabel={t('Saved on this device')} />
-          {renderUploadActions(songFeedback, blockKey, song.id)}
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            type="url"
-            value={materialUrlInputs[scopeKey] ?? ''}
-            disabled={songFeedback.saveState === 'saving'}
-            onChange={(event) => setMaterialUrlInputs((current) => ({ ...current, [scopeKey]: event.target.value }))}
-            placeholder={t('Material URL')}
-            aria-label={t('Material URL for {song}', { song: song.name })}
-            className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
-          />
-          <button type="button" onClick={() => { void addMaterialUrl(blockKey, song.id) }} disabled={songFeedback.saveState === 'saving'} className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300">
-            {t('Add URL')}
+            {t('Close')}
           </button>
         </div>
-        {songMaterials.map((material) => (
-          <div key={material.id} className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-sm">
-            {materialRename?.id === material.id && materialRename.blockKey === blockKey && materialRename.songId === song.id ? (
-              <form className="flex w-full flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); void saveMaterialName() }}>
-                <input autoFocus aria-label={t('Material name')} value={materialRename.draft} disabled={materialRename.saving} onChange={(event) => setMaterialRename((current) => current ? { ...current, draft: event.target.value, error: null } : current)} className="min-h-11 w-full rounded border border-slate-600 bg-slate-950 px-3 text-slate-200" />
-                <button type="submit" disabled={materialRename.saving} className="min-h-11 rounded border border-slate-600 px-3 text-sky-300 disabled:opacity-40">{t('Save name')}</button>
-                <button type="button" disabled={materialRename.saving} onClick={() => setMaterialRename(null)} className="min-h-11 px-3 text-slate-300 disabled:opacity-40">{t('Cancel')}</button>
-                {materialRename.error && <p role="alert" className="w-full text-rose-300">{materialRename.error}</p>}
-              </form>
-            ) : <>
-              <button type="button" onClick={() => setActiveMaterial(scopeKey, material.id)} className={`min-h-11 min-w-0 flex-1 truncate text-left hover:text-sky-200 ${activeMaterial?.blockKey === scopeKey && activeMaterial.id === material.id ? 'text-sky-200' : 'text-sky-300'}`}>
-                {material.name}
-              </button>
-              <button type="button" aria-label={t('Rename {name}', { name: material.name })} onClick={() => setMaterialRename({ id: material.id, blockKey, songId: song.id, draft: material.name, saving: false, error: null })} className="min-h-11 min-w-11 shrink-0 px-2 text-slate-300">{t('Rename')}</button>
-              <button type="button" onClick={() => { void removeLearningMaterial(blockKey, material.id, song.id) }} className="min-h-11 min-w-11 shrink-0 px-2 text-rose-300">{t('Remove')}</button>
-            </>}
+        {externalMediaKind === 'embed' && viewingMaterial.url ? (
+          <YouTubePracticePlayer
+            key={viewingMaterial.id}
+            materialId={viewingMaterial.id}
+            url={viewingMaterial.url}
+            name={viewingMaterial.name}
+            bookmarks={bookmarks}
+            onBookmarksChange={(next) => saveMaterialBookmarks(blockKey, viewingMaterial.id, next, songId)}
+            onPlaybackConfirmed={(intent) => confirmMaterialPlayback(date, planWeek?.id ?? null, templateId, blockKey, viewingMaterial.id, intent, scopeKey, songId)}
+          />
+        ) : isExternalPage && viewingMaterial.url ? (
+          <div className="space-y-3 p-4 text-sm text-slate-300">
+            <p>{t('This web page does not provide an embeddable media format, or it blocks inline viewing.')}</p>
+            <a
+              href={viewingMaterial.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-block rounded border border-slate-700 px-3 py-2 text-sky-300 hover:border-sky-500 hover:text-sky-200"
+            >
+              {t('Open in browser')}
+            </a>
           </div>
-        ))}
-        {activeMaterial?.blockKey === scopeKey && activeMaterialUrl && activeMaterialRecord && (
-          <a href={activeMaterialUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">{t('Open in browser')}</a>
+        ) : uploadedMediaKind || externalMediaKind === 'video' ? (
+          <LocalVideoPracticePlayer key={`${date}:${viewingMaterial.id}:${activeMaterialUrl}`} kind={uploadedMediaKind ?? 'video'} url={activeMaterialUrl} name={viewingMaterial.name} bookmarks={bookmarks}
+            onBookmarksChange={(next) => saveMaterialBookmarks(blockKey, viewingMaterial.id, next, songId)}
+            onPlaybackConfirmed={(intent) => confirmMaterialPlayback(date, planWeek?.id ?? null, templateId, blockKey, viewingMaterial.id, intent, scopeKey, songId)} />
+        ) : isImage || externalMediaKind === 'image' ? (
+          <img src={activeMaterialUrl} alt={viewingMaterial.name} className="max-h-[420px] w-full object-contain" />
+        ) : viewingMaterial.type === 'application/pdf' || externalMediaKind === 'pdf' ? (
+          <div>
+            <object data={activeMaterialUrl} type="application/pdf" aria-label={viewingMaterial.name} className="h-[420px] w-full bg-white">
+              <p className="p-3 text-xs text-slate-700">{t('If the PDF does not appear, your browser cannot show it inline.')}</p>
+            </object>
+            <a href={activeMaterialUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">
+              {t('Open in new tab')}
+            </a>
+          </div>
+        ) : (
+          <iframe
+            src={activeMaterialUrl}
+            title={viewingMaterial.name}
+            className="h-[420px] w-full bg-white"
+          />
         )}
-        {songFeedback.error && <p role="alert" className="break-words text-sm text-rose-300">{songFeedback.error}</p>}
-        {songFeedback.notice && <p role="status" className="break-words text-sm text-amber-300">{songFeedback.notice}</p>}
-      </article>
+        {mediaError && <p className="py-2 text-sm text-rose-300">{mediaError}</p>}
+      </div>
     )
+
+  }
+
+  function renderSongMaterials(song: WeekSong, blockKey: string) {
+    const scopeKey = localMaterialScopeKey(blockKey, song.id)
+    const rowKey = blockKey + ':' + song.id
+    const songMaterials = materialsByBlock[scopeKey] ?? []
+    const songFeedback = materialFeedback[scopeKey] ?? emptyMaterialFeedback
+    const open = openSongRows.has(rowKey)
+    return <article key={song.id} className="min-w-0 border-b border-slate-800 py-1 last:border-0">
+      <h4><button type="button" aria-expanded={open} onClick={() => { setOpenSongRows((current) => { const next = new Set(current); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next }); if (!open) void loadBlockMaterials(blockKey, song.id) }} className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-base font-semibold text-slate-100"><span className="min-w-0 break-words">{song.name}</span><span aria-hidden="true" className="shrink-0 text-sm text-slate-400">{open ? '-' : '+'}</span></button></h4>
+      {open && <div className="space-y-2 pb-2">
+        {renderMaterialAddControls(blockKey, song.id)}
+        <div className="flex flex-wrap items-center gap-2"><MaterialSaveStatus saveState={songFeedback.saveState} savingLabel={t('Saving locally…')} savedLabel={t('Saved on this device')} />{renderUploadActions(songFeedback, blockKey, song.id)}</div>
+        {materialCleanupPending && <p role="status" className="meta">{t('materials.cleanupPendingNote')}</p>}
+        {songMaterials.map((material) => <div key={material.id} className="flex min-h-11 flex-wrap items-center gap-2 text-sm">
+          {materialRename?.id === material.id && materialRename.songId === song.id ? <div className="flex w-full flex-wrap gap-2"><input aria-label={t('Material name')} value={materialRename.draft} onChange={(event) => setMaterialRename((current) => current ? { ...current, draft: event.target.value } : current)} className="field" /><button type="button" disabled={materialRename.saving} onClick={() => void saveMaterialName()} className="btn btn-secondary">{t('Save name')}</button><button type="button" onClick={() => setMaterialRename(null)} className="btn btn-ghost">{t('Cancel')}</button>{materialRename.error && <p role="alert" className="msg-error">{materialRename.error}</p>}</div> : <>
+            <button type="button" onClick={() => setActiveMaterial(scopeKey, material.id)} className="min-h-11 min-w-0 flex-1 break-words text-left text-sky-300">{material.name}</button>
+            <button type="button" aria-label={t('Rename {name}', { name: material.name })} onClick={() => setMaterialRename({ id: material.id, blockKey, songId: song.id, draft: material.name, saving: false, error: null })} className="min-h-11 px-2 text-slate-300">{t('Rename')}</button>
+            <button type="button" onClick={() => void removeLearningMaterial(blockKey, material.id, song.id)} className="min-h-11 px-2 text-rose-300">{t('Remove')}</button>
+          </>}
+        </div>)}
+        {renderMaterialViewer(scopeKey, blockKey, song.id)}
+        {songFeedback.error && <p role="alert" className="msg-error">{songFeedback.error}</p>}
+        {songFeedback.notice && <p role="status" className="meta">{songFeedback.notice}</p>}
+      </div>}
+    </article>
   }
 
   useEffect(() => {
@@ -879,7 +925,7 @@ export default function Sessions() {
 
     const today = toLocalIsoDate()
 
-    const [weeksResult, planResult, templatesResult, sessionsResult, programsResult, todosResult] = await Promise.all([
+    const [weeksResult, planResult, templatesResult, sessionsResult, programsResult] = await Promise.all([
       supabase
         .from('plan_weeks')
         .select('*')
@@ -898,7 +944,6 @@ export default function Sessions() {
         .select('*, session_blocks(*)')
         .order('session_date', { ascending: false }),
       supabase.from('programs').select('*'),
-      supabase.from('todos').select('*').order('sort_order', { ascending: true }),
     ])
     if (requestId !== dataRequestRef.current) return
     setCatalogLoading(false)
@@ -935,12 +980,6 @@ export default function Sessions() {
       return
     }
 
-    if (todosResult.error) {
-      setError(todosResult.error.message)
-      setLoading(false)
-      return
-    }
-
     const allWeeks = ((weeksResult.data ?? []) as PlanWeek[]).filter(isScheduledWeek)
     const linked = keep ? null : resolvePracticeDeepLink(allWeeks, linkedWeekId ?? null, today)
     const keptWeek = keep?.weekId ? allWeeks.find((entry) => entry.id === keep.weekId) : linked?.week
@@ -964,8 +1003,6 @@ export default function Sessions() {
 
     setWeeks(allWeeks)
     setPlanWeek(currentWeek)
-    void loadWeekSongs(currentWeek?.id ?? null)
-    setTodos(currentWeek ? ((todosResult.data ?? []) as Todo[]).filter((todo) => todo.week_id === currentWeek.id) : [])
     setProgramName((programsResult.data as Program[] | null)?.find((program) => program.id === currentWeek?.program_id)?.name ?? null)
     setPrograms((programsResult.data ?? []) as Program[])
     setSelectedWeekIndex(currentWeekIndex >= 0 ? currentWeekIndex : 0)
@@ -1009,33 +1046,11 @@ export default function Sessions() {
     return weekDates.find((value) => isTodayDate(value)) ?? weekDates[0]
   }
 
-  async function loadTodos(weekId: string | null) {
-    if (!weekId) {
-      setTodos([])
-      return
-    }
-
-    const { data, error: todoError } = await supabase
-      .from('todos')
-      .select('*')
-      .eq('week_id', weekId)
-      .order('sort_order', { ascending: true })
-
-    if (todoError) {
-      setError(todoError.message)
-      return
-    }
-
-    setTodos((data ?? []) as Todo[])
-  }
-
   function handleSelectWeek(week: ScheduledPlanWeek) {
     editorNavigationRef.current++
     defaultsSuppressedDateRef.current = null
     setPlanWeek(week)
     setProgramName(programs.find((program) => program.id === week.program_id)?.name ?? null)
-    void loadWeekSongs(week.id)
-    void loadTodos(week.id)
     const nextDate = getDefaultDateForWeek(week)
     const editorState = getSessionEditorState(nextDate, templates, sessions, membership?.weekId === week.id && membership.status === 'ready' ? membership.keys : [])
     setDate(nextDate)
@@ -1075,14 +1090,10 @@ export default function Sessions() {
     if (nextWeek) {
       setPlanWeek(nextWeek)
       setProgramName(programs.find((program) => program.id === nextWeek.program_id)?.name ?? null)
-      void loadWeekSongs(nextWeek.id)
-      void loadTodos(nextWeek.id)
       setSelectedWeekIndex(sessionWeekIndex)
     } else {
       setPlanWeek(null)
       setProgramName(null)
-      void loadWeekSongs(null)
-      setTodos([])
     }
     setDate(session.session_date)
     setComment(editorState.comment)
@@ -1118,90 +1129,130 @@ export default function Sessions() {
       if (activeMaterial && activeMaterial.blockKey !== blockKey) setActiveMaterialState(null)
       if (activeDefaultMaterial && activeDefaultMaterial.blockKey !== blockKey) setActiveDefaultMaterial(null)
       void loadBlockMaterials(blockKey)
-      if (blockKey === 'repertoire') weekSongs.forEach((song) => { void loadBlockMaterials(blockKey, song.id) })
+      if (isSongBlock(blockKey)) selectedDaySongs.filter((row) => row.block_key === blockKey).forEach((row) => { void loadBlockMaterials(blockKey, row.song_id) })
     }
   }
 
-  function addTodo() {
-    if (!planWeek) return
+  const songsUnavailable = () => t('songs.unavailable')
+  const songLoadError = useEffectEvent(() => t('songs.unavailable'))
 
-    const nextSortOrder = Math.max(-1, ...todos.map((todo) => todo.sort_order)) + 1
-    setTodos((current) => [...current, {
-      id: `draft-${Date.now()}`,
-      week_id: planWeek.id,
-      name: '',
-      done: false,
-      sort_order: nextSortOrder,
-      source: 'app',
-    }])
+  async function reloadSongLibrary() {
+    const access = captureMaterialAccess()
+    const songs = await fetchPracticeSongs()
+    if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setSongLibrary(songs)
+    return songs
   }
 
-  function updateTodo(index: number, updates: Partial<Todo>) {
-    setTodos((current) => current.map((todo, todoIndex) => todoIndex === index ? { ...todo, ...updates } : todo))
+  useEffect(() => {
+    if (!templates.length || loading) return
+    let cancelled = false
+    const request = ++songRequestRef.current
+    const selectedDate = date
+    const access = materialAccess
+    setSongsLoading(true)
+    setSongsError(null)
+    setDaySongs([])
+    setSongsDate('')
+    Promise.all([fetchPracticeSongs(), fetchDaySongs(selectedDate)]).then(([songs, choices]) => {
+      if (cancelled || request !== songRequestRef.current || songDateRef.current !== selectedDate || !materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      setSongLibrary(songs)
+      setDaySongs(choices)
+      setSongsDate(selectedDate)
+      setEditorBaseline((current) => withDaySongBlocks(current, choices, templates))
+      setSelectedBlocks((current) => withDaySongBlocks({ comment: '', timers: {}, selectedBlocks: current }, choices, templates).selectedBlocks)
+    }).catch(() => {
+      if (!cancelled && request === songRequestRef.current && songDateRef.current === selectedDate && materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setSongsError(songLoadError())
+    }).finally(() => {
+      if (!cancelled && request === songRequestRef.current && songDateRef.current === selectedDate && materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setSongsLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [date, templates, materialAccess, loading])
+
+  function applyDaySongs(choices: DaySong[], key?: SongBlockKey) {
+    setDaySongs(choices)
+    setSongsDate(date)
+    setEditorBaseline((current) => withDaySongBlocks(current, choices, templates))
+    setSelectedBlocks((current) => withDaySongBlocks({ comment: '', timers: {}, selectedBlocks: current }, choices, templates).selectedBlocks)
+    const template = templates.find((item) => item.key === key)
+    if (template) {
+      setExpandedBlockIds(new Set([template.id]))
+      void loadBlockMaterials(key!)
+    }
   }
 
-  async function toggleTodoDone(index: number, done: boolean) {
-    const todo = todos[index]
-    if (!todo) return
-
-    updateTodo(index, { done })
-    if (todo.id.startsWith('draft-')) {
-      if (todo.name.trim()) await saveTodo({ ...todo, done })
-      return
-    }
-
-    setTodoError(null)
-    const { error: todoUpdateError } = await supabase.from('todos').update({ done }).eq('id', todo.id)
-    if (todoUpdateError) {
-      setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done: todo.done } : item))
-      setTodoError(t('Could not save the ToDo.'))
-    }
+  async function practiceSong(song: PracticeSong, key: SongBlockKey = 'repertoire') {
+    if (songOperationRef.current || !templates.some((template) => template.key === key)) return
+    const selectedDate = date
+    const access = captureMaterialAccess()
+    songRequestRef.current++
+    setSongsLoading(false)
+    songOperationRef.current = true
+    setSongBusy(true)
+    setSongsError(null)
+    try {
+      await selectDaySong(selectedDate, key, song.id, true)
+      const choices = await fetchDaySongs(selectedDate)
+      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access) || songDateRef.current !== selectedDate) return
+      applyDaySongs(choices, key)
+    } catch { if (isLocalMaterialAccessCurrent(access)) setSongsError(songsUnavailable()) }
+    finally { songOperationRef.current = false; if (isLocalMaterialAccessCurrent(access)) setSongBusy(false) }
   }
 
-  async function saveTodo(todo: Todo) {
-    const name = todo.name.trim()
-    if (!name || !planWeek) return
-
-    setTodoError(null)
-    const payload = {
-      week_id: planWeek.id,
-      name,
-      done: todo.done,
-      sort_order: todo.sort_order,
-      source: todo.source ?? 'app',
-    }
-
-    if (todo.id.startsWith('draft-')) {
-      const { data, error: todoError } = await supabase.from('todos').insert(payload).select('*').single()
-      if (todoError || !data) {
-        setTodoError(t('Could not save the ToDo.'))
-        return
-      }
-      setTodos((current) => current.map((item) => item.id === todo.id ? data as Todo : item))
-      return
-    }
-
-    const { data, error: todoError } = await supabase.from('todos').update(payload).eq('id', todo.id).select('*').single()
-    if (todoError || !data) {
-      setTodoError(t('Could not save the ToDo.'))
-      return
-    }
-    setTodos((current) => current.map((item) => item.id === todo.id ? data as Todo : item))
+  async function addLibrarySong(key?: SongBlockKey) {
+    const name = (key ? learnSongName : newSongName).trim()
+    if (!name || songOperationRef.current) return
+    const selectedDate = date
+    const access = captureMaterialAccess()
+    songRequestRef.current++
+    setSongsLoading(false)
+    songOperationRef.current = true
+    setSongBusy(true)
+    setSongsError(null)
+    try {
+      const songId = await createPracticeSong(name, key ? selectedDate : undefined, key)
+      await reloadSongLibrary()
+      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      const choices = await fetchDaySongs(selectedDate)
+      if (songDateRef.current !== selectedDate || !isLocalMaterialAccessCurrent(access)) return
+      applyDaySongs(choices, key)
+      if (key) {
+        setLearnSongName('')
+        setOpenSongRows((current) => new Set([...current, `${key}:${songId}`]))
+        void loadBlockMaterials(key, songId)
+      } else setNewSongName('')
+    } catch { if (isLocalMaterialAccessCurrent(access)) setSongsError(songsUnavailable()) }
+    finally { songOperationRef.current = false; if (isLocalMaterialAccessCurrent(access)) setSongBusy(false) }
   }
 
-  async function removeTodo(index: number) {
-    const todo = todos[index]
-    if (!todo) return
+  async function removeLibrarySong(id: string) {
+    if (songOperationRef.current) return
+    const access = captureMaterialAccess()
+    const selectedDate = date
+    songRequestRef.current++
+    setSongsLoading(false)
+    songOperationRef.current = true
+    setSongBusy(true)
+    try {
+      await archivePracticeSong(id)
+      if (!isLocalMaterialAccessCurrent(access)) return
+      setSongLibrary((current) => current.filter((song) => song.id !== id))
+      setSongToRemove(null)
+      const choices = await fetchDaySongs(selectedDate)
+      if (songDateRef.current === selectedDate && isLocalMaterialAccessCurrent(access)) applyDaySongs(choices)
+    } catch { if (isLocalMaterialAccessCurrent(access)) setSongsError(songsUnavailable()) }
+    finally { songOperationRef.current = false; if (isLocalMaterialAccessCurrent(access)) setSongBusy(false) }
+  }
 
-    setTodos((current) => current.filter((item) => item.id !== todo.id))
-    if (todo.id.startsWith('draft-')) return
-
-    setTodoError(null)
-    const { error: todoDeleteError } = await supabase.from('todos').delete().eq('id', todo.id)
-    if (todoDeleteError) {
-      setTodos((current) => [...current, todo].sort((a, b) => a.sort_order - b.sort_order))
-      setTodoError(t('Could not save the ToDo.'))
-    }
+  async function moveLegacyMaterial(blockKey: string, material: LocalMaterial) {
+    const songId = legacySongChoices[material.id]
+    if (!songId) return
+    const access = captureMaterialAccess()
+    try {
+      await assignLocalMaterialToSong(access, { id: material.id, blockKey }, songId)
+      if (!isLocalMaterialAccessCurrent(access)) return
+      await loadBlockMaterials(blockKey)
+      await loadBlockMaterials('song', songId)
+    } catch { if (isLocalMaterialAccessCurrent(access)) patchMaterialFeedback(blockKey, { error: t('Could not save material changes.') }) }
   }
 
   function addBlock(template: BlockTemplate) {
@@ -1231,7 +1282,40 @@ export default function Sessions() {
     }
   }
 
-  function removeBlock(templateId: string) {
+  async function updateRemovedSongChoices(choices: DaySong[], selectedDate: string, selected: boolean, access: LocalMaterialAccess) {
+    const results = await Promise.allSettled(choices.map((row) => selectDaySong(selectedDate, row.block_key as SongBlockKey, row.song_id, selected)))
+    if (results.every((result) => result.status === 'fulfilled')) return
+    // Reconcile partial network failures only after every write settles.
+    try {
+      const actual = await fetchDaySongs(selectedDate)
+      if (songDateRef.current === selectedDate && isLocalMaterialAccessCurrent(access)) applyDaySongs(actual)
+    } catch { /* Keep the current editor and surface the failed save below. */ }
+    throw new Error('Song selection could not be saved')
+  }
+
+  async function removeBlock(templateId: string) {
+    const block = selectedBlocks.find((item) => item.id === templateId)
+    const choices = selectedDaySongs.filter((row) => row.block_key === block?.key)
+    if (choices.length) {
+      if (songOperationRef.current) return
+      const selectedDate = date
+      const access = captureMaterialAccess()
+      songRequestRef.current++
+      setSongsLoading(false)
+      songOperationRef.current = true
+      setSongBusy(true)
+      try {
+        await updateRemovedSongChoices(choices, selectedDate, false, access)
+        if (songDateRef.current !== selectedDate || !isLocalMaterialAccessCurrent(access)) return
+        setDaySongs((current) => current.filter((row) => row.block_key !== block?.key))
+        removedDaySongsRef.current = choices
+      } catch { if (isLocalMaterialAccessCurrent(access)) setSongsError(songsUnavailable()); return }
+      finally { songOperationRef.current = false; if (isLocalMaterialAccessCurrent(access)) setSongBusy(false) }
+    } else removedDaySongsRef.current = []
+    removeBlockLocally(templateId)
+  }
+
+  function removeBlockLocally(templateId: string) {
     const index = selectedBlocks.findIndex((block) => block.id === templateId)
     if (index < 0) return
     editorRevisionRef.current++
@@ -1259,7 +1343,28 @@ export default function Sessions() {
     blocksSectionRef.current?.focus({ preventScroll: true })
   }
 
-  function undoRemoveBlock() {
+  async function undoRemoveBlock() {
+    if (!removedBlock) return
+    const choices = removedDaySongsRef.current
+    if (choices.length) {
+      const selectedDate = date
+      const access = captureMaterialAccess()
+      if (songOperationRef.current) return
+      songRequestRef.current++
+      setSongsLoading(false)
+      songOperationRef.current = true
+      setSongBusy(true)
+      try {
+        await updateRemovedSongChoices(choices, selectedDate, true, access)
+        if (songDateRef.current !== selectedDate || !isLocalMaterialAccessCurrent(access)) return
+        setDaySongs((current) => [...current.filter((row) => !choices.some((choice) => choice.song_id === row.song_id && choice.block_key === row.block_key)), ...choices])
+      } catch { if (isLocalMaterialAccessCurrent(access)) setSongsError(songsUnavailable()); return }
+      finally { songOperationRef.current = false; if (isLocalMaterialAccessCurrent(access)) setSongBusy(false) }
+    }
+    undoRemoveBlockLocally()
+  }
+
+  function undoRemoveBlockLocally() {
     if (!removedBlock) return
     editorRevisionRef.current++
     const { block, timer, index } = removedBlock
@@ -1470,6 +1575,9 @@ export default function Sessions() {
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node
+      const popup = target instanceof Element ? target.closest<HTMLElement>('[data-app-select-trigger]') : null
+      const openerId = popup?.dataset.appSelectTrigger
+      if (openerId && toolPanelRef.current?.contains(document.getElementById(openerId))) return
       if (metronomeButtonRef.current?.contains(target) || tunerButtonRef.current?.contains(target) || toolPanelRef.current?.contains(target)) return
       closePanels()
     }
@@ -1811,7 +1919,6 @@ export default function Sessions() {
   const isDirty = isSessionEditorDirty(editorBaseline, { comment, timers: displayTimers, selectedBlocks })
   const canSave = selectedBlocks.length > 0 || savedForDate
   const selectableTemplates = templates.filter(isSelectableCatalogBlock)
-  const todosDone = todos.filter((todo) => todo.done).length
 
   function confirmDiscard(action: () => void) {
     if (saving) return
@@ -1914,7 +2021,7 @@ export default function Sessions() {
               onContextMenu={handleMetronomeContextMenu}
               onKeyDown={handleMetronomeKeyDown}
               onClick={handleMetronomeButtonClick}
-              aria-label={t(isMetronomePlaying ? 'ux.stopMetronome' : 'ux.startMetronome')}
+              aria-label={t(isMetronomePlaying ? 'Playing' : 'Metronome')}
               aria-haspopup="true"
               aria-expanded={isMetronomeSettingsOpen}
               aria-keyshortcuts="Shift+Enter Shift+F10"
@@ -1938,13 +2045,13 @@ export default function Sessions() {
             type="button"
             ref={tunerButtonRef}
             aria-expanded={isTunerOpen}
-            aria-label={t('ux.referenceTones')}
+            aria-label={t('Tuner')}
             onPointerDown={handleTunerPointerDown}
             onPointerUp={handleTunerPointerUp}
             onPointerCancel={handleTunerPointerUp}
             onContextMenu={handleTunerContextMenu}
             onClick={handleTunerButtonClick}
-            title={t('ux.referenceTones')}
+            title={t('Tuner')}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-slate-200"
           >
             <TuningForkIcon className="h-6 w-auto" />
@@ -1953,7 +2060,7 @@ export default function Sessions() {
         headerSlots.actions,
       )}
 
-        {headerSlots.panel && isToolPanelOpen && createPortal(<div id="practice-tool-panel" ref={toolPanelRef} tabIndex={-1} role="group" aria-label={t(isTunerOpen ? 'ux.referenceTones' : 'Metronome settings')} className="mx-auto max-h-[60dvh] max-w-6xl overflow-x-auto overflow-y-auto border-b border-slate-800 bg-slate-900 p-3 shadow-lg shadow-slate-950/30 focus:outline-none">
+        {headerSlots.panel && isToolPanelOpen && createPortal(<div ref={toolPanelRef} tabIndex={-1} role="group" aria-label={t(isTunerOpen ? 'Tuner' : 'Metronome settings')} className="mx-auto max-h-[60dvh] max-w-6xl overflow-x-auto overflow-y-auto border-b border-slate-800 bg-slate-900 p-3 shadow-lg shadow-slate-950/30 focus:outline-none">
               {isMetronomeSettingsOpen && <div className="flex flex-wrap items-end justify-center gap-2">
                 <label className="text-xs text-slate-400">
                   BPM
@@ -1970,16 +2077,13 @@ export default function Sessions() {
 
                 <label className="text-xs text-slate-400">
                   {t('Time')}
-                  <select
+                  <AppSelect
                     value={timeSignatureMode}
-                    onChange={(event) => handleTimeSignatureChange(event.target.value as '3/4' | '4/4' | '5/4' | 'custom')}
+                    onValueChange={(value) => handleTimeSignatureChange(value as '3/4' | '4/4' | '5/4' | 'custom')}
+                    options={[{ value: '3/4', label: '3/4' }, { value: '4/4', label: '4/4' }, { value: '5/4', label: '5/4' }, { value: 'custom', label: t('Custom') }]}
+                    aria-label={t('Time')}
                     className="mt-1 h-11 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
-                  >
-                    <option value="3/4">3/4</option>
-                    <option value="4/4">4/4</option>
-                    <option value="5/4">5/4</option>
-                    <option value="custom">{t('Custom')}</option>
-                  </select>
+                  />
                 </label>
 
                 {timeSignatureMode === 'custom' && (
@@ -2044,20 +2148,16 @@ export default function Sessions() {
               </div>}
               {isTunerOpen && (
                 <div>
-                  <p className="mb-2 text-sm text-slate-300">{t('ux.referenceTones')}</p>
-                  <select
+                  <AppSelect
                     value={tuningKey}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       stopReferenceTone()
-                      setTuningKey(event.target.value as TuningKey)
+                      setTuningKey(value as TuningKey)
                     }}
+                    options={Object.entries(tuningPresets).map(([key, tuning]) => ({ value: key, label: t(tuning.label) }))}
                     className="h-11 w-full rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
                     aria-label={t('Guitar tuning')}
-                  >
-                    {Object.entries(tuningPresets).map(([key, tuning]) => (
-                      <option key={key} value={key}>{t(tuning.label)}</option>
-                    ))}
-                  </select>
+                  />
                   <div key={tuningKey} className="mt-2 grid grid-cols-3 gap-1">
                     {tuningPresets[tuningKey].notes.map((note) => (
                       (() => {
@@ -2129,21 +2229,21 @@ export default function Sessions() {
           >
             <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5l-5 5 5 5" /></svg>
           </button>
-          <select
+          <AppSelect
             id="practice-week-select"
             value={planWeek?.id ?? ''}
-            onChange={(event) => {
-              const targetWeek = weeks.find((weekItem) => weekItem.id === event.target.value)
+            disabled={saving || weeks.length === 0}
+            onValueChange={(value) => {
+              const targetWeek = weeks.find((weekItem) => weekItem.id === value)
               if (targetWeek) confirmDiscard(() => handleSelectWeek(targetWeek))
             }}
+            options={weeks.map((weekItem) => ({
+              value: weekItem.id,
+              label: t('Week {week}', { week: weekItem.week_number }) + (weekItem.focus ? ' - ' + weekItem.focus : '') + (weekItem.id === actualCurrentWeek?.id ? ' - ' + t('Current week') : ''),
+              className: weekItem.id === actualCurrentWeek?.id ? 'font-semibold text-sky-300 bg-sky-500/10' : undefined,
+            }))}
             className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 text-base text-slate-200 focus:border-slate-500"
-          >
-            {weeks.map((weekItem) => (
-              <option key={weekItem.id} value={weekItem.id} className={weekItem.id === actualCurrentWeek?.id ? 'font-semibold text-sky-300' : undefined}>
-                {t('Week {week}', { week: weekItem.week_number })}{weekItem.focus ? ` · ${weekItem.focus}` : ''}{weekItem.id === actualCurrentWeek?.id ? ` · ${t('Current week')}` : ''}
-              </option>
-            ))}
-          </select>
+          />
           <button
             type="button"
             disabled={saving || !adjacentWeeks.next}
@@ -2268,23 +2368,22 @@ export default function Sessions() {
               const timerMinutes = Math.floor(elapsedSeconds / 60)
               const timerSeconds = elapsedSeconds % 60
               const isExpanded = expandedBlockIds.has(template.id)
-              const defaultMaterials = getDefaultMaterials(language, template.key)
+              const defaultMaterials = getDefaultMaterials(language, template.key, isPracticeKeyBlock(template.key) ? practiceKeys[template.key] : undefined)
               const blockMaterials = materialsByBlock[template.key] ?? []
               const blockFeedback = materialFeedback[template.key] ?? emptyMaterialFeedback
 
               return (
                 <div key={template.id} className="border-b border-slate-800 py-1">
                   <div className="min-w-0">
-                    <div className="practice-block-heading min-h-14 gap-x-2">
-                      <label className="practice-block-done flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-300">
+                    <div className="flex min-h-14 items-center">
+                      <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
                         <input
                           type="checkbox"
                           checked={selected.done}
                           onChange={(event) => toggleBlock(template.id, event.target.checked)}
-                          aria-label={t('ux.markDone', { block: template.label })}
+                          aria-label={template.label}
                           className="h-5 w-5 rounded border-slate-700 bg-slate-950"
                         />
-                        <span>{t('Done')}</span>
                       </label>
                       <h3 className="min-w-0 flex-1">
                         <button
@@ -2293,22 +2392,31 @@ export default function Sessions() {
                           data-tour="practice-details"
                           aria-expanded={isExpanded}
                           onClick={() => toggleBlockDetails(template.id, template.key)}
-                          className="flex min-h-14 w-full min-w-0 scroll-mt-32 flex-wrap items-center justify-between gap-2 rounded-lg px-2 text-left transition hover:bg-slate-800/60 active:bg-slate-800"
+                          className="flex min-h-14 w-full min-w-0 scroll-mt-32 items-center justify-between gap-2 rounded-lg px-2 text-left transition hover:bg-slate-800/60 active:bg-slate-800"
                         >
-                          <span className="text-base font-semibold text-slate-100 [overflow-wrap:anywhere]">{template.label}</span>
-                          <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
-                            {t('Details')}
-                            <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-5 w-5 shrink-0 text-slate-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M5 8l5 5 5-5" />
-                            </svg>
-                          </span>
+                          <span className="min-w-0 break-words text-base font-semibold text-slate-100">{template.label}</span>
                         </button>
                       </h3>
+                      {!isExpanded && (
+                        <div className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-slate-300">
+                          <span aria-hidden="true" className="h-6 border-l border-slate-700" />
+                          <span className="font-mono" aria-label={t('Timer')}>{String(timerMinutes).padStart(2, '0')}:{String(timerSeconds).padStart(2, '0')}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleTimer(template.id)}
+                            className="min-h-11 min-w-11 rounded px-1 text-sm font-medium text-sky-300 hover:text-sky-100"
+                          >
+                            {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
+                          </button>
+                          <span aria-hidden="true" className="h-6 border-l border-slate-700" />
+                        </div>
+                      )}
                       <button
                         type="button"
-                        onClick={() => removeBlock(template.id)}
-                        aria-label={t('ux.removeBlock', { block: template.label })}
-                        title={t('ux.removeBlock', { block: template.label })}
+                        disabled={isSongBlock(template.key) && (songBusy || songsLoading)}
+                        onClick={() => { void removeBlock(template.id) }}
+                        aria-label={t('Remove block')}
+                        title={t('Remove block')}
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
                       >
                         <RemoveBlockIcon />
@@ -2317,13 +2425,21 @@ export default function Sessions() {
                     {isPracticeKeyBlock(template.key) && (() => {
                       const blockKey = template.key
                       return (
-                        <div className="flex min-h-11 flex-wrap items-center gap-x-3 text-sm">
+                        <div className="flex min-h-11 flex-wrap items-center gap-x-3 pl-11 text-sm">
                           <span role="status" aria-live="polite" className="font-semibold text-sky-200">
                             {t(blockKey === 'major_scales' ? 'practice.keyMajor' : 'practice.keyMinor', { key: formatPracticeKey(practiceKeys[blockKey], language) })}
                           </span>
                           <button
                             type="button"
-                            onClick={() => setPracticeKeys((current) => ({ ...current, [blockKey]: pickPracticeKey(blockKey, current[blockKey]) }))}
+                            onClick={() => {
+                              const nextKey = pickPracticeKey(blockKey, practiceKeys[blockKey])
+                              setPracticeKeys((current) => ({ ...current, [blockKey]: nextKey }))
+                              setActiveDefaultMaterial((current) => {
+                                if (current?.blockKey !== blockKey) return current
+                                const nextMaterial = getDefaultMaterials(language, blockKey, nextKey)[0]
+                                return nextMaterial?.filePath ? { blockKey, title: nextMaterial.title, url: nextMaterial.filePath } : null
+                              })
+                            }}
                             aria-label={t('practice.rerollKeyLabel', { block: template.label })}
                             className="min-h-11 min-w-11 rounded px-3 text-sm font-medium text-sky-300 hover:text-sky-100"
                           >
@@ -2332,17 +2448,8 @@ export default function Sessions() {
                         </div>
                       )
                     })()}
-                    {!isExpanded && <div className="flex min-h-11 flex-wrap items-center gap-x-3 text-sm text-slate-300">
-                      {showTargetPracticeTime && <span>{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</span>}
-                      <span className="font-mono" aria-label={t('Timer')}>{String(timerMinutes).padStart(2, '0')}:{String(timerSeconds).padStart(2, '0')}</span>
-                      <button
-                        type="button"
-                        onClick={() => toggleTimer(template.id)}
-                        aria-label={t(timers[template.id]?.isRunning ? 'ux.pauseTimer' : 'ux.startTimer', { block: template.label })}
-                        className="min-h-11 min-w-11 rounded px-3 text-sm font-medium text-sky-300 hover:text-sky-100"
-                      >
-                        {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
-                      </button>
+                    {!isExpanded && showTargetPracticeTime && <div className="flex min-h-11 items-center pl-11 text-sm text-slate-300">
+                      <span>{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</span>
                     </div>}
 
                     {isExpanded && (
@@ -2353,10 +2460,10 @@ export default function Sessions() {
                         {showTargetPracticeTime && <p className="mt-1 text-sm text-slate-400">{t('Target: {minutes} min', { minutes: template.target_minutes ?? 0 })}</p>}
                         <fieldset className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-300">
                           <legend className="sr-only">{t('Timer')}</legend>
+                          {!isSongBlock(template.key) && renderMaterialAddControls(template.key)}
                           <button
                             type="button"
                             onClick={() => toggleTimer(template.id)}
-                            aria-label={t(timers[template.id]?.isRunning ? 'ux.pauseTimer' : 'ux.startTimer', { block: template.label })}
                             className="min-h-11 rounded bg-slate-800 px-4 text-sm font-medium text-slate-200"
                           >
                             {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
@@ -2364,7 +2471,6 @@ export default function Sessions() {
                           <button
                             type="button"
                             onClick={() => resetTimer(template.id)}
-                            aria-label={t('ux.resetTimer', { block: template.label })}
                             className="min-h-11 rounded border border-slate-700 px-4 text-sm text-slate-300"
                           >
                             {t('Reset')}
@@ -2390,16 +2496,15 @@ export default function Sessions() {
                             className="h-11 w-16 rounded border border-slate-700 bg-slate-950 px-2 text-center font-mono text-base text-slate-200"
                           />
                         </fieldset>
-                        {template.key === 'repertoire' && (
-                          <section className="mt-3 space-y-3 border-t border-slate-800 pt-3" aria-label={t('Week repertoire')}>
-                            <h4 className="item-title">{t('Week repertoire')}</h4>
-                            {weekSongsLoading && <p role="status" className="text-sm text-slate-400">{t('Loading week repertoire…')}</p>}
-                            {weekSongsError && <p role="status" className="text-sm text-amber-300">{weekSongsError}</p>}
-                            {weekSongs.length === 0 && !weekSongsError && !weekSongsLoading && <p className="text-sm text-slate-400">{t('No songs assigned to this week.')}</p>}
-                            {weekSongs.map((song) => renderSongMaterials(song, template.key))}
-                          </section>
-                        )}
-                        {includeDefaultExercises && defaultMaterials.length > 0 && (
+                        {isSongBlock(template.key) && <section className="mt-3 space-y-2 border-t border-slate-800 pt-3" aria-label={t('Songs')}>
+                          {template.key === 'learn_song' && <div className="flex flex-wrap gap-2"><input aria-label={t('Song name')} placeholder={t('Song name')} value={learnSongName} onChange={(event) => setLearnSongName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addLibrarySong('learn_song') } }} className="field min-w-0 flex-1" /><button type="button" disabled={songBusy || !learnSongName.trim()} onClick={() => void addLibrarySong('learn_song')} className="btn btn-secondary">{t('Add song')}</button></div>}
+                          {songsError && <p role="alert" className="msg-error">{songsError}</p>}
+                          {blockFeedback.error && <p role="alert" className="msg-error">{blockFeedback.error}</p>}
+                          {selectedDaySongs.filter((row) => row.block_key === template.key).map((row) => renderSongMaterials(row.songs, template.key))}
+                          {!selectedDaySongs.some((row) => row.block_key === template.key) && <p className="meta">{t('songs.chooseForDay')}</p>}
+                          {blockMaterials.length > 0 && <details><summary className="min-h-11 cursor-pointer py-3 text-sm text-slate-300">{t('songs.unassigned')}</summary>{blockMaterials.map((material) => <div key={material.id} className="flex flex-wrap items-center gap-2 py-1"><span className="min-w-0 flex-1 break-words text-sm">{material.name}</span><AppSelect aria-label={t('Song name')} value={legacySongChoices[material.id] ?? ''} options={[{ value: '', label: t('songs.chooseSong') }, ...songLibrary.map((song) => ({ value: song.id, label: song.name }))]} onValueChange={(value) => setLegacySongChoices((current) => ({ ...current, [material.id]: value }))} className="field min-w-0 max-w-full" /><button type="button" disabled={!legacySongChoices[material.id]} onClick={() => void moveLegacyMaterial(template.key, material)} className="btn btn-secondary">{t('songs.move')}</button></div>)}</details>}
+                        </section>}
+                        {!isSongBlock(template.key) && includeDefaultExercises && defaultMaterials.length > 0 && (
                           <div className="mt-3 space-y-1 border-t border-slate-800 pt-3">
                             <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{t('Default references')}</p>
                             {defaultMaterials.map((material) => (
@@ -2415,10 +2520,10 @@ export default function Sessions() {
                                 <p className="break-words text-sm leading-relaxed text-slate-400">{material.detail}</p>
                                 {material.filePath && activeDefaultMaterial?.blockKey === template.key && activeDefaultMaterial.url === material.filePath && (
                                   <div className="mt-2 overflow-hidden bg-slate-950">
-                                    <object data={encodeURI(material.filePath)} type="application/pdf" aria-label={material.title} className="h-[420px] w-full bg-white">
+                                    <object data={material.filePath} type="application/pdf" aria-label={material.title} className="h-[420px] w-full bg-white">
                                       <p className="p-3 text-sm text-slate-700">{t('If the PDF does not appear, your browser cannot show it inline.')}</p>
                                     </object>
-                                    <a href={encodeURI(material.filePath)} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">
+                                    <a href={material.filePath} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">
                                       {t('Open in new tab')}
                                     </a>
                                   </div>
@@ -2427,55 +2532,13 @@ export default function Sessions() {
                             ))}
                           </div>
                         )}
-                        {(
+                        {!isSongBlock(template.key) && (
                           <div className="mt-3 min-w-0 space-y-2 border-t border-slate-800 pt-3">
-                            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
-                              {t('materials.accountScope')}
-                            </p>
-                            <p className="text-xs text-slate-400">{t('ux.localFiles')}</p>
-                            <p className="text-xs text-slate-400">
-                              {t('materials.legacy')}
-                            </p>
-                            {localStorageEstimate.quota != null && <p className="text-xs text-slate-400">{t('materials.capacity', { quota: formatStorageSize(localStorageEstimate.quota) })}</p>}
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                              <button
-                                type="button"
-                                disabled={blockFeedback.saveState === 'saving'}
-                                onClick={() => materialFileInputRefs.current[template.key]?.click()}
-                                className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded border border-slate-700 bg-slate-800 px-3 text-sm text-slate-100 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {t('Choose file')}
-                              </button>
-                              <input
-                                ref={(element) => { materialFileInputRefs.current[template.key] = element }}
-                                id={`learning-material-file-${template.key}`}
-                                type="file"
-                                accept={materialFileAccept}
-                                onChange={(event) => { void handleLocalMaterialUpload(template.key, event.target.files?.[0]); event.currentTarget.value = '' }}
-                                className="sr-only"
-                              />
+                            <div className="flex flex-wrap items-center gap-2">
                               <MaterialSaveStatus saveState={blockFeedback.saveState} savingLabel={t('Saving locally…')} savedLabel={t('Saved on this device')} />
                               {renderUploadActions(blockFeedback, template.key)}
                             </div>
                             {materialCleanupPending && <p role="status" className="text-xs text-amber-300">{t('materials.cleanupPendingNote')}</p>}
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <input
-                                type="url"
-                                value={materialUrlInputs[template.key] ?? ''}
-                                disabled={blockFeedback.saveState === 'saving'}
-                                onChange={(event) => setMaterialUrlInputs((current) => ({ ...current, [template.key]: event.target.value }))}
-                                placeholder={t('Material URL')}
-                                className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 text-base text-slate-200"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => { void addMaterialUrl(template.key) }}
-                                disabled={blockFeedback.saveState === 'saving'}
-                                className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
-                              >
-                                {t('Add URL')}
-                              </button>
-                            </div>
                             {blockMaterials.length > 0 && (
                               <div>
                                 {blockMaterials.map((material) => (
@@ -2508,74 +2571,7 @@ export default function Sessions() {
                                 ))}
                               </div>
                             )}
-                            {activeMaterial?.blockKey === template.key && activeMaterialUrl && (() => {
-                              const activeMaterial = activeMaterialRecord
-                              if (!activeMaterial) return null
-                              const uploadedMediaKind = practiceMediaKind(activeMaterial.type)
-                              const isImage = activeMaterial.type.startsWith('image/')
-                              const externalMediaKind = getExternalMediaKind(activeMaterial)
-                              const isExternalPage = externalMediaKind === 'page'
-
-                              return (
-                                <div className="mt-3 overflow-hidden bg-slate-950">
-                                  <div className="flex items-center justify-between gap-2 px-2">
-                                    <span className="min-w-0 truncate text-sm text-slate-300">{activeMaterial.name}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => setActiveMaterial(template.key, null)}
-                                      className="min-h-11 min-w-11 shrink-0 px-2 text-sm text-slate-300 hover:text-slate-100"
-                                    >
-                                      {t('Close')}
-                                    </button>
-                                  </div>
-                                  {externalMediaKind === 'embed' && activeMaterial.url ? (
-                                    <YouTubePracticePlayer
-                                      key={activeMaterial.id}
-                                      materialId={activeMaterial.id}
-                                      url={activeMaterial.url}
-                                      name={activeMaterial.name}
-                                      bookmarks={bookmarks}
-                                      onBookmarksChange={(next) => saveMaterialBookmarks(template.key, activeMaterial.id, next)}
-                                      onPlaybackConfirmed={(intent) => confirmMaterialPlayback(date, planWeek?.id ?? null, template.id, template.key, activeMaterial.id, intent)}
-                                    />
-                                  ) : isExternalPage && activeMaterial.url ? (
-                                    <div className="space-y-3 p-4 text-sm text-slate-300">
-                                      <p>{t('This web page does not provide an embeddable media format, or it blocks inline viewing.')}</p>
-                                      <a
-                                        href={activeMaterial.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-block rounded border border-slate-700 px-3 py-2 text-sky-300 hover:border-sky-500 hover:text-sky-200"
-                                      >
-                                        {t('Open in browser')}
-                                      </a>
-                                    </div>
-                                  ) : uploadedMediaKind || externalMediaKind === 'video' ? (
-                                    <LocalVideoPracticePlayer key={`${date}:${activeMaterial.id}:${activeMaterialUrl}`} kind={uploadedMediaKind ?? 'video'} url={activeMaterialUrl} name={activeMaterial.name} bookmarks={bookmarks}
-                                      onBookmarksChange={(next) => saveMaterialBookmarks(template.key, activeMaterial.id, next)}
-                                      onPlaybackConfirmed={(intent) => confirmMaterialPlayback(date, planWeek?.id ?? null, template.id, template.key, activeMaterial.id, intent)} />
-                                  ) : isImage || externalMediaKind === 'image' ? (
-                                    <img src={activeMaterialUrl} alt={activeMaterial.name} className="max-h-[420px] w-full object-contain" />
-                                  ) : activeMaterial.type === 'application/pdf' || externalMediaKind === 'pdf' ? (
-                                    <div>
-                                      <object data={activeMaterialUrl} type="application/pdf" aria-label={activeMaterial.name} className="h-[420px] w-full bg-white">
-                                        <p className="p-3 text-xs text-slate-700">{t('If the PDF does not appear, your browser cannot show it inline.')}</p>
-                                      </object>
-                                      <a href={activeMaterialUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center text-sm text-sky-300 hover:text-sky-200">
-                                        {t('Open in new tab')}
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <iframe
-                                      src={activeMaterialUrl}
-                                      title={activeMaterial.name}
-                                      className="h-[420px] w-full bg-white"
-                                    />
-                                  )}
-                                  {mediaError && <p className="py-2 text-sm text-rose-300">{mediaError}</p>}
-                                </div>
-                              )
-                            })()}
+                            {renderMaterialViewer(template.key, template.key)}
                             {blockFeedback.error && <p className="break-words text-sm text-rose-300">{blockFeedback.error}</p>}
                             {blockFeedback.notice && <p className="break-words text-sm text-amber-300">{blockFeedback.notice}</p>}
                           </div>
@@ -2586,16 +2582,6 @@ export default function Sessions() {
                 </div>
               )
             })}
-            {(weekSongs.length > 0 || weekSongsError) && !selectedBlocks.some((block) => block.key === 'repertoire') && (
-              <section className="mt-3 border-t border-slate-800 py-3" aria-label={t('Legacy repertoire')}>
-                <h3 className="item-title">{t('Legacy repertoire')}</h3>
-                <p className="mt-1 text-sm text-slate-400">{t('This week has songs but no Repertoire practice block. They remain visible here without changing the session.')}</p>
-                {weekSongsError && <p role="status" className="mt-2 text-sm text-amber-300">{weekSongsError}</p>}
-                <div className="mt-2 space-y-3">
-                  {weekSongs.map((song) => renderSongMaterials(song, 'repertoire'))}
-                </div>
-              </section>
-            )}
           </div>
         <div aria-live="polite">
           {removedBlock && (
@@ -2659,65 +2645,21 @@ export default function Sessions() {
         {!canSave && <p id="practice-save-hint" className="text-sm text-slate-400">{t('Add a block to save a session.')}</p>}
       </form>
 
-      <section className="border-t border-slate-800 py-4">
-        <h2>
-          <button
-            type="button"
-            onClick={() => setIsTodoOpen((current) => !current)}
-            aria-expanded={isTodoOpen}
-            aria-controls="practice-todo-panel"
-            className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-base font-semibold"
-          >
-            <span>{t('ToDo')} · {todosDone}/{todos.length}</span>
-            <span className="text-sm font-normal text-slate-400">{t(isTodoOpen ? 'Hide' : 'Show')}</span>
-          </button>
-        </h2>
-
-        {isTodoOpen && (
-          <div id="practice-todo-panel" className="mt-2 space-y-2">
-            {todos.length === 0 && <p className="text-sm text-slate-400">{t('No ToDo items yet for this week.')}</p>}
-            {todoError && <p role="alert" className="text-sm text-red-400">{todoError}</p>}
-
-            {todos.map((todo, index) => (
-              <div key={`${todo.id}-${index}`} className="flex min-h-11 items-center gap-1">
-                <label className="flex h-11 w-11 shrink-0 items-center justify-center">
-                  <input
-                    type="checkbox"
-                    checked={todo.done}
-                    aria-label={todo.name || t('ToDo name')}
-                    onChange={(event) => { void toggleTodoDone(index, event.target.checked) }}
-                    className="h-5 w-5 rounded border-slate-700 bg-slate-950"
-                  />
-                </label>
-                <input
-                  value={todo.name}
-                  onChange={(event) => updateTodo(index, { name: event.target.value })}
-                  onBlur={(event) => { void saveTodo({ ...todo, name: event.currentTarget.value }) }}
-                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() } }}
-                  className="h-11 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 text-base outline-none transition focus:border-slate-500"
-                  placeholder={t('ToDo name')}
-                />
-                <button
-                  type="button"
-                  onClick={() => { void removeTodo(index) }}
-                  aria-label={t('Remove')}
-                  title={t('Remove')}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-lg text-slate-400 hover:text-rose-300"
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={addTodo}
-              className="min-h-11 rounded border border-slate-700 px-3 text-sm text-slate-300"
-            >
-              {t('+ Add ToDo')}
-            </button>
-          </div>
-        )}
+      <section data-tour="practice-songs" className="border-t border-slate-800 py-4">
+        <h2><button type="button" aria-expanded={isSongsOpen} aria-controls="practice-songs" onClick={() => setIsSongsOpen((current) => !current)} className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-base font-semibold"><span>{t('Songs')} ({songLibrary.length})</span><span className="text-sm font-normal text-slate-400">{t(isSongsOpen ? 'Hide' : 'Show')}</span></button></h2>
+        {isSongsOpen && <div id="practice-songs" className="mt-2 space-y-2">
+          <div className="flex flex-wrap gap-2"><input aria-label={t('Song name')} placeholder={t('Song name')} value={newSongName} onChange={(event) => setNewSongName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addLibrarySong() } }} className="field min-w-0 flex-1" /><button type="button" disabled={songBusy || !newSongName.trim()} onClick={() => void addLibrarySong()} className="btn btn-secondary">{t('Add song')}</button></div>
+          {songsLoading && <p role="status" className="meta">{t('Loading songs…')}</p>}
+          {songsError && <p role="alert" className="msg-error">{songsError}</p>}
+          {!songsLoading && !songsError && songLibrary.length === 0 && <p className="meta">{t('songs.empty')}</p>}
+          {songLibrary.map((song) => {
+            const selected = selectedDaySongs.some((row) => row.block_key === 'repertoire' && row.song_id === song.id)
+            return <div key={song.id} className="border-b border-slate-800 py-1">
+              <div className="flex min-h-11 flex-wrap items-center gap-2"><span className="min-w-0 flex-1 break-words text-base text-slate-100">{song.name}</span><button type="button" disabled={songBusy || selected || songsLoading} onClick={() => void practiceSong(song)} className="min-h-11 px-3 text-sky-300 disabled:text-slate-400">{t(selected ? 'songs.added' : 'Practice')}</button><button type="button" disabled={songBusy} onClick={() => setSongToRemove(song.id)} className="min-h-11 px-3 text-rose-300">{t('Remove')}</button></div>
+              {songToRemove === song.id && <div className="flex flex-wrap items-center gap-2 text-sm"><span>{t('songs.removeConfirm')}</span><button type="button" disabled={songBusy} onClick={() => void removeLibrarySong(song.id)} className="min-h-11 px-3 text-rose-300">{t('Remove')}</button><button type="button" onClick={() => setSongToRemove(null)} className="min-h-11 px-3">{t('Cancel')}</button></div>}
+            </div>
+          })}
+        </div>}
       </section>
 
       <section className="border-t border-slate-800 py-4">

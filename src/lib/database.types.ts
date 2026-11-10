@@ -318,8 +318,41 @@ export type Database = {
           },
         ]
       }
+      practice_day_songs: {
+        Row: {
+          block_key: string
+          created_at: string
+          practice_date: string
+          song_id: string
+          user_id: string
+        }
+        Insert: {
+          block_key: string
+          created_at?: string
+          practice_date: string
+          song_id: string
+          user_id?: string
+        }
+        Update: {
+          block_key?: string
+          created_at?: string
+          practice_date?: string
+          song_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_day_songs_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "songs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       songs: {
         Row: {
+          archived_at: string | null
           created_at: string
           id: string
           name: string
@@ -329,6 +362,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archived_at?: string | null
           created_at?: string
           id?: string
           name: string
@@ -338,6 +372,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          archived_at?: string | null
           created_at?: string
           id?: string
           name?: string
@@ -421,6 +456,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      archive_practice_song: {
+        Args: { p_song_id: string }
+        Returns: undefined
+      }
+      create_practice_song: {
+        Args: {
+          p_name: string
+          p_practice_date?: string | null
+          p_block_key?: string | null
+        }
+        Returns: string
+      }
+      set_practice_day_song: {
+        Args: {
+          p_practice_date: string
+          p_block_key: string
+          p_song_id: string
+          p_selected: boolean
+        }
+        Returns: undefined
+      }
       consume_account_gateway_budget_v1: {
         Args: { p_login_hash: string; p_action: string }
         Returns: { allowed: boolean; retry_after_seconds: number }[]

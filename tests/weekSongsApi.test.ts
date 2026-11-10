@@ -29,22 +29,17 @@ describe('Practice week song display (item 55)', () => {
     expect(shouldRefreshWeekSongs('week-1', null, 3, false)).toBe(false)
   })
 
-  it('wires Practice to reload the selected week on return without clearing songs or surfacing transient errors', () => {
+  it('loads explicit Practice day choices and guards stale date/account responses', () => {
     const source = readFileSync('src/pages/Sessions.tsx', 'utf8').replace(/\r\n/g, '\n')
-    expect(source).toContain(".select('song_id, songs(name)')\n        .eq('week_id', weekId)")
-    expect(source).toContain("orderBySortOrder ? query.order('sort_order', { ascending: true }) : query")
-    expect(source).toMatch(/if \(!refresh\) \{\n\s+setWeekSongs\(\[\]\)/)
-    expect(source).toContain("if (!refresh) setWeekSongsError(")
-    expect(source).toContain('setWeekSongs((current) => sameWeekSongs(current, next) ? current : next)')
-    expect(source).toContain('void loadWeekSongs(weekId, true)')
-    for (const listener of [
-      "document.addEventListener('visibilitychange', handleVisible)",
-      "window.addEventListener('focus', handleVisible)",
-      "window.addEventListener('pageshow', handlePageShow)",
-      "document.removeEventListener('visibilitychange', handleVisible)",
-      "window.removeEventListener('focus', handleVisible)",
-      "window.removeEventListener('pageshow', handlePageShow)",
-    ]) expect(source).toContain(listener)
+    const api = readFileSync('src/lib/songPracticeApi.ts', 'utf8')
+    expect(api).toContain("from('practice_day_songs').select('*, songs(*)').eq('practice_date', date)")
+    expect(source).toContain('Promise.all([fetchPracticeSongs(), fetchDaySongs(selectedDate)])')
+    expect(source).toContain('cancelled || request !== songRequestRef.current || songDateRef.current !== selectedDate || !materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)')
+    expect(source).toContain('setSongsDate(selectedDate)')
+    expect(source).toContain('setEditorBaseline((current) => withDaySongBlocks(current, choices, templates))')
+    expect(source).toContain('return () => { cancelled = true }')
+    expect(source).toContain('}, [date, templates, materialAccess, loading])')
+    expect(source).not.toContain('loadWeekSongs(')
   })
 })
 

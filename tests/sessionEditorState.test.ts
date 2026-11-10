@@ -121,7 +121,7 @@ describe('Practice loadData membership guard', () => {
   async function load(weeks: typeof week[], catalog = templates, membership: Membership = null, cleared = false, savedSessions = sessions.slice(0, 0)) {
     const setters = Object.fromEntries([
       'setLoading', 'setError', 'setCatalogLoading', 'setCatalogError', 'setTemplates', 'setSessions',
-      'setEditorBaseline', 'setWeeks', 'setPlanWeek', 'setTodos', 'setProgramName', 'setPrograms',
+      'setEditorBaseline', 'setWeeks', 'setPlanWeek', 'setProgramName', 'setPrograms',
       'setSelectedWeekIndex', 'setDate', 'setComment', 'setSelectedBlocks', 'setExpandedBlockIds',
       'setRemovedBlock', 'setTimers', 'setIsBlockPickerOpen',
     ].map((name) => [name, vi.fn()]))
@@ -134,9 +134,8 @@ describe('Practice loadData membership guard', () => {
         maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }), ...writes,
       },
     ))
-    const loadWeekSongs = vi.fn()
     const context = {
-      ...setters, supabase: { from }, membership, loadWeekSongs,
+      ...setters, supabase: { from }, membership,
       dataRequestRef: { current: 0 }, editorNavigationRef: { current: 0 }, editorRevisionRef: { current: 0 },
       toLocalIsoDate: () => '2026-10-03', t: (key: string) => key,
       loadSessionRestorationCatalog: vi.fn().mockResolvedValue(catalog),
@@ -152,15 +151,15 @@ describe('Practice loadData membership guard', () => {
     expect(setters.setCatalogLoading).toHaveBeenLastCalledWith(false)
     expect(setters.setError).toHaveBeenCalledExactlyOnceWith(null)
     for (const write of Object.values(writes)) expect(write).not.toHaveBeenCalled()
-    expect(from.mock.calls.map(([table]) => table)).toEqual(['plan_weeks', 'plan_weeks', 'sessions', 'programs', 'todos'])
-    return { setters, loadWeekSongs }
+    expect(from.mock.calls.map(([table]) => table)).toEqual(['plan_weeks', 'plan_weeks', 'sessions', 'programs'])
+    expect(from).not.toHaveBeenCalledWith('todos')
+    return { setters }
   }
 
   it.each([false, true])('finishes loading with no weeks and no invented defaults (templates=%s)', async (withTemplates) => {
     const fixture = await load([], withTemplates ? templates : [])
     expect(fixture.setters.setWeeks).toHaveBeenCalledWith([])
     expect(fixture.setters.setPlanWeek).toHaveBeenCalledWith(null)
-    expect(fixture.loadWeekSongs).toHaveBeenCalledWith(null)
     expect(fixture.setters.setTemplates).toHaveBeenCalledWith(withTemplates ? templates : [])
     expect(fixture.setters.setSelectedBlocks).toHaveBeenCalledWith([])
     expect(fixture.setters.setEditorBaseline).toHaveBeenCalledWith({ comment: '', timers: {}, selectedBlocks: [] })

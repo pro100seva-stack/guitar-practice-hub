@@ -6,6 +6,7 @@ import { formatDateRange } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
 import { hasPracticeMinutes } from '../lib/sessionActivity'
 import BlockGallery from '../components/BlockGallery'
+import AppSelect from '../components/AppSelect'
 import { createOtherBlock, loadActiveCatalog, loadProgramsWithBlockMode, readProgramBlockMode, type CatalogBlock } from '../lib/catalogApi'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
@@ -352,8 +353,7 @@ export default function Progress() {
                                 <div className="grid gap-3 sm:grid-cols-2">
                                   <label>
                                     <span className="label">{t('Program')}</span>
-                                    <select value={newProgramId} onChange={(event) => {
-                                      const programId = event.target.value
+                                    <AppSelect aria-label={t('Program')} value={newProgramId} onValueChange={(programId) => {
                                       setNewProgramId(programId)
                                       setNewWeekBlockKeys([])
                                       setCatalogError(null)
@@ -364,9 +364,7 @@ export default function Progress() {
                                           setCatalogError(loadError instanceof Error ? loadError.message : t('Could not load the block catalog.'))
                                         }).finally(() => setCatalogLoading(false))
                                       }
-                                    }} className="field" required>
-                                      {programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}
-                                    </select>
+                                    }} className="field" required options={programs.map((program) => ({ value: program.id, label: program.name }))} />
                                   </label>
                                   <label>
                                     <span className="label">{t('Focus')}</span>

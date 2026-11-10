@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import AppSelect from '../components/AppSelect'
 import { useBlocker, useNavigate, useSearchParams } from 'react-router'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
@@ -20,7 +21,6 @@ type ScheduledPlanWeek = PlanWeek & {
   start_date: string
   week_number: number
 }
-type Todo = Database['public']['Tables']['todos']['Row']
 type Song = Database['public']['Tables']['songs']['Row']
 
 type EditableTodo = {
@@ -228,7 +228,7 @@ export default function Plan() {
   const [tasks, setTasks] = useState('')
   const [weekStartDate, setWeekStartDate] = useState('')
   const [weekEndDate, setWeekEndDate] = useState('')
-  const [todos, setTodos] = useState<EditableTodo[]>([])
+  const todos: EditableTodo[] = []
   const [repertoireSongs, setRepertoireSongs] = useState<Song[]>([])
   const [selectedSongIds, setSelectedSongIds] = useState<string[]>([])
   const [pendingSongIds, setPendingSongIds] = useState<string[] | null>(null)
@@ -267,8 +267,7 @@ export default function Plan() {
     || JSON.stringify(programBlockKeys) !== JSON.stringify(compositionBaseline.programKeys)
     || JSON.stringify(weekBlockKeys) !== JSON.stringify(compositionBaseline.weekKeys)
   )
-  const planDetailsDirty = isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
-  const isDirty = compositionDirty || planDetailsDirty
+  const isDirty = compositionDirty || isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
   const songSaving = pendingSongIds !== null
   const shownSongIds = pendingSongIds ?? selectedSongIds
   const leaveApprovedRef = useRef(false)
@@ -593,7 +592,7 @@ export default function Plan() {
       restoreWeekParam(null)
       setFocus('')
       setTasks('')
-      setTodos([])
+
       setSelectedSongIds([])
       setLoading(false)
       return
@@ -697,14 +696,14 @@ export default function Plan() {
           const block = catalogBlocks.find((item) => item.key === key)
           return <li key={`${scope}:${index}`} className="flex min-h-14 flex-wrap items-center gap-2 py-2">
             <span className="min-w-0 flex-1 break-words text-base text-slate-100">{block ? catalogBlockLabel(block, t) : key}</span>
-            <button type="button" aria-haspopup="dialog" aria-label={t('ux.replaceBlock', { block: block ? catalogBlockLabel(block, t) : key })} title={t('Replace block')} disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => openPicker(key)} className="icon-btn disabled:opacity-50">
+            <button type="button" aria-haspopup="dialog" aria-label={t('Replace block')} title={t('Replace block')} disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => openPicker(key)} className="icon-btn disabled:opacity-50">
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7h-9a6 6 0 0 0-6 6M16 3l4 4-4 4M4 17h9a6 6 0 0 0 6-6M8 13l-4 4 4 4" /></svg>
             </button>
             <button type="button" disabled={compositionLoading || compositionSaving || !!catalogError} onClick={() => {
               setter((current) => current.filter((item) => item !== key))
               setCompositionPicker(null)
               setCompositionMessage(null)
-            }} aria-label={t('ux.removeBlock', { block: block ? catalogBlockLabel(block, t) : key })} title={t('Remove block')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50"><RemoveBlockIcon /></button>
+            }} aria-label={t('Remove block')} title={t('Remove block')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50"><RemoveBlockIcon /></button>
           </li>
         })}
       </ol>
@@ -800,29 +799,11 @@ export default function Plan() {
     const loadedWeek = weekData as PlanWeek
     if (!isScheduledWeek(loadedWeek)) return { ok: false, error: t('This week is currently unscheduled.') }
 
-    const [{ data: todosData, error: todosError }, { data: weekSongsData, error: weekSongsError }] = await Promise.all([
-      supabase
-        .from('todos')
-        .select('*')
-        .eq('week_id', loadedWeek.id)
-        .order('sort_order', { ascending: true }),
-      queryWeekSongsWithSortOrder(async (orderBySortOrder) => {
-        const query = supabase
-          .from('week_songs')
-          .select('song_id, songs(*)')
-          .eq('week_id', loadedWeek.id)
-        return orderBySortOrder ? query.order('sort_order', { ascending: true }) : query
-      }),
-    ])
-
-    if (todosError) return { ok: false, error: todosError.message }
+    const { data: weekSongsData, error: weekSongsError } = await queryWeekSongsWithSortOrder(async (orderBySortOrder) => {
+      const query = supabase.from('week_songs').select('song_id, songs(*)').eq('week_id', loadedWeek.id)
+      return orderBySortOrder ? query.order('sort_order', { ascending: true }) : query
+    })
     if (weekSongsError) return { ok: false, error: weekSongsError.message }
-
-    const loadedTodos = (todosData ?? []).map((todo: Todo) => ({
-      id: todo.id,
-      name: todo.name,
-      done: todo.done,
-    }))
 
     const loadedSongIds = ((weekSongsData ?? []) as Array<{ song_id: string }>).map((entry) => entry.song_id)
 
@@ -835,7 +816,7 @@ export default function Plan() {
         startDate: loadedWeek.start_date,
         endDate: loadedWeek.end_date,
         tasks: loadedWeek.tasks ?? '',
-        todos: loadedTodos,
+        todos: [],
         songText: loadedSongIds.join('\n'),
       },
     }
@@ -871,7 +852,7 @@ export default function Plan() {
     setTasks(draft.tasks)
     setWeekStartDate(draft.startDate)
     setWeekEndDate(draft.endDate)
-    setTodos(draft.todos)
+
     setSelectedSongIds(draft.songText ? draft.songText.split('\n') : [])
     setLoadedDraft(baseline)
     setPendingChange((current) => settlePendingWeekChange(current, { kind: 'baseline', baseline }))
@@ -962,18 +943,6 @@ export default function Plan() {
       removalSubmittingRef.current = false
       setSaving(false)
     }
-  }
-
-  function addTodo() {
-    setTodos((current) => [...current, { id: null, name: '', done: false }])
-  }
-
-  function updateTodo(index: number, updates: Partial<EditableTodo>) {
-    setTodos((current) => current.map((todo, todoIndex) => (todoIndex === index ? { ...todo, ...updates } : todo)))
-  }
-
-  function removeTodo(index: number) {
-    setTodos((current) => current.filter((_, todoIndex) => todoIndex !== index))
   }
 
   async function saveWeekSongs(songIds: string[], failureKey: string) {
@@ -1112,33 +1081,6 @@ export default function Plan() {
       return
     }
 
-    const filteredTodos = todos.filter((todo) => todo.name.trim().length > 0)
-    const { error: todoDeleteError } = await supabase.from('todos').delete().eq('week_id', week.id)
-
-    if (todoDeleteError) {
-      setError(todoDeleteError.message)
-      setSaving(false)
-      return
-    }
-
-    if (filteredTodos.length > 0) {
-      const { error: todoInsertError } = await supabase.from('todos').insert(
-        filteredTodos.map((todo, index) => ({
-          week_id: week.id,
-          name: todo.name.trim(),
-          done: todo.done,
-          sort_order: index + 1,
-          source: 'app',
-        }))
-      )
-
-      if (todoInsertError) {
-        setError(todoInsertError.message)
-        setSaving(false)
-        return
-      }
-    }
-
     if (loadedDraft?.songText !== selectedSongIds.join('\n')) {
       const { error: repertoireSaveError } = await supabase.rpc('replace_week_repertoire_songs' as never, {
         p_week_id: week.id,
@@ -1226,8 +1168,7 @@ export default function Plan() {
     <div className="page-wide">
       <h1 className="page-title">{t('Week overview')}</h1>
       {initialLoading && <p role="status" className="state">{t('Loading…')}</p>}
-      {!loading && !error && weeks.length > 0 && !currentWeek && <p className="meta mt-2">{t('ux.noCurrentWeek')} {t('Choose a covered week')}</p>}
-      {!week && error && <div role="alert" className="mt-3 space-y-2"><p className="msg-error">{t('ux.planLoadFailed')}</p><button type="button" disabled={loading} onClick={() => { void loadWeeks() }} className="btn btn-secondary">{t('Retry')}</button></div>}
+      {!week && error && <p role="alert" className="msg-error mt-3">{t('Error: {error}', { error })}</p>}
 
       {!initialLoading && (
         <div className="mt-4 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start lg:gap-6">
@@ -1262,9 +1203,6 @@ export default function Plan() {
                         <button
                           key={isoDate}
                           type="button"
-                          aria-label={day.toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                          aria-pressed={isSelected}
-                          aria-current={isoDate === today ? 'date' : undefined}
                           disabled={!isCovered || !isCurrentMonth}
                           onClick={() => {
                             if (!isCovered) return
@@ -1385,7 +1323,7 @@ export default function Plan() {
                   </div>
                 </div>
               ) : (
-                !error && <p className="state">{t(programs.length === 0 ? 'ux.noProgram' : 'ux.noScheduledWeeks')}</p>
+                <p className="state">{t("No plan_weeks row covers today's date.")}</p>
               )}
               {week && (pendingChange || blocker.state === 'blocked') && (
                 <div ref={discardPromptRef} tabIndex={-1} role="alert" className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 focus:outline-none">
@@ -1429,32 +1367,27 @@ export default function Plan() {
 
                 <label className="block">
                   <span className="label">{t('Program')}</span>
-                  <select
+                  <AppSelect
                     value={selectedProgramId}
                     disabled={compositionSaving}
-                    onChange={(event) => {
-                      guardWeekChange({ kind: 'program', programId: event.target.value }, event.currentTarget)
+                    onValueChange={(value, trigger) => {
+                      guardWeekChange({ kind: 'program', programId: value }, trigger)
                     }}
+                    options={[...programs.map((program) => ({ value: program.id, label: program.name })), { value: otherProgramOption, label: t('Other') }]}
                     className="field"
-                  >
-                    {programs.map((program) => (
-                      <option key={program.id} value={program.id}>{program.name}</option>
-                    ))}
-                    <option value={otherProgramOption}>{t('Other')}</option>
-                  </select>
+                  />
                 </label>
 
                 {selectedProgramId !== otherProgramOption && programs.some((program) => program.id === selectedProgramId) && (
                   <section className="space-y-3 border-l-2 border-sky-500/50 pl-3" aria-label={t('Block composition')}>
                     <h3 className="item-title">{t('Block composition')}</h3>
-                    {!compositionLoading && !catalogError && compositionBaseline && <p role="status" className="meta">{t(compositionSaving ? 'Saving composition…' : compositionDirty ? 'ux.compositionUnsaved' : 'ux.compositionClean')}</p>}
                     {legacyProgramSchema ? <p role="status" className="meta">{t('Catalog composition is unavailable until the database is updated.')}</p> : <>
                     <label className="block">
                       <span className="label">{t('Block composition')}</span>
-                      <select
+                      <AppSelect
                         value={compositionMode}
-                        onChange={(event) => {
-                          const nextMode = readProgramBlockMode(event.target.value)
+                        onValueChange={(value) => {
+                          const nextMode = readProgramBlockMode(value)
                           setCompositionMode(nextMode)
                           setCompositionPicker(null)
                           setCompositionMessage(null)
@@ -1463,11 +1396,8 @@ export default function Plan() {
                         }}
                         className="field"
                         disabled={compositionLoading || compositionSaving || !!catalogError}
-                      >
-                        <option value="legacy_unconfigured">{t('Not configured')}</option>
-                        <option value="same_every_week">{t('Same every week')}</option>
-                        <option value="varies_by_week">{t('Varies by week')}</option>
-                      </select>
+                        options={[{ value: 'legacy_unconfigured', label: t('Not configured') }, { value: 'same_every_week', label: t('Same every week') }, { value: 'varies_by_week', label: t('Varies by week') }]}
+                      />
                     </label>
                     {compositionMode === 'legacy_unconfigured' && <p className="meta">{t('This program has no configured block set. Choose a mode and select blocks.')}</p>}
                     {compositionLoading && <p role="status" className="state">{t('Loading blocks…')}</p>}
@@ -1569,49 +1499,13 @@ export default function Plan() {
 
             <div>
               <fieldset disabled={!week} className="min-w-0 space-y-4">
-                <div data-tour={week ? 'plan-todos' : undefined}>
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="item-title">{t('ToDo')}</h3>
-                    <button type="button" onClick={addTodo} className="btn btn-secondary">
-                      {t('+ Add ToDo')}
-                    </button>
-                  </div>
-
-                  <div className="mt-3 space-y-2">
-                    {todos.length === 0 && <p className="meta">{t('No ToDo items yet for this week.')}</p>}
-
-                    {todos.map((todo, index) => (
-                      <div key={`${todo.id ?? 'new'}-${index}`} className="flex items-center gap-2">
-                        <label className="flex min-h-11 min-w-11 shrink-0 items-center justify-center">
-                          <input
-                            type="checkbox"
-                            aria-label={t('ToDo')}
-                            checked={todo.done}
-                            onChange={(event) => updateTodo(index, { done: event.target.checked })}
-                            className="h-5 w-5 rounded border-slate-700 bg-slate-950"
-                          />
-                        </label>
-                        <input
-                          value={todo.name}
-                          onChange={(event) => updateTodo(index, { name: event.target.value })}
-                          className="field min-w-0 flex-1"
-                          placeholder={t('ToDo name')}
-                        />
-                        <button type="button" onClick={() => removeTodo(index)} className="btn btn-ghost shrink-0">
-                          {t('Remove')}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 <section data-tour={week ? 'plan-repertoire' : undefined} className="space-y-3" aria-label={t('Repertoire')}>
                   <h3 className="item-title">{t('Repertoire')}</h3>
                   <fieldset className="min-w-0 space-y-1">
                     <legend className="label">{t('Songs for this week')}</legend>
                     {repertoireLoading && <p role="status" className="meta">{t('Loading songs…')}</p>}
                     {!repertoireLoading && repertoireSongs.length === 0 && <p className="meta">{t('No songs in your repertoire yet.')}</p>}
-                    {repertoireSongs.map((song) => {
+                    {repertoireSongs.filter((song) => !song.archived_at || shownSongIds.includes(song.id)).map((song) => {
                       const selected = shownSongIds.includes(song.id)
                       return (
                         <div key={song.id} className="flex flex-wrap items-center gap-x-2 rounded hover:bg-slate-900">
@@ -1620,6 +1514,7 @@ export default function Plan() {
                             <input
                               type="checkbox"
                               checked={selected}
+                              disabled={Boolean(song.archived_at)}
                               aria-disabled={songSaving || repertoireLoading || undefined}
                               onChange={(event) => {
                                 if (songSaving || repertoireLoading) return
@@ -1669,7 +1564,6 @@ export default function Plan() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {week && <p role="status" className="meta">{t(saving ? 'Saving…' : planDetailsDirty ? 'ux.planUnsaved' : 'ux.planClean')}</p>}
               <button type="submit" data-tour={week ? 'plan-save' : undefined} disabled={saving || songSaving || songCreating || !week} className="btn btn-primary w-full sm:w-auto">
                 {saving ? t('Saving…') : t('Save plan')}
               </button>

@@ -53,6 +53,11 @@ const storeName = 'owned-learning-materials'
 const mediaCacheName = 'guitar-practice-hub-media-v2'
 
 export type MaterialScope = { blockKey: string; songId?: string }
+export function normalizeMaterialScope(scope: MaterialScope): MaterialScope {
+  return scope.songId && (scope.blockKey === 'repertoire' || scope.blockKey === 'learn_song')
+    ? { blockKey: 'song', songId: scope.songId }
+    : { blockKey: scope.blockKey, songId: scope.songId }
+}
 export type MaterialRef = MaterialScope & { id: string }
 // pendingDeletion marks an owned row whose cached bytes still need removal; it is hidden and cannot be reopened or patched.
 export type OwnedLocalMaterial = LocalMaterial & { ownerUid: string; pendingDeletion?: true }
@@ -63,7 +68,7 @@ const cacheDeleteRetryDelaysMs = [0, 150, 600]
 
 function snapshotMaterialRef(ref: MaterialRef): MaterialRef {
   if (!ref.id || ref.id === '.' || ref.id === '..') throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
-  return { id: ref.id, blockKey: ref.blockKey, songId: ref.songId }
+  return { id: ref.id, ...normalizeMaterialScope(ref) }
 }
 
 function mediaCacheRequest(ownerUid: string, id: string) {
@@ -143,19 +148,21 @@ async function materialTransaction<Result>(access: LocalMaterialAccess, mode: ID
 }
 
 function requireRecord(record: OwnedLocalMaterial | undefined, ownerUid: string, ref: MaterialRef): OwnedLocalMaterial {
-  if (!record || record.ownerUid !== ownerUid || record.id !== ref.id || record.blockKey !== ref.blockKey || record.songId !== ref.songId || record.pendingDeletion) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
-  return record
+  const scope = normalizeMaterialScope(ref)
+  const normalized = record ? { ...record, ...normalizeMaterialScope(record) } : undefined
+  if (!normalized || normalized.ownerUid !== ownerUid || normalized.id !== ref.id || normalized.blockKey !== scope.blockKey || normalized.songId !== scope.songId || normalized.pendingDeletion) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+  return normalized
 }
 
 export async function listLocalMaterials(access: LocalMaterialAccess, scope: MaterialScope) {
   const ownerUid = localMaterialOwner(access)
-  scope = { blockKey: scope.blockKey, songId: scope.songId }
+  scope = normalizeMaterialScope(scope)
   return materialTransaction<OwnedLocalMaterial[]>(access, 'readwrite', (store, finish, guard) => {
     const request = store.index('ownerUid').getAll(ownerUid)
     request.onsuccess = () => guard(() => {
       const owned = (request.result as OwnedLocalMaterial[]).filter((record) => record.ownerUid === ownerUid).map((record) => {
-        if (record.blockKey !== 'warmup') return record
-        const migrated = { ...record, blockKey: 'chromatic' }
+        const migrated = { ...record, ...normalizeMaterialScope(record), ...(record.blockKey === 'warmup' ? { blockKey: 'chromatic' } : {}) }
+        if (migrated.blockKey === record.blockKey) return record
         store.put(migrated)
         return migrated
       })
@@ -201,7 +208,7 @@ export async function saveLocalMaterial(access: LocalMaterialAccess, input: Loca
   const ownerUid = localMaterialOwner(access)
   snapshotMaterialRef(input)
   const material: OwnedLocalMaterial = {
-    id: input.id, blockKey: input.blockKey === 'warmup' ? 'chromatic' : input.blockKey, songId: input.songId,
+    id: input.id, ...normalizeMaterialScope({ blockKey: input.blockKey === 'warmup' ? 'chromatic' : input.blockKey, songId: input.songId }),
     name: input.name, type: input.type, size: input.size, source: input.source, url: input.url,
     blob: input.source === 'file' ? input.blob : undefined, bookmarks: input.bookmarks ? normalizeBookmarks(input.bookmarks) : undefined,
     createdAt: input.createdAt, ownerUid, storage: 'indexeddb',
@@ -313,6 +320,22 @@ export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, re
       finish(updated)
     })
   })
+}
+
+/** Assign an explicitly chosen legacy song-block attachment without copying its bytes. */
+export async function assignLocalMaterialToSong(access: LocalMaterialAccess, ref: MaterialRef, songId: string) {
+  const ownerUid = localMaterialOwner(access)
+  ref = snapshotMaterialRef(ref)
+  if (!songId || ref.songId || !['repertoire', 'learn_song'].includes(ref.blockKey)) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+  return withMaterialLock(ownerUid, ref.id, () => materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish, guard) => {
+    const request = store.get([ownerUid, ref.id])
+    request.onsuccess = () => guard(() => {
+      const owned = requireRecord(request.result, ownerUid, ref)
+      const updated = { ...owned, blockKey: 'song', songId }
+      store.put(updated)
+      finish(updated)
+    })
+  }))
 }
 
 // Two phases: hide the owned row, remove its cached bytes (retried), then drop the row. A failed byte removal keeps the hidden row so cleanup can be retried instead of orphaning bytes.

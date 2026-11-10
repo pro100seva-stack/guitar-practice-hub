@@ -146,6 +146,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   const code = transpileModule(source, { compilerOptions: { jsx: 4, module: 1 } }).outputText
   const imports: Record<string, unknown> = {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
+    './AppSelect': { __esModule: true, default: (props: Record<string, unknown>): Element => ({ type: 'AppSelect', props }) },
     '../lib/i18n': { useI18n: () => ({ t: (key: string) => key }) },
     '../lib/localMaterials': { bookmarkNameMaxLength, normalizeBookmarkName, normalizeBookmarks },
     '../lib/localMaterialAccess': authority,
@@ -302,8 +303,8 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     harness.event(1, 2)
     expect(confirm).toHaveBeenCalledExactlyOnceWith('explicit')
     harness.render()
-    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+    ;(mode.props.onValueChange as (value: string) => void)('whole')
     harness.render()
     harness.event(0, 60)
     harness.event(2, 0)
@@ -368,8 +369,8 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
       harness.event(3, 1)
       harness.event(1, 2)
       harness.render()
-      const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-      ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+      const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+      ;(mode.props.onValueChange as (value: string) => void)('whole')
       harness.render()
       harness.event(0, 60)
       expect(harness.player.playVideo).toHaveBeenCalledOnce()
@@ -467,12 +468,12 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     harness.render()
     expect(harness.policyAtNavigation).toEqual(['strict-origin-when-cross-origin'])
     expect(harness.player.playVideo).not.toHaveBeenCalled()
-    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+    ;(mode.props.onValueChange as (value: string) => void)('whole')
     harness.render()
     harness.render({ name: 'Renamed', bookmarks: [5, 8] })
     expect(harness.construct).toHaveBeenCalledOnce()
-    expect(harness.nodes().some((node) => node.type === 'select' && node.props.value === 'whole')).toBe(true)
+    expect(harness.nodes().some((node) => node.type === 'AppSelect' && node.props.value === 'whole')).toBe(true)
     harness.close()
     expect(harness.player.destroy).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
@@ -489,8 +490,8 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     expect(harness.player.seekTo).toHaveBeenCalledWith(5, true)
     expect(harness.player.pauseVideo).toHaveBeenCalledOnce()
     expect(harness.player.playVideo).not.toHaveBeenCalled()
-    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+    ;(mode.props.onValueChange as (value: string) => void)('whole')
     harness.render()
     harness.event(1, 5)
     harness.render()
@@ -542,7 +543,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     harness.ready()
     harness.render()
     expect(harness.nodes().some((node) => node.props.role === 'alert')).toBe(true)
-    expect(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')?.props.disabled).toBe(true)
+    expect(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')?.props.disabled).toBe(true)
     harness.close()
     expect(vi.getTimerCount()).toBe(0)
   })
@@ -559,14 +560,16 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     confirm.mockClear()
     harness.render()
     const numberInputs = () => harness.nodes().filter((node) => node.type === 'input' && node.props.type === 'number')
-    const change = (node: Element, value: string) => (node.props.onChange as (event: unknown) => void)({ target: { value } })
-    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 1)!, '1.5')
+    const change = (node: Element, value: string) => node.type === 'AppSelect'
+      ? (node.props.onValueChange as (value: string) => void)(value)
+      : (node.props.onChange as (event: unknown) => void)({ target: { value } })
+    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === '1')!, '1.5')
     expect(harness.player.setPlaybackRate).toHaveBeenCalledExactlyOnceWith(1.5)
     harness.render()
-    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!, 'whole')
+    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!, 'whole')
     harness.render()
     await vi.advanceTimersByTimeAsync(250)
-    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'whole')!, 'section')
+    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'whole')!, 'section')
     harness.render()
     change(numberInputs()[0], '20')
     harness.render()
@@ -582,7 +585,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     await vi.advanceTimersByTimeAsync(250)
     expect(harness.nodes().some((node) => node.props.role === 'status' && String(node.props.children).includes('Loop suspended'))).toBe(false)
     expect(harness.player.seekTo).not.toHaveBeenCalled()
-    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'section')!, 'off')
+    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'section')!, 'off')
     harness.render()
     await vi.advanceTimersByTimeAsync(250)
     expect(harness.player.pauseVideo).not.toHaveBeenCalled()
@@ -592,8 +595,8 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
 
     harness.event(2, 30)
     harness.render()
-    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 1)!, '0.5')
-    change(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!, 'section')
+    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === '1')!, '0.5')
+    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!, 'section')
     harness.render()
     change(numberInputs()[0], '40')
     harness.render()
@@ -615,7 +618,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     harness.event(1, 30)
     harness.render()
     const numberInputs = () => harness.nodes().filter((node) => node.type === 'input' && node.props.type === 'number')
-    ;(harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!.props.onChange as (event: unknown) => void)({ target: { value: 'section' } })
+    ;(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!.props.onValueChange as (value: string) => void)('section')
     harness.render()
     ;(numberInputs()[0].props.onChange as (event: unknown) => void)({ target: { value: '40' } })
     ;(numberInputs()[1].props.onChange as (event: unknown) => void)({ target: { value: '50' } })
@@ -656,8 +659,8 @@ describe('local native player with shared controls', () => {
     harness.native('onPlaying')
     expect(confirm).toHaveBeenCalledTimes(1)
     harness.render()
-    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+    ;(mode.props.onValueChange as (value: string) => void)('whole')
     harness.render()
     harness.video.currentTime = 60
     harness.native('onTimeUpdate')
@@ -688,18 +691,18 @@ describe('local native player with shared controls', () => {
     expect(harness.video.currentTime).toBe(5)
     expect(harness.video.paused).toBe(true)
     expect(harness.video.play).not.toHaveBeenCalled()
-    const speed = harness.nodes().find((node) => node.type === 'select' && node.props.value === 1)!
-    ;(speed.props.onChange as (event: unknown) => void)({ target: { value: '0.5' } })
+    const speed = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === '1')!
+    ;(speed.props.onValueChange as (value: string) => void)('0.5')
     harness.render()
     expect(harness.video.playbackRate).toBe(0.5)
-    expect(harness.nodes().some((node) => node.type === 'select' && node.props.value === 0.5)).toBe(true)
+    expect(harness.nodes().some((node) => node.type === 'AppSelect' && node.props.value === '0.5')).toBe(true)
     harness.video.currentTime = 7.2
     const now = harness.nodes().find((node) => node.props['aria-label'] === 'Set A to current position')!
     ;(now.props.onClick as () => void)()
     harness.render()
     expect(harness.nodes().some((node) => node.type === 'input' && node.props.value === '7.2')).toBe(true)
-    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'section' } })
+    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+    ;(mode.props.onValueChange as (value: string) => void)('section')
     harness.render()
     expect(harness.nodes().some((node) => node.props.role === 'status' && String(node.props.children).includes('Loop suspended'))).toBe(true)
     harness.video.paused = false
@@ -721,8 +724,8 @@ describe('local native player with shared controls', () => {
     harness.video.paused = false
     harness.native('onPlaying')
     expect(confirm).toHaveBeenCalledExactlyOnceWith('initial')
-    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+    ;(mode.props.onValueChange as (value: string) => void)('whole')
     harness.render()
     harness.video.currentTime = 60
     harness.video.ended = true
@@ -757,7 +760,7 @@ describe('local native player with shared controls', () => {
     const surface = harness.nodes().find((node) => node.props.tabIndex === 0)!
     expect(surface.props['aria-label']).toBe('Audio practice: {name}')
     expect(harness.nodes().some((node) => node.props['aria-label'] === 'Play audio')).toBe(true)
-    expect(harness.nodes().some((node) => node.type === 'option' && node.props.children === 'Whole track')).toBe(true)
+    expect(harness.nodes().some((node) => node.type === 'AppSelect' && (node.props.options as { label: string }[]).some((option) => option.label === 'Whole track'))).toBe(true)
     expect(harness.nodes().some((node) => node.props['aria-label'] === 'Play video')).toBe(false)
 
     const keyDown = surface.props.onKeyDown as (event: unknown) => void
@@ -783,8 +786,8 @@ describe('local native player with shared controls', () => {
     const save = harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Save position')!
     ;(save.props.onClick as () => void)()
     expect(persist).toHaveBeenCalledExactlyOnceWith([{ seconds: 20 }])
-    const mode = harness.nodes().find((node) => node.type === 'select' && node.props.value === 'off')!
-    ;(mode.props.onChange as (event: unknown) => void)({ target: { value: 'whole' } })
+    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
+    ;(mode.props.onValueChange as (value: string) => void)('whole')
     harness.render()
     harness.video.currentTime = 60
     harness.native('onTimeUpdate')

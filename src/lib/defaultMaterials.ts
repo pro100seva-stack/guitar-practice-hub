@@ -1,4 +1,5 @@
 import type { Language } from './language'
+import { formatPracticeKey, isPracticeKeyBlock, type PracticeKeyBlock } from './practiceKey'
 
 export type DefaultMaterial = {
   title: string
@@ -79,11 +80,45 @@ const materials: Record<Language, Record<string, DefaultMaterial[]>> = {
 
 const suppliedFiles: Record<string, string> = {
   two_notes_per_string: '/default-exercises/2-notes-per-string/2-notes-per-string.pdf',
+  chromatic: '/default-exercises/chromatic/chromatic.pdf',
 }
 
-export function getDefaultMaterials(language: Language, blockKey: string) {
+const scaleFiles: Record<PracticeKeyBlock, Record<string, string>> = {
+  major_scales: { C: 'c', G: 'g', D: 'd', A: 'a', E: 'e', B: 'b', 'F#': 'gb', Db: 'db', Ab: 'ab', Eb: 'eb', Bb: 'bb', F: 'f' },
+  minor_scales: { A: 'am', E: 'em', B: 'bm', 'F#': 'f#m', 'C#': 'c#m', 'G#': 'g#m', D: 'dm', G: 'gm', C: 'cm', F: 'fm', Bb: 'a#m', Eb: 'd#m' },
+}
+
+const scaleLabels: Record<Language, { major: string; minor: string; reference: string; equivalent: string }> = {
+  en: { major: 'Major scale', minor: 'Minor scale', reference: 'Scale exercise reference.', equivalent: 'Equivalent key in the PDF:' },
+  ru: { major: 'Мажорная гамма', minor: 'Минорная гамма', reference: 'Материал для упражнения с гаммой.', equivalent: 'Энгармонически равная тональность в PDF:' },
+  it: { major: 'Scala maggiore', minor: 'Scala minore', reference: 'Materiale per l’esercizio della scala.', equivalent: 'Tonalità equivalente nel PDF:' },
+  fr: { major: 'Gamme majeure', minor: 'Gamme mineure', reference: 'Support pour l’exercice de gamme.', equivalent: 'Tonalité équivalente dans le PDF :' },
+}
+
+// Encode filenames, including sharp signs, without turning them into URL fragments.
+function encodeFilePath(filePath: string) {
+  return filePath.split('/').map(encodeURIComponent).join('/')
+}
+
+export function getDefaultMaterials(language: Language, blockKey: string, selectedKey?: string): DefaultMaterial[] {
+  if (isPracticeKeyBlock(blockKey)) {
+    const stem = selectedKey ? scaleFiles[blockKey][selectedKey] : undefined
+    if (!stem || !selectedKey) return []
+    const labels = scaleLabels[language]
+    const pdfKey = blockKey === 'major_scales' ? stem : stem.slice(0, -1)
+    const spelledPdfKey = `${pdfKey[0].toUpperCase()}${pdfKey.slice(1)}`
+    const equivalent = selectedKey !== spelledPdfKey
+      ? ` ${labels.equivalent} ${formatPracticeKey(spelledPdfKey, language)}.`
+      : ''
+    const folder = blockKey === 'major_scales' ? 'major-scales' : 'minor-scales'
+    return [{
+      title: `${blockKey === 'major_scales' ? labels.major : labels.minor} · ${formatPracticeKey(selectedKey, language)}`,
+      detail: `${labels.reference}${equivalent}`,
+      filePath: encodeFilePath(`/default-exercises/${folder}/${folder}-${stem}.pdf`),
+    }]
+  }
   return (materials[language][blockKey] ?? materials.en[blockKey] ?? []).map((material, index) => ({
     ...material,
-    filePath: index === 0 ? suppliedFiles[blockKey] : undefined,
+    filePath: index === 0 && suppliedFiles[blockKey] ? encodeFilePath(suppliedFiles[blockKey]) : undefined,
   }))
 }

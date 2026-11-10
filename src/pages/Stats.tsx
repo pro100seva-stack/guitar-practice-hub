@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import AppSelect from '../components/AppSelect'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../lib/database.types'
 import { useI18n } from '../lib/i18n'
@@ -117,7 +118,6 @@ function PracticeCalendar({ practicedDates, loading, failed }: PracticeCalendarP
           </button>
         )}
       </div>
-      <p className="meta mb-3">{t('ux.calendarIndependent')}</p>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -130,23 +130,23 @@ function PracticeCalendar({ practicedDates, loading, failed }: PracticeCalendarP
         </button>
         <label className="min-w-0">
           <span className="sr-only">{t('stats.calendarMonth')}</span>
-          <select
+          <AppSelect
             className="field min-h-11"
-            value={cursor.month}
-            onChange={(event) => setCursor((value) => ({ ...value, month: Number(event.target.value) }))}
-          >
-            {months.map((name, month) => <option key={name} value={month}>{name}</option>)}
-          </select>
+            value={String(cursor.month)}
+            onValueChange={(month) => setCursor((value) => ({ ...value, month: Number(month) }))}
+            options={months.map((name, month) => ({ value: String(month), label: name }))}
+            aria-label={t('stats.calendarMonth')}
+          />
         </label>
         <label className="min-w-0">
           <span className="sr-only">{t('stats.calendarYear')}</span>
-          <select
+          <AppSelect
             className="field min-h-11"
-            value={cursor.year}
-            onChange={(event) => setCursor((value) => ({ ...value, year: Number(event.target.value) }))}
-          >
-            {years.map((year) => <option key={year} value={year}>{year}</option>)}
-          </select>
+            value={String(cursor.year)}
+            onValueChange={(year) => setCursor((value) => ({ ...value, year: Number(year) }))}
+            options={years.map((year) => ({ value: String(year), label: String(year) }))}
+            aria-label={t('stats.calendarYear')}
+          />
         </label>
         <button
           type="button"
@@ -583,9 +583,9 @@ export default function Stats() {
           </section>
           {!loading && <>
           <section className="section">
-            <dl data-tour="stats-summary" className="grid grid-cols-2 gap-x-4 gap-y-4 md:grid-cols-3">
+            <dl data-tour="stats-summary" className="grid grid-cols-2 gap-x-4 gap-y-4 md:grid-cols-4">
               <div>
-                <dt className="meta">{t('ux.selectedPeriodTime')}</dt>
+                <dt className="meta">{t('Practice time')}</dt>
                 <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.totalMinutes} {t('min')}</dd>
               </div>
               <div>
@@ -595,6 +595,10 @@ export default function Stats() {
               <div>
                 <dt className="meta">{t('Current streak')}</dt>
                 <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.streakDays} {t('days')}</dd>
+              </div>
+              <div>
+                <dt className="meta">{t('Selected period')}</dt>
+                <dd className="mt-1 text-xl font-semibold text-slate-100">{summary.selectedPeriodMinutes} {t('min')}</dd>
               </div>
             </dl>
           </section>
