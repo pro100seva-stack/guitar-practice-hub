@@ -1,12 +1,16 @@
-# Guitar Practice Hub
+# Pro100Practice
 
 A responsive guitar practice diary for weekly planning, daily sessions, and progress review. Keep practice blocks, repertoire songs, timers, and learning materials together in an installable web app.
+
+The app is now named **Pro100Practice**. Existing hosting/repository addresses, local project paths, account domains and browser-storage identifiers retain their legacy technical names to preserve deployment and data compatibility. This source rename does not change the published build until a release is completed.
 
 ## Release Updates
 
 **[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
 
-- **0.8.0 prepared 2026-11-09, release resumed 2026-11-10:** adds the account-wide Songs library, date-specific Repertoire/Learn a new song selections and shared song materials. Includes in-app dropdowns, compact Practice controls, the owner-supplied Chromatic and key-matched scale PDFs, and locked Home scrolling. ToDo data and recorded practice are preserved. The owner-approved Songs migration was applied and verified on 2026-11-09; frontend preparation is not hosted-publication evidence. See the [0.8.0 changelog](docs/CHANGELOG.md#080---2026-11-09) and [current handoff](docs/project-handoff.md).
+- **0.8.1 prepared 2026-11-12:** adopts Pro100Practice across the interface and app metadata, themes login/registration/recovery to match Home, fixes the translated Show password label and simplifies Practice references and timer controls. Existing accounts, materials, timer behavior and hosting identifiers are preserved. No new migration or dependency update. Delivery status and validation are in the [current handoff](docs/project-handoff.md); source preparation alone is not publication evidence.
+
+- **0.8.0 delivered 2026-11-10:** adds the account-wide Songs library, date-specific Repertoire/Learn a new song selections and shared song materials. Includes in-app dropdowns, compact Practice controls, the owner-supplied Chromatic and key-matched scale PDFs, and locked Home scrolling. ToDo data and recorded practice are preserved. The owner-approved Songs migration was applied and verified on 2026-11-09. Commit `7f91d4d` was pushed to origin/master and 13 public checks verified served 0.8.0 / `7f91d4d` on 2026-11-10. See the [0.8.0 changelog](docs/CHANGELOG.md#080---2026-11-09) and [current handoff](docs/project-handoff.md).
 
 - **0.7.3 prepared 2026-11-07:** refreshes Home from the owner mobile/wide design: green background, wood-and-mint controls/menu/note, self-hosted Aldrich header and Asar text, and a clickable guitar silhouette replacing the separate Frankenstrat button. Existing navigation, current-week data, Help and zoom policy remain. See the [release record](docs/evidence/acceptance/release-0.7.3-2026-11-07.md) for final validation and delivery; preparation is not hosted-publication evidence.
 - **0.7.2 source release: `c36376b`, dated 2026-11-07:** simplifies Practice: week navigation first, focus-based week labels with a current-week marker, one expandable week-information block, and bordered minutes beside the session date. Removes repeated cues, the week strip and duplicate date/info/Today header controls. Existing timers, saved data, navigation guards and zoom lock are preserved. Pushed to origin/master; public reads verified 0.7.2 / c36376b, build 2026-11-07 10:18 UTC. See the [release record](docs/evidence/acceptance/release-0.7.2-2026-11-07.md) for local gates and the [next release record](docs/evidence/acceptance/release-0.7.3-2026-11-07.md) for the recovered publication observation.

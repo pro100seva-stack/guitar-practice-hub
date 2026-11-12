@@ -8,6 +8,21 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.8.1] - 2026-11-12
+
+Prepared patch release for naming, presentation and label fixes. Version 0.8.0 becomes 0.8.1 once; no dependencies, account behavior, storage identities or database migrations change. Git delivery and hosted publication are recorded separately in the [handoff](project-handoff.md).
+
+### Changed
+
+- Adopted **Pro100Practice** across all interface languages, Home/login headings, browser/PWA titles, package metadata and readable project documentation. Existing hosting addresses, account/storage identifiers and historical evidence retain their compatible technical values.
+- Applied Home's green gradient, mint colors, Aldrich/Asar fonts and wood controls to sign-in, registration and password recovery, without the guitar. Long forms remain scrollable, and the language popup follows the theme.
+- Practice default references show only available file-backed learning materials, retaining their PDF viewers and the default-material preference. Generic prose-only tips no longer fill expanded blocks.
+- Replaced collapsed and expanded Practice block Start/Pause labels with matching play/pause icons, retaining accessible action names, focus indicators and touch targets.
+
+### Fixed
+
+- Restored the missing Show password checkbox label in English, Russian, Italian and French, with explicit checkbox association.
+
 ## [0.8.0] - 2026-11-09
 
 **Prepared minor release:** new account-wide Songs and date-specific song practice capabilities alongside the approved UI/material refinements. Version 0.7.3 becomes 0.8.0 once; no dependency upgrades or Git tags. Final release gates and production rollout evidence are recorded in the [handoff](project-handoff.md). Preparation is not proof of publication.

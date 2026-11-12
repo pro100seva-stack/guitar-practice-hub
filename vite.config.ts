@@ -34,8 +34,8 @@ export default defineConfig({
         globIgnores: ['**/default-exercises/**'],
       },
       manifest: {
-        name: 'Guitar Practice Hub',
-        short_name: 'GuitarHub',
+        name: 'Pro100Practice',
+        short_name: 'Pro100Practice',
         id: '/',
         start_url: '/',
         scope: '/',

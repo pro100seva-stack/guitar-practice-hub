@@ -1,5 +1,5 @@
 -- ============================================================
--- Guitar Practice Hub — v1 Row Level Security Policies
+-- Pro100Practice — v1 Row Level Security Policies
 -- ============================================================
 -- Applies to the schema in schema.sql.
 -- Design: single-user v1, but modeled as owner-scoped from day

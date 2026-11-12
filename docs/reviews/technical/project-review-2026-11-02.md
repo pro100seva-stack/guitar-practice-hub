@@ -1,4 +1,4 @@
-# Guitar Practice Hub review — 2026-11-02
+# Pro100Practice review — 2026-11-02
 
 The project is a functioning, feature-rich pre-1.0 practice diary with substantial automated coverage. Version 0.5.0 is committed locally, and the local remote-tracking reference points to the same commit. The biggest immediate cleanup is reconciling project status documents: they still describe completed release steps, database checks and implementations as pending. The next useful milestone is a concise current-status baseline followed by focused browser/device acceptance, rather than another broad feature wave.
 

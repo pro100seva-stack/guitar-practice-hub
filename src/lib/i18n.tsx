@@ -604,7 +604,7 @@ Object.assign(pageTranslations.fr, {
   en: {
     ...pageTranslations.en,
     'Language': 'Language', 'EN': 'EN', 'RU': 'RU', 'IT': 'IT', 'FR': 'FR',
-    'Guitar Practice Hub': 'Guitar Practice Hub', 'Sign in to continue.': 'Sign in to continue.', 'Create a practice account.': 'Create a practice account.', 'Reset your password.': 'Reset your password.',
+    'Pro100Practice': 'Pro100Practice', 'Sign in to continue.': 'Sign in to continue.', 'Create a practice account.': 'Create a practice account.', 'Reset your password.': 'Reset your password.',
     'Login name or email': 'Login name or email', 'Security question': 'Security question', 'Security answer': 'Security answer', 'Password': 'Password', 'New password': 'New password',
     'Password requirements': 'Password requirements', 'At least 8 characters': 'At least 8 characters', 'At least one uppercase letter': 'At least one uppercase letter', 'At least one lowercase letter': 'At least one lowercase letter', 'At least one number': 'At least one number',
     'Choose a password that meets every requirement.': 'Choose a password that meets every requirement.', 'Loading question…': 'Loading question…', 'Show security question': 'Show security question', 'Working…': 'Working…', 'Create account': 'Create account', 'Reset password': 'Reset password', 'Sign in': 'Sign in', 'Account created. You are now signed in.': 'Account created. You are now signed in.', 'Password reset. You can now sign in.': 'Password reset. You can now sign in.',
@@ -615,7 +615,7 @@ Object.assign(pageTranslations.fr, {
   ru: {
     ...pageTranslations.ru,
     'Language': 'Язык', 'EN': 'АНГ', 'RU': 'РУС', 'IT': 'ИТА', 'FR': 'ФРА',
-    'Guitar Practice Hub': 'Центр гитарной практики', 'Sign in to continue.': 'Войдите, чтобы продолжить.', 'Create a practice account.': 'Создайте аккаунт для практики.', 'Reset your password.': 'Сбросьте пароль.',
+    'Pro100Practice': 'Pro100Practice', 'Sign in to continue.': 'Войдите, чтобы продолжить.', 'Create a practice account.': 'Создайте аккаунт для практики.', 'Reset your password.': 'Сбросьте пароль.',
     'Login name or email': 'Имя пользователя или эл. почта', 'Security question': 'Секретный вопрос', 'Security answer': 'Ответ на секретный вопрос', 'Password': 'Пароль', 'New password': 'Новый пароль',
     'Password requirements': 'Требования к паролю', 'At least 8 characters': 'Не менее 8 символов', 'At least one uppercase letter': 'Хотя бы одна заглавная буква', 'At least one lowercase letter': 'Хотя бы одна строчная буква', 'At least one number': 'Хотя бы одна цифра',
     'Choose a password that meets every requirement.': 'Выберите пароль, соответствующий всем требованиям.', 'Loading question…': 'Загрузка вопроса…', 'Show security question': 'Показать секретный вопрос', 'Working…': 'Выполняется…', 'Create account': 'Создать аккаунт', 'Reset password': 'Сбросить пароль', 'Sign in': 'Войти', 'Account created. You are now signed in.': 'Аккаунт создан. Вы вошли в систему.', 'Password reset. You can now sign in.': 'Пароль сброшен. Теперь можно войти.',
@@ -626,7 +626,7 @@ Object.assign(pageTranslations.fr, {
   it: {
     ...pageTranslations.it,
     'Language': 'Lingua', 'EN': 'EN', 'RU': 'RU', 'IT': 'IT', 'FR': 'FR',
-    'Guitar Practice Hub': 'Centro di pratica per chitarra', 'Sign in to continue.': 'Accedi per continuare.', 'Create a practice account.': 'Crea un account di pratica.', 'Reset your password.': 'Reimposta la password.',
+    'Pro100Practice': 'Pro100Practice', 'Sign in to continue.': 'Accedi per continuare.', 'Create a practice account.': 'Crea un account di pratica.', 'Reset your password.': 'Reimposta la password.',
     'Login name or email': 'Nome utente o email', 'Security question': 'Domanda di sicurezza', 'Security answer': 'Risposta di sicurezza', 'Password': 'Password', 'New password': 'Nuova password',
     'Password requirements': 'Requisiti della password', 'At least 8 characters': 'Almeno 8 caratteri', 'At least one uppercase letter': 'Almeno una lettera maiuscola', 'At least one lowercase letter': 'Almeno una lettera minuscola', 'At least one number': 'Almeno un numero',
     'Choose a password that meets every requirement.': 'Scegli una password che soddisfi tutti i requisiti.', 'Loading question…': 'Caricamento della domanda…', 'Show security question': 'Mostra domanda di sicurezza', 'Working…': 'Elaborazione…', 'Create account': 'Crea account', 'Reset password': 'Reimposta password', 'Sign in': 'Accedi', 'Account created. You are now signed in.': 'Account creato. Hai effettuato l’accesso.', 'Password reset. You can now sign in.': 'Password reimpostata. Ora puoi accedere.',
@@ -637,7 +637,7 @@ Object.assign(pageTranslations.fr, {
   fr: {
     ...pageTranslations.fr,
     'Language': 'Langue', 'EN': 'EN', 'RU': 'RU', 'IT': 'IT', 'FR': 'FR',
-    'Guitar Practice Hub': 'Centre de pratique de guitare', 'Sign in to continue.': 'Connectez-vous pour continuer.', 'Create a practice account.': 'Créer un compte de pratique.', 'Reset your password.': 'Réinitialiser votre mot de passe.',
+    'Pro100Practice': 'Pro100Practice', 'Sign in to continue.': 'Connectez-vous pour continuer.', 'Create a practice account.': 'Créer un compte de pratique.', 'Reset your password.': 'Réinitialiser votre mot de passe.',
     'Login name or email': 'Nom d’utilisateur ou e-mail', 'Security question': 'Question de sécurité', 'Security answer': 'Réponse de sécurité', 'Password': 'Mot de passe', 'New password': 'Nouveau mot de passe',
     'Password requirements': 'Exigences du mot de passe', 'At least 8 characters': 'Au moins 8 caractères', 'At least one uppercase letter': 'Au moins une lettre majuscule', 'At least one lowercase letter': 'Au moins une lettre minuscule', 'At least one number': 'Au moins un chiffre',
     'Choose a password that meets every requirement.': 'Choisissez un mot de passe qui respecte toutes les exigences.', 'Loading question…': 'Chargement de la question…', 'Show security question': 'Afficher la question de sécurité', 'Working…': 'Traitement…', 'Create account': 'Créer le compte', 'Reset password': 'Réinitialiser le mot de passe', 'Sign in': 'Se connecter', 'Account created. You are now signed in.': 'Compte créé. Vous êtes maintenant connecté.', 'Password reset. You can now sign in.': 'Mot de passe réinitialisé. Vous pouvez maintenant vous connecter.',
@@ -1047,6 +1047,11 @@ Object.assign(pageTranslations.fr, {
   'materials.youtubeRequired': 'Copiez un lien YouTube valide et réessayez.',
   'materials.pasteManually': 'Presse-papiers inaccessible. Collez votre lien YouTube ci-dessous.',
 })
+
+Object.assign(pageTranslations.en, { 'ux.showPassword': 'Show password' })
+Object.assign(pageTranslations.ru, { 'ux.showPassword': 'Показать пароль' })
+Object.assign(pageTranslations.it, { 'ux.showPassword': 'Mostra password' })
+Object.assign(pageTranslations.fr, { 'ux.showPassword': 'Afficher le mot de passe' })
 
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)

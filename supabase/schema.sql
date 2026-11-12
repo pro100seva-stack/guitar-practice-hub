@@ -1,5 +1,5 @@
 -- ============================================================
--- Guitar Practice Hub — v1 Postgres Schema (Supabase)
+-- Pro100Practice — v1 Postgres Schema (Supabase)
 -- ============================================================
 -- Requires pgcrypto extension for gen_random_uuid() — enabled
 -- by default on Supabase projects.

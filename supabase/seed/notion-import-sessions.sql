@@ -1,5 +1,5 @@
 -- ============================================================
--- Guitar Practice Hub -- Notion Daily Tracker import (sessions)
+-- Pro100Practice -- Notion Daily Tracker import (sessions)
 -- ============================================================
 -- Source: Notion "Guitar Daily Tracker", 108 rows, 2025-08-19 -> 2026-08-02.
 -- All rows tagged source='notion_import'. Session blocks are inserted

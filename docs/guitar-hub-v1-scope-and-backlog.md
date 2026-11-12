@@ -1,4 +1,45 @@
-# Guitar Practice Hub — scope and backlog
+# Pro100Practice — scope and backlog
+
+## Release 0.8.1: naming and presentation (2026-11-12)
+
+Owner invoked `/release-app` for the current approved sandbox: Pro100Practice brand/UI/metadata/documentation; Home-themed auth forms and translated Show password checkbox; hide prose-only default references and use accessible play/pause icons on Practice blocks. Prepare one PATCH bump (0.8.0 → 0.8.1); no new capability, schema, dependency or service identity change. Preserve authentication/storage compatibility identifiers and real hosting/repository addresses. Include calendar/storage research as documentation only, not implementation. Existing one-off repair SQL/local runtime remain excluded. Release Engineer prepares version/release docs and scoped Git delivery; QA is sole full test/lint/build owner. Required gates and delivery pending. This invocation supersedes the sandbox's earlier waiting-for-release status; visual/device gaps must still be reported honestly.
+
+Final local release gates passed: 756/756 tests across 36 files, lint exit 0 (two pre-existing warnings), TypeScript/Vite/PWA build exit 0. All 155 executable inputs remained stable; 60 artifact files and 83 static references checked. Pro100Practice titles/PWA metadata and retained storage/auth/PWA identities verified statically. [Acceptance evidence](evidence/acceptance/release-0.8.1-2026-11-12.md) records hashes and manual visual/device gaps. Scoped commit/push is pending; hosted publication is not independently verified.
+
+## Project naming decision (2026-11-12)
+
+Owner adopts **Pro100Practice**, inspired by Pro100Seva, with Russian pronunciation «Просто Практика». The brand is spelled Pro100Practice in all languages. Update interface, titles/PWA, package metadata and readable project documentation. Preserve existing hosted/repository addresses, canonical document paths, persistent storage/preferences, synthetic auth domains and applied migration identities for compatibility. Historical evidence remains factual. This is a naming change within the current sandbox, not a service/data migration or release invocation; legal/domain availability is not asserted.
+
+## Practice presentation sandbox (2026-11-11)
+
+Additional owner sandbox request (2026-11-12): style Login sign-in/registration/recovery with Home's green gradient, wood/mint controls, Aldrich brand and Asar body font, without the guitar. Fix the Show password checkbox's untranslated label in all four languages. Preserve authentication behavior, readable errors, focus/touch targets and scrolling for long forms. Implementation and focused checks only; owner visual approval precedes full QA/release.
+
+Login sandbox implemented in `Login.tsx`, scoped `index.css` and four-language `i18n.tsx` labels, including the language popup. TypeScript, 17/17 login security tests, scoped lint and whitespace checks passed (existing i18n Fast Refresh warning). Visual approval pending; no build/release performed.
+
+Owner requests hiding generic default-reference prose unless an actual default learning material is available, and replacing Practice block Start/Pause labels with matching play/pause icons in collapsed and expanded blocks. Preserve actual default files/viewers, default-material preferences, user attachments and timer behavior; retain translated accessible action labels and touch targets. Status: implemented in `src/pages/Sessions.tsx`, pending owner visual approval. App no-emit TypeScript, scoped lint and whitespace checks passed; lint retains one pre-existing effect-dependencies warning. Browser appearance remains unverified. Full QA and release preparation wait for approval. This does not implement or change the personal-storage/calendar backlog below.
+
+## New backlog intake (2026-11-10)
+
+### Item 75: Calendar sync and practice reminders
+
+- Owner recorded beta feedback: planned future practice should be able to appear in the user's phone calendar with a reminder. Apply this to planned practice/song selections; do not reactivate the archived ToDo interface implicitly.
+- Status: backlog only, not implementation or release authorization. Before scheduling, define event start time, duration, timezone/DST, recurrence, reminder settings, stable event identity and behavior when practice is rescheduled/cancelled or completed. Calendar events must not count as recorded practice.
+- Decide between a one-time Add to calendar/export, a subscribed calendar, provider-specific automatic sync, and two-way edits. An `.ics` download/import is not continuous sync. Google Calendar and Apple Calendar/device coverage, permissions, privacy, duplicate prevention and revocation need a separate design.
+
+### Item 76: User-owned storage and Supabase-independent personal mode
+
+- Owner requests optional Google Drive, Apple iCloud and local-device storage for all personal app data plus learning/reference materials, enabling use of the same workspace across supported devices.
+- **Confirmed owner decision:** this mode must avoid Supabase entirely, including Supabase login/Auth, profiles, practice data and background requests. Existing hosted mode may remain a separate option. Google authorization or Apple authorization belongs to the selected provider; local-only mode must not require a hosted account.
+- Status: active feasibility/design discussion, ahead of calendar implementation. No application/schema change, provider connection, credential operation, migration, release or live data move is authorized by this intake.
+- Include preferences, programs/weeks/block composition, custom blocks, songs/day choices, sessions/timers/notes, material metadata and bytes/bookmarks. Built-in templates/reference assets can remain part of the distributed app. Current materials are already device-local; adding cloud materials alone does not replace the Supabase-backed app database or satisfy this request.
+- Recommended investigation: local-first workspace with provider-independent identity and a versioned portable data format, then Google Drive as the first cloud provider. A visible app-created Drive folder with narrow per-file access is a candidate, not an approved scope choice. Local-device mode provides offline storage/backup but does not automatically sync devices. iCloud needs a distinct feasibility spike; CloudKit private app databases and ordinary iCloud Drive folders are different products/interfaces.
+- Required acceptance: personal-mode startup and background operation make zero Supabase requests; a second supported device opens the same chosen cloud workspace; offline edits and concurrent changes do not silently overwrite data; deleted records do not resurrect; media sync can resume; provider/account switching cannot mix workspaces; disconnect/revocation preserves local work and clearly reports unsynced changes.
+- Migration is an explicit copy/verify/switch operation with stable IDs, relationship and material-byte checks, recoverable checkpoints and export/restore. Existing Supabase rows and device materials must not be automatically deleted. Importing existing hosted data may temporarily use the existing hosted login; after switching, the personal workspace must function without it. Encryption/key recovery and token/session handling remain design decisions.
+- Findings and sources: [personal-storage feasibility review](reviews/technical/personal-storage-feasibility-2026-11-10.md). File export is a backup/transfer feature, not proof of automatic synchronization. No instant/background-sync promise is made for a suspended mobile web app.
+
+IDs 75 and 76 are allocated above; future unique backlog IDs start at 77. Calendar remains queued while personal storage is being explored.
+
+Release delivery update: 0.8.0 was committed as `7f91d4d4085db0c433e432cd03916e643ef93b71`, pushed to the configured `origin/master`, and independently verified on the public app on 2026-11-10 at 05:34 UTC. Thirteen public checks passed, serving 0.8.0 / `7f91d4d`, CI build 05:33 UTC. The existing excluded one-off repair SQL and Landing line-ending state were preserved; no additional release is part of this backlog intake.
 
 ## Release 0.8.0: song-based Practice (2026-11-09)
 
@@ -9,7 +50,7 @@ Release continuation (2026-11-10): first full gate returned 717 passed/39 failed
 
 Presentation follow-up (2026-11-09): restored the previously approved Practice header content order and disclosure after owner reported regression, preserving the new song feature. Week navigation is first; its in-app selector shows week number and focus without dates and distinguishes the actual current week. Session date and bordered minutes follow; clicking the focus reveals program/date range/description together. The redundant Practice weeks strip and duplicate date/info/Today block header are removed. Meter/tuner retain in-app dropdowns. Post-repair app TypeScript and scoped whitespace checks passed; no full QA/release or production migration apply.
 
-Owner invoked `/release-app` after the sandbox work, authorizing the normal release process for the current changes. Item 74 is allocated to the account-wide Songs/day-practice/material workflow (`SONG-PRACTICE-20261109`); future unique item IDs start at 75. This entry supersedes older ToDo and week-only Practice song behavior. Version 0.7.3 to 0.8.0 is a single MINOR bump because the release adds user-facing functionality.
+Owner invoked `/release-app` after the sandbox work, authorizing the normal release process for the current changes. Item 74 is allocated to the account-wide Songs/day-practice/material workflow (`SONG-PRACTICE-20261109`); 75 is allocated to calendar reminders and 76 to personal storage; future unique item IDs start at 77. This entry supersedes older ToDo and week-only Practice song behavior. Version 0.7.3 to 0.8.0 is a single MINOR bump because the release adds user-facing functionality.
 
 - Replace active ToDo interfaces and reads/writes in Practice and Plan with the account-wide song library; preserve the existing `todos` table, rows and policies for compatibility with published clients.
 - Practice Songs supports adding and reversibly removing songs. Practice adds the selected song to the selected local date's Repertoire, without duplicate blocks, starting timers, marking Done, or inflating activity. Persist song selections independently of completed sessions; preserve other editor changes and guard stale account/date responses.
@@ -26,7 +67,7 @@ Verification: with the owner's Docker startup, Backend loaded all 40 local migra
 
 Updated 2026-11-10. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
 
-The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; 72 is allocated to the approved Practice presentation cleanup; 73 is allocated to the Home screenshot design and silhouette interaction; 74 is allocated to the Songs workflow; future unique item IDs start at 75.
+The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; 72 is allocated to the approved Practice presentation cleanup; 73 is allocated to the Home screenshot design and silhouette interaction; 74 is allocated to the Songs workflow; 75 is allocated to calendar reminders and 76 to personal storage; future unique item IDs start at 77.
 
 ## Prior release baseline (through 0.7.3)
 
@@ -130,7 +171,7 @@ Core tracking, scheduling/continuation, accounts, per-screen tours, local media,
 | Scope / ID | State and boundary |
 | --- | --- |
 | 41 — Guitar Pro player | Backlog for a later public release; rendering/playback, size, licensing and offline design need review. No dependency chosen or installed. |
-| 42 — Shared learning-materials library | Backlog; requires server storage/ownership design. Current materials stay device-local. |
+| 42 — Shared learning-materials library | Backlog; requires storage/ownership design. Item 76 investigates private cross-device storage in the user's provider; sharing between different users remains a separate scope. Current material bytes stay device-local. |
 | 49 extension — permanent song deletion | Separate destructive-scope decision including other weeks/history/materials. |
 | 52/53 extensions | Key-specific scale references and arpeggio subtypes/materials await content and stable-key agreement. |
 | 60 historical cleanup | Zero-minute historical-row cleanup requires separate data scope/approval. |

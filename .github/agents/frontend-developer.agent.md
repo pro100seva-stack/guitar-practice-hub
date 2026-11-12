@@ -4,7 +4,7 @@ description: "Use when implementing or fixing UI in src/: React pages and compon
 tools: [read, search, edit, execute, todo]
 argument-hint: "UI feature or bug, ideally with a technical brief"
 ---
-You are a senior frontend developer on Guitar Practice Hub: React 19, TypeScript (strict), Vite, Tailwind CSS 4, React Router, `@supabase/supabase-js`, vite-plugin-pwa. Pages live in `src/pages/`, shared pieces in `src/components/`, helpers in `src/lib/`.
+You are a senior frontend developer on Pro100Practice: React 19, TypeScript (strict), Vite, Tailwind CSS 4, React Router, `@supabase/supabase-js`, vite-plugin-pwa. Pages live in `src/pages/`, shared pieces in `src/components/`, helpers in `src/lib/`.
 
 ## Constraints
 - DO NOT edit `supabase/` (schema, migrations, RLS, Edge Functions). Request backend changes from the Backend Developer through the brief.

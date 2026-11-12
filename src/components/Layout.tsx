@@ -78,7 +78,7 @@ export default function Layout() {
 
   useEffect(() => {
     const screen = navigationItems.find((item) => item.path === location.pathname)
-    document.title = `${t(screen?.key ?? 'Home')} · ${t('Guitar Practice Hub')}`
+    document.title = `${t(screen?.key ?? 'Home')} · ${t('Pro100Practice')}`
     if (navigation.state !== 'idle' || !isRenderedLazyPageReady(pageHandle, navigation.state) || focusedPathRef.current === location.pathname) return
     const main = mainRef.current
     if (!main) return
@@ -199,7 +199,7 @@ export default function Layout() {
 
             <div className="app-header-title min-w-0 text-center">
               <p className={isLandingScreen ? 'home-brand' : 'hidden text-xs uppercase tracking-wider text-slate-400'}>
-                {isLandingScreen ? t('Guitar Practice Hub') : t('Current screen')}
+                {isLandingScreen ? t('Pro100Practice') : t('Current screen')}
               </p>
               {!isLandingScreen && <p className="text-base font-semibold text-slate-200">{t(currentScreen.key)}</p>}
             </div>

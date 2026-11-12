@@ -1,5 +1,5 @@
 -- ============================================================
--- Guitar Practice Hub -- plan_weeks seed data
+-- Pro100Practice -- plan_weeks seed data
 -- ============================================================
 -- Source: Notion "Недельный план" (Weekly Plan), expanded from 18
 -- rows to 26 -- three Notion rows spanned multiple calendar weeks

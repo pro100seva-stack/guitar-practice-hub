@@ -1,5 +1,5 @@
 -- ============================================================
--- Guitar Practice Hub -- Notion Daily Tracker import (session_blocks)
+-- Pro100Practice -- Notion Daily Tracker import (session_blocks)
 -- ============================================================
 -- Companion to notion-import-sessions.sql. Records done=true/false for
 -- all 6 categories per session (target/actual minutes are NULL --

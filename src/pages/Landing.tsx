@@ -88,7 +88,7 @@ export default function Landing() {
 
   return (
     <div className="home-scene">
-      <h1 className="sr-only">{t('Guitar Practice Hub')}</h1>
+      <h1 className="sr-only">{t('Pro100Practice')}</h1>
         <nav className="home-navigation">
           {navItems.map((item) => (
             <button

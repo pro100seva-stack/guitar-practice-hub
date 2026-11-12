@@ -200,6 +200,80 @@ body {
   font-display: swap;
 }
 
+/* Authentication uses Home's palette and fonts, with a scrolling form for small screens. */
+.auth-scene {
+  display: flex;
+  min-height: 100dvh;
+  padding: max(1.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  background: linear-gradient(180deg, #5c875f 0%, #639c79 51%, #71bca1 100%);
+  color: #e0ffe8;
+  font-family: 'Asar', Georgia, 'Times New Roman', serif;
+}
+.auth-scene .auth-card {
+  width: 100%;
+  max-width: 27rem;
+  min-width: 0;
+  margin: auto;
+  padding: clamp(1.25rem, 5vw, 2rem);
+  border: 1px solid rgb(164 234 192 / 0.45);
+  border-radius: 1.5rem;
+  background: #234b3d;
+  box-shadow: 0 1rem 3rem rgb(20 39 29 / 0.2);
+}
+.auth-scene .auth-brand {
+  color: #a4eac0;
+  font-family: 'Aldrich', Arial, sans-serif;
+  font-size: clamp(1.125rem, 4.5vw, 1.5rem);
+  line-height: 1.6;
+  letter-spacing: 0.15em;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.auth-scene .meta { color: #c5e3cf; text-align: center; font-size: 1rem; }
+.auth-scene .label,
+.auth-scene .auth-password-toggle,
+.auth-scene .text-slate-300 { color: #d4eddd; }
+.auth-scene .text-slate-400 { color: #b5cfbf; }
+.auth-scene .text-emerald-300,
+.auth-scene .msg-success { color: #a4eac0; }
+.auth-scene .msg-error { color: #ffbaba; }
+.auth-scene .field {
+  border-color: #6f9d83;
+  border-radius: 0.65rem;
+  background: #19392e;
+  color: #e0ffe8;
+  font-family: inherit;
+}
+.auth-scene .field::placeholder { color: #b5cfbf; }
+.auth-scene .field:focus { border-color: #a4eac0; }
+.auth-scene input[type='checkbox'] { accent-color: #a4eac0; }
+.auth-scene .btn { font-family: inherit; font-size: 1rem; border-radius: 0.65rem; }
+.auth-scene .btn-primary,
+.auth-scene .btn-secondary {
+  border: 1px solid rgb(164 234 192 / 0.45);
+  background-color: #493323;
+  background-image: linear-gradient(100deg, rgb(27 16 8 / 0.08), rgb(25 15 8 / 0.2)), url('./assets/home-wood.svg');
+  background-size: cover;
+  color: #a4eac0;
+}
+.auth-scene .btn-primary:hover,
+.auth-scene .btn-secondary:hover { filter: brightness(1.1); }
+.auth-scene .btn-ghost { color: #c5e3cf; padding-inline: 0.5rem; }
+.auth-scene .btn-ghost:hover,
+.auth-scene .btn-ghost[aria-current='true'] { background: rgb(164 234 192 / 0.12); color: #e0ffe8; }
+.auth-scene :is(input, button):focus-visible {
+  outline: 2px solid #e0ffe8;
+  outline-offset: 3px;
+}
+/* AppSelect renders its popup in a body portal; target only this auth selector. */
+.app-select-popup[data-app-select-trigger='auth-language'] {
+  border-color: #6f9d83;
+  background: #234b3d;
+  color: #e0ffe8;
+}
+.app-select-popup[data-app-select-trigger='auth-language'] .app-select-option[aria-selected='true'] { background: rgb(164 234 192 / 0.12); }
+.app-select-popup[data-app-select-trigger='auth-language'] .app-select-option-active { outline-color: #a4eac0; background: #19392e; }
+
 /* Home design draft. Every rule is scoped so other app screens retain their UI. */
 .app-home {
   --home-height: 100dvh;
@@ -241,7 +315,6 @@ body {
   font-size: clamp(0.625rem, 2.9vw, 1rem);
   line-height: 1.5;
   letter-spacing: 0.24em;
-  text-transform: uppercase;
   overflow-wrap: anywhere;
 }
 .app-home .home-navigation {

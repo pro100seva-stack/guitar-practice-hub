@@ -225,9 +225,9 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-dvh bg-slate-900 px-[var(--page-px)] py-8 text-slate-100 sm:flex sm:items-center sm:justify-center">
-      <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
-        <h1 className="page-title">{t('Guitar Practice Hub')}</h1>
+    <div className="auth-scene">
+      <form onSubmit={handleSubmit} className="auth-card space-y-4">
+        <h1 className="auth-brand">{t('Pro100Practice')}</h1>
         <p className="meta">
           {isCreateMode ? t('Create a practice account.') : isResetMode ? t('Reset your password.') : t('Sign in to continue.')}
         </p>
@@ -235,6 +235,7 @@ export default function Login() {
           <label className="block">
             <span className="label">{t('Language')}</span>
             <AppSelect
+              id="auth-language"
               aria-label={t('Language')}
               value={language}
               onValueChange={(value) => { if (isLanguage(value)) { setLanguage(value); setInterfaceLanguage(value) } }}
@@ -312,9 +313,9 @@ export default function Login() {
               required
             />
           </label>
-          <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-300">
-            <input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-5 w-5 shrink-0" />
-            {t('ux.showPassword')}
+          <label htmlFor="auth-show-password" className="auth-password-toggle mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+            <input id="auth-show-password" type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-5 w-5 shrink-0" />
+            <span>{t('ux.showPassword')}</span>
           </label>
           {(isCreateMode || isResetMode) && (
             <div className="mt-2 text-xs">

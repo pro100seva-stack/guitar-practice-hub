@@ -1,6 +1,6 @@
 # System Architecture
 
-This document describes the high-level architecture of Guitar Practice Hub. Current implementation, release and acceptance status is maintained in the [backlog](guitar-hub-v1-scope-and-backlog.md) and [handoff](project-handoff.md); dated evidence below is historical verification, not a new live check.
+This document describes the high-level architecture of Pro100Practice. Current implementation, release and acceptance status is maintained in the [backlog](guitar-hub-v1-scope-and-backlog.md) and [handoff](project-handoff.md); dated evidence below is historical verification, not a new live check.
 
 ## High-Level Diagram
 

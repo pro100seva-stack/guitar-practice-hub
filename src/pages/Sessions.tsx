@@ -38,6 +38,14 @@ const emptyMaterialFeedback: MaterialFeedback = { error: null, notice: null, sav
 // Bounds the visible wait for one local file save; slower writes are abandoned before their metadata commits.
 const localMaterialSaveTimeoutMs = 120_000
 
+function PracticeTimerIcon({ isRunning }: { isRunning: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      {isRunning ? <path d="M6 4h4v16H6zm8 0h4v16h-4z" /> : <path d="M7 4v16l13-8z" />}
+    </svg>
+  )
+}
+
 function MaterialSaveStatus({ saveState, savingLabel, savedLabel }: { saveState: MaterialFeedback['saveState']; savingLabel: string; savedLabel: string }) {
   // The live region stays mounted so state changes are announced.
   return (
@@ -2368,7 +2376,9 @@ export default function Sessions() {
               const timerMinutes = Math.floor(elapsedSeconds / 60)
               const timerSeconds = elapsedSeconds % 60
               const isExpanded = expandedBlockIds.has(template.id)
-              const defaultMaterials = getDefaultMaterials(language, template.key, isPracticeKeyBlock(template.key) ? practiceKeys[template.key] : undefined)
+              const defaultMaterials = getDefaultMaterials(language, template.key, isPracticeKeyBlock(template.key) ? practiceKeys[template.key] : undefined).filter((material) => material.filePath)
+              const isTimerRunning = timers[template.id]?.isRunning ?? false
+              const timerActionLabel = `${t(isTimerRunning ? 'Pause' : 'Start')}: ${template.label}`
               const blockMaterials = materialsByBlock[template.key] ?? []
               const blockFeedback = materialFeedback[template.key] ?? emptyMaterialFeedback
 
@@ -2404,9 +2414,11 @@ export default function Sessions() {
                           <button
                             type="button"
                             onClick={() => toggleTimer(template.id)}
-                            className="min-h-11 min-w-11 rounded px-1 text-sm font-medium text-sky-300 hover:text-sky-100"
+                            aria-label={timerActionLabel}
+                            title={timerActionLabel}
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded text-sky-300 hover:bg-slate-800/60 hover:text-sky-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
                           >
-                            {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
+                            <PracticeTimerIcon isRunning={isTimerRunning} />
                           </button>
                           <span aria-hidden="true" className="h-6 border-l border-slate-700" />
                         </div>
@@ -2464,9 +2476,11 @@ export default function Sessions() {
                           <button
                             type="button"
                             onClick={() => toggleTimer(template.id)}
-                            className="min-h-11 rounded bg-slate-800 px-4 text-sm font-medium text-slate-200"
+                            aria-label={timerActionLabel}
+                            title={timerActionLabel}
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded bg-slate-800 text-sky-300 hover:bg-slate-700 hover:text-sky-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
                           >
-                            {timers[template.id]?.isRunning ? t('Pause') : t('Start')}
+                            <PracticeTimerIcon isRunning={isTimerRunning} />
                           </button>
                           <button
                             type="button"

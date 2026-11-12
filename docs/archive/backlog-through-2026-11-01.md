@@ -1,6 +1,6 @@
 > Historical record archived on 2026-11-02. Statements about pending work, approvals, blockers and next steps describe their original point in time and are not current instructions. See [current backlog](../guitar-hub-v1-scope-and-backlog.md) and [current handoff](../project-handoff.md). Original evidence and historical item IDs are preserved below.
 
-# Guitar Practice Hub — scope and backlog
+# Pro100Practice — scope and backlog
 
 ## Beta Feedback Queue (2026-10-16; Future Work Only)
 
