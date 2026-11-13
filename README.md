@@ -2,13 +2,17 @@
 
 A responsive guitar practice diary for weekly planning, daily sessions, and progress review. Keep practice blocks, repertoire songs, timers, and learning materials together in an installable web app.
 
-The app is now named **Pro100Practice**. Existing hosting/repository addresses, local project paths, account domains and browser-storage identifiers retain their legacy technical names to preserve deployment and data compatibility. This source rename does not change the published build until a release is completed.
+**Live app:** [pro100practice.app](https://pro100practice.app/) (owner-reported live domain).
+
+The app is now named **Pro100Practice**, with `pro100practice.app` as its current public domain. The legacy Workers address and repository addresses, local project paths, account domains and browser-storage identifiers retain their technical names to preserve deployment and data compatibility. See the [hosting guide](docs/hosting.md) for the domain transition and device-local material caveat. This domain update does not independently verify the deployed version.
 
 ## Release Updates
 
 **[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
 
-- **0.8.1 prepared 2026-11-12:** adopts Pro100Practice across the interface and app metadata, themes login/registration/recovery to match Home, fixes the translated Show password label and simplifies Practice references and timer controls. Existing accounts, materials, timer behavior and hosting identifiers are preserved. No new migration or dependency update. Delivery status and validation are in the [current handoff](docs/project-handoff.md); source preparation alone is not publication evidence.
+- **0.9.0 prepared 2026-11-13:** adds song material filters, song notes, a compact attachment popup and localized version-update summaries. Refines current-week/Week description navigation and Stats layout. The tablature control is a roadmap notice, not a player. Notes reuse the existing song schema and account ownership; files remain browser-origin-local. No migration or dependency update. See the [0.9.0 changelog](docs/CHANGELOG.md#090---2026-11-13) and [current handoff](docs/project-handoff.md) for release gates and delivery; preparation is not independent publication evidence.
+
+- **0.8.1 delivered 2026-11-12:** adopts Pro100Practice across the interface and app metadata, themes login/registration/recovery to match Home, fixes the translated Show password label and simplifies Practice references and timer controls. Existing accounts, materials, timer behavior and hosting identifiers are preserved. Commit `cd39f1a` was pushed normally to origin/master and the remote hash verified. Required gates passed 756 tests, lint with two existing warnings and production build. No new migration or dependency update; hosted publication was not independently verified by that release run.
 
 - **0.8.0 delivered 2026-11-10:** adds the account-wide Songs library, date-specific Repertoire/Learn a new song selections and shared song materials. Includes in-app dropdowns, compact Practice controls, the owner-supplied Chromatic and key-matched scale PDFs, and locked Home scrolling. ToDo data and recorded practice are preserved. The owner-approved Songs migration was applied and verified on 2026-11-09. Commit `7f91d4d` was pushed to origin/master and 13 public checks verified served 0.8.0 / `7f91d4d` on 2026-11-10. See the [0.8.0 changelog](docs/CHANGELOG.md#080---2026-11-09) and [current handoff](docs/project-handoff.md).
 

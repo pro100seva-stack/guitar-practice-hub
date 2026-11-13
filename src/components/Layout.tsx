@@ -7,6 +7,7 @@ import { useScreenTour } from './tour/useScreenTour'
 import { HeaderSlotsContext } from './headerSlots'
 import { isRenderedLazyPageReady, lazyChunkRecovery } from '../lib/lazyChunkRecovery'
 import { versionLabel } from '../lib/buildInfo'
+import ReleaseNotice from './ReleaseNotice'
 
 const navigationItems = [
   { key: 'Home', path: '/landing' }, { key: 'Progress', path: '/progress' }, { key: 'Plan', path: '/plan' },
@@ -288,6 +289,7 @@ export default function Layout() {
         {isLandingScreen && <p translate="no" className="home-version">{versionLabel}</p>}
       </main>
 
+      <ReleaseNotice blocked={tour.isOpen || navigation.state !== 'idle'} />
       {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} isHome={isLandingScreen} />}
     </div>
     </HeaderSlotsContext.Provider>

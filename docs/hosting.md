@@ -1,5 +1,11 @@
 # Cloudflare asset routing
 
+## Current public address
+
+On 2026-11-13 the owner reported that the purchased domain **https://pro100practice.app** serves the live app. This report does not change the Worker name, repository mapping or deployment configuration. The original `guitar-practice-hub.pro100seva.workers.dev` address and historical verification below remain valid references to the prior origin; no redirect or provider change is claimed here.
+
+Browser storage is scoped to the origin. Existing device-local materials, preferences, sign-in state and update-notice acknowledgments at the workers.dev origin do not automatically transfer to the new domain. Keep existing data intact; a deliberate export/import or transfer design is separate work. The original hosting verification dates below do not establish a new custom-domain audit.
+
 The repository contains the hosting fix in [wrangler.jsonc](../wrangler.jsonc) and [cloudflare/worker.ts](../cloudflare/worker.ts). It originated in the 0.6.0 source release. Public HTTP verification on 2026-11-05 confirmed its behavior with frontend 0.7.0 / `f6ec7b7`. The prepared 0.7.1 patch retains that hosting implementation; its delivery record is separate from this dated public observation. The owner confirmed the current dashboard commands: build `npm run build`, deploy `npx wrangler deploy`, and version upload `npx wrangler versions upload`. Those Wrangler commands discover the root configuration without command changes. The compatibility date `2026-11-02` is the chosen baseline for this new Worker, not a claim that it matches the previously deployed configuration. No account, route/domain, credential or backend settings are added to this fix.
 
 ## Behavior

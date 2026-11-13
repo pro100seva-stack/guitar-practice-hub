@@ -8,6 +8,21 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.9.0] - 2026-11-13
+
+Prepared minor release: song notes/material tools and localized update notices add user-facing functionality, so 0.8.1 becomes 0.9.0 once. The owner invoked `/release-app` for this scope. No new migration, dependency upgrade or hosting/provider operation is included; validation and Git delivery are recorded separately in the [handoff](project-handoff.md).
+
+### Added
+
+- Song material toolbar with video/PDF filters, a tablature roadmap notice, song notes and a plus context popup for file/YouTube attachment. Notes reuse the existing song column and ownership rules.
+- Dismissible, localized version update summaries with a GitHub changelog link and local acknowledgment.
+
+### Changed
+
+- Practice returns to the current week in place through the Current week text action beside Jump to. Inside the expanded focus details, Week description links to the selected week's Plan between the program/date line and description text. Library song titles open materials; gray daily-song removal preserves library records/history/files. The song toolbar's tablature roadmap control uses a guitar-pick icon.
+- Stats places last-session duration beside its date, removes the redundant visible heading/intro and orders mobile cumulative chart, category chart and calendar.
+- Recorded the owner-reported live address, `https://pro100practice.app`, with origin-local material storage implications; no hosting/provider changes were performed.
+
 ## [0.8.1] - 2026-11-12
 
 Prepared patch release for naming, presentation and label fixes. Version 0.8.0 becomes 0.8.1 once; no dependencies, account behavior, storage identities or database migrations change. Git delivery and hosted publication are recorded separately in the [handoff](project-handoff.md).

@@ -1053,6 +1053,39 @@ Object.assign(pageTranslations.ru, { 'ux.showPassword': 'Показать пар
 Object.assign(pageTranslations.it, { 'ux.showPassword': 'Mostra password' })
 Object.assign(pageTranslations.fr, { 'ux.showPassword': 'Afficher le mot de passe' })
 
+Object.assign(pageTranslations.en, {
+  'songTools.materials': 'Song materials', 'songTools.video': 'Video materials', 'songTools.pdf': 'PDF materials', 'songTools.tab': 'Tabs', 'songTools.notes': 'Song notes', 'songTools.notesPresent': 'Song notes (saved notes available)', 'songTools.showAll': 'Show all materials',
+  'songTools.saveNotes': 'Save notes', 'songTools.saveBeforeRemove': 'Save or cancel the note draft before removing this song.',
+  'songTools.tabRoadmap': 'Tab support is on the roadmap and is being worked on.', 'songTools.notesFor': 'Notes for {song}', 'songTools.notesSaved': 'Song notes saved.', 'songTools.notesError': 'Could not save these notes. Your draft is still here. Try again.', 'songTools.removeFromDay': 'Remove {song} from this day',
+  'release.title': 'What’s new in Pro100Practice', 'release.version': 'Version {version}', 'release.changelog': 'Read the full changelog', 'release.dismiss': 'Got it',
+  'release.081.brand': 'Our new name is Pro100Practice.', 'release.081.login': 'The sign-in page now matches Home, with a clearer Show password option.', 'release.081.practice': 'Practice blocks have play/pause icons and fewer generic reference tips.',
+  'release.090.songs': 'Open song materials from Songs, filter videos and PDFs, and keep notes with each song.', 'release.090.practice': 'Jump back to the current practice week and open the selected week’s Plan from its description.', 'release.090.stats': 'Stats has a tighter layout, with the category chart before the calendar on mobile.',
+})
+Object.assign(pageTranslations.ru, {
+  'songTools.materials': 'Материалы песни', 'songTools.video': 'Видеоматериалы', 'songTools.pdf': 'Материалы PDF', 'songTools.tab': 'Табулатуры', 'songTools.notes': 'Заметки к песне', 'songTools.notesPresent': 'Заметки к песне (есть сохранённые заметки)', 'songTools.showAll': 'Показать все материалы',
+  'songTools.saveNotes': 'Сохранить заметки', 'songTools.saveBeforeRemove': 'Сохраните или отмените черновик заметок перед удалением песни из списка.',
+  'songTools.tabRoadmap': 'Поддержка табулатур запланирована и находится в работе.', 'songTools.notesFor': 'Заметки к песне «{song}»', 'songTools.notesSaved': 'Заметки к песне сохранены.', 'songTools.notesError': 'Не удалось сохранить заметки. Черновик остался здесь. Повторите попытку.', 'songTools.removeFromDay': 'Убрать «{song}» из этого дня',
+  'release.title': 'Что нового в Pro100Practice', 'release.version': 'Версия {version}', 'release.changelog': 'Полный список изменений', 'release.dismiss': 'Понятно',
+  'release.081.brand': 'Наше новое название — Pro100Practice.', 'release.081.login': 'Страница входа теперь оформлена как главный экран, а переключатель показа пароля стал понятнее.', 'release.081.practice': 'В блоках практики появились значки запуска и паузы, а общих подсказок стало меньше.',
+  'release.090.songs': 'Открывайте материалы из списка песен, выбирайте видео или PDF и сохраняйте заметки к каждой песне.', 'release.090.practice': 'Возвращайтесь к текущей неделе практики и открывайте план выбранной недели через её описание.', 'release.090.stats': 'Статистика стала компактнее: на телефоне диаграмма категорий теперь находится перед календарём.',
+})
+Object.assign(pageTranslations.it, {
+  'songTools.materials': 'Materiali del brano', 'songTools.video': 'Materiali video', 'songTools.pdf': 'Materiali PDF', 'songTools.tab': 'Tablature', 'songTools.notes': 'Note del brano', 'songTools.notesPresent': 'Note del brano (sono presenti note salvate)', 'songTools.showAll': 'Mostra tutti i materiali',
+  'songTools.saveNotes': 'Salva note', 'songTools.saveBeforeRemove': 'Salva o annulla la bozza delle note prima di rimuovere questo brano.',
+  'songTools.tabRoadmap': 'Il supporto alle tablature è previsto ed è in lavorazione.', 'songTools.notesFor': 'Note per {song}', 'songTools.notesSaved': 'Note del brano salvate.', 'songTools.notesError': 'Impossibile salvare le note. La bozza è ancora qui. Riprova.', 'songTools.removeFromDay': 'Rimuovi {song} da questo giorno',
+  'release.title': 'Novità di Pro100Practice', 'release.version': 'Versione {version}', 'release.changelog': 'Leggi tutte le modifiche', 'release.dismiss': 'Ho capito',
+  'release.081.brand': 'Il nostro nuovo nome è Pro100Practice.', 'release.081.login': 'La pagina di accesso riprende lo stile della Home, con un’opzione Mostra password più chiara.', 'release.081.practice': 'I blocchi di pratica hanno icone di avvio e pausa e meno suggerimenti generici.',
+  'release.090.songs': 'Apri i materiali dall’elenco brani, filtra video e PDF e salva note per ogni brano.', 'release.090.practice': 'Torna alla settimana di pratica attuale e apri il piano della settimana selezionata dalla sua descrizione.', 'release.090.stats': 'Statistiche più compatte: sui telefoni il grafico delle categorie precede il calendario.',
+})
+Object.assign(pageTranslations.fr, {
+  'songTools.materials': 'Supports du morceau', 'songTools.video': 'Supports vidéo', 'songTools.pdf': 'Supports PDF', 'songTools.tab': 'Tablatures', 'songTools.notes': 'Notes du morceau', 'songTools.notesPresent': 'Notes du morceau (des notes sont enregistrées)', 'songTools.showAll': 'Afficher tous les supports',
+  'songTools.saveNotes': 'Enregistrer les notes', 'songTools.saveBeforeRemove': 'Enregistrez ou annulez le brouillon des notes avant de retirer ce morceau.',
+  'songTools.tabRoadmap': 'La prise en charge des tablatures est prévue et en cours de préparation.', 'songTools.notesFor': 'Notes pour {song}', 'songTools.notesSaved': 'Notes du morceau enregistrées.', 'songTools.notesError': 'Impossible d’enregistrer les notes. Votre brouillon est toujours ici. Réessayez.', 'songTools.removeFromDay': 'Retirer {song} de cette journée',
+  'release.title': 'Les nouveautés de Pro100Practice', 'release.version': 'Version {version}', 'release.changelog': 'Lire toutes les modifications', 'release.dismiss': 'Compris',
+  'release.081.brand': 'Notre nouveau nom est Pro100Practice.', 'release.081.login': 'La page de connexion reprend le style de l’accueil, avec une option d’affichage du mot de passe plus claire.', 'release.081.practice': 'Les blocs de pratique ont des icônes de lecture et de pause et moins de conseils génériques.',
+  'release.090.songs': 'Ouvrez les supports depuis la liste des morceaux, filtrez les vidéos et PDF et gardez des notes pour chaque morceau.', 'release.090.practice': 'Revenez à la semaine de pratique actuelle et ouvrez le plan de la semaine choisie depuis sa description.', 'release.090.stats': 'Les statistiques sont plus compactes : sur téléphone, le graphique des catégories précède le calendrier.',
+})
+
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)
 Object.assign(translations.it, pageTranslations.it)

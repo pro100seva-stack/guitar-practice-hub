@@ -1,5 +1,36 @@
 # Pro100Practice — scope and backlog
 
+## Release 0.9.0: items 77/78 (2026-11-13)
+
+Owner invoked `/release-app` after the final link/pick refinements. One MINOR bump from 0.8.1 to 0.9.0 covers song materials/notes and update summaries plus the approved Practice/Stats presentation changes. Week description stays inside expanded focus details; tab uses the outlined guitar pick and roadmap notice. Source/docs/tests/evidence are in scope; existing one-off repair SQL and local runtime remain excluded. Required test/lint/build gates and scoped Git delivery are pending. No new schema, migration, dependency, hosting/account identity change or live backend access is needed. Calendar/personal-storage functionality and cross-origin material transfer remain deferred. The following sandbox entries retain acceptance/history; this release invocation supersedes their waiting-for-release status.
+
+Final required gates passed on the prepared 0.9.0 snapshot: 780/780 tests (38 files), lint exit 0 with two pre-existing warnings, production build exit 0 with 20 precache entries; 210 inputs stable. Initial obsolete navigation fixture assertions were repaired while preserving/increasing guard coverage; no product source was changed for them. [Release evidence](evidence/acceptance/release-0.9.0-2026-11-13.md) records 60 artifact files/83 resolving references, preserved compatibility and manual device/live gaps. Scoped commit/push is pending; this local evidence is not independent hosted verification.
+
+## New sandbox intake (2026-11-13)
+
+Owner reports **pro100practice.app** is the live address. Preserve old hosting/Worker/repository and data identifiers; origin-local files do not automatically move to the new domain. No hosting change or material migration is part of this request.
+
+### Item 77: Practice song tools and Stats presentation
+
+- Practice: Jump to and a small Current week return action share one line, visible only when a different week is selected. Returning stays in Practice and respects unsaved-change confirmation. Selector/arrows and current-week highlighting remain. Remove the old Current week Plan shortcut; clickable Week description opens the selected week's Plan, with visible link styling.
+- Owner refinement: place the Week description link inside the expanded focus details, between the program/date line and the actual description. Use an outlined guitar pick for the tab icon, following the supplied silhouette reference. Other UI changes received positive visual feedback; no release was invoked.
+- Stats: last-session duration directly follows its date, remove the redundant visible Stats title/intro while preserving an accessible heading, and order mobile cumulative chart → category donut → practice calendar. Retain wide-screen chart layout and existing calculations/filters.
+- Library song titles open their materials. Repertoire song titles toggle expansion; a gray version of the block's circular remove icon replaces the +/- disclosure. This removes the day's song association only, preserving the song, notes, history and attachments.
+- Song material toolbar: video/PDF/tab/notes/plus icons. Video/PDF/tab look inactive when absent and lit when attached; video/PDF activate a type filter, with an all-materials path so other attachments remain accessible. Tab explains that tablature support is on the roadmap/in progress. No tablature parser/player is implemented here.
+- Notes icon opens a small editable field with Save/Cancel and explicit error/retry. Existing notes visibly mark the icon. Reuse the already-existing nullable `songs.notes` field and owner update policies; no duplicate column/migration. Notes are song-wide, not per practice block/day; preserve drafts on failure and reject stale account/date/song UI updates.
+- Plus opens a contextual Choose file/Paste YouTube link popup, preserving clipboard denial/manual paste, cancel/retry, ownership and upload progress. User materials remain device-local.
+- Status: authorized sandbox implementation with focused meaningful checks; visual approval precedes full release QA/delivery. No production writes or schema change authorized.
+
+### Item 78: First-open update summary
+
+- Show a brief localized summary of important changes for the actual running version, with a link to the GitHub changelog. Once dismissed, do not repeat for the same version on the same browser; show again for a later known version. Keep acknowledgment local and tolerate unavailable browser storage.
+- Use an accessible dismissible dialog after sign-in; avoid colliding with Help/modal dialogs and restore focus. Do not announce unreleased future features as present in an older running build. Prepare summaries for the current and next feature release without bumping the app version during sandbox work.
+- Status: authorized sandbox implementation, not release. No notification service, account preference or background push permission is added.
+
+IDs 77/78 are allocated here; next unique ID is 79. Items 75/76 remain separate backlog/research work.
+
+Items 77/78 implementation complete, pending owner visual review. Integrated app TypeScript and scoped lint/whitespace passed; 115 distinct focused frontend tests and 13 isolated PostgreSQL notes/RLS checks passed. Existing notes schema reused without migration. [Sandbox evidence](evidence/acceptance/song-tools-sandbox-2026-11-13.md) distinguishes synthetic/local execution from manual browser/device/live gaps. App version remains 0.8.1; no full release gate, commit/push or publication performed.
+
 ## Release 0.8.1: naming and presentation (2026-11-12)
 
 Owner invoked `/release-app` for the current approved sandbox: Pro100Practice brand/UI/metadata/documentation; Home-themed auth forms and translated Show password checkbox; hide prose-only default references and use accessible play/pause icons on Practice blocks. Prepare one PATCH bump (0.8.0 → 0.8.1); no new capability, schema, dependency or service identity change. Preserve authentication/storage compatibility identifiers and real hosting/repository addresses. Include calendar/storage research as documentation only, not implementation. Existing one-off repair SQL/local runtime remain excluded. Release Engineer prepares version/release docs and scoped Git delivery; QA is sole full test/lint/build owner. Required gates and delivery pending. This invocation supersedes the sandbox's earlier waiting-for-release status; visual/device gaps must still be reported honestly.
@@ -37,7 +68,7 @@ Owner requests hiding generic default-reference prose unless an actual default l
 - Migration is an explicit copy/verify/switch operation with stable IDs, relationship and material-byte checks, recoverable checkpoints and export/restore. Existing Supabase rows and device materials must not be automatically deleted. Importing existing hosted data may temporarily use the existing hosted login; after switching, the personal workspace must function without it. Encryption/key recovery and token/session handling remain design decisions.
 - Findings and sources: [personal-storage feasibility review](reviews/technical/personal-storage-feasibility-2026-11-10.md). File export is a backup/transfer feature, not proof of automatic synchronization. No instant/background-sync promise is made for a suspended mobile web app.
 
-IDs 75 and 76 are allocated above; future unique backlog IDs start at 77. Calendar remains queued while personal storage is being explored.
+IDs 75 and 76 are allocated above; items 77/78 are allocated in the 2026-11-13 intake; future unique backlog IDs start at 79. Calendar remains queued while personal storage is being explored.
 
 Release delivery update: 0.8.0 was committed as `7f91d4d4085db0c433e432cd03916e643ef93b71`, pushed to the configured `origin/master`, and independently verified on the public app on 2026-11-10 at 05:34 UTC. Thirteen public checks passed, serving 0.8.0 / `7f91d4d`, CI build 05:33 UTC. The existing excluded one-off repair SQL and Landing line-ending state were preserved; no additional release is part of this backlog intake.
 
@@ -50,7 +81,7 @@ Release continuation (2026-11-10): first full gate returned 717 passed/39 failed
 
 Presentation follow-up (2026-11-09): restored the previously approved Practice header content order and disclosure after owner reported regression, preserving the new song feature. Week navigation is first; its in-app selector shows week number and focus without dates and distinguishes the actual current week. Session date and bordered minutes follow; clicking the focus reveals program/date range/description together. The redundant Practice weeks strip and duplicate date/info/Today block header are removed. Meter/tuner retain in-app dropdowns. Post-repair app TypeScript and scoped whitespace checks passed; no full QA/release or production migration apply.
 
-Owner invoked `/release-app` after the sandbox work, authorizing the normal release process for the current changes. Item 74 is allocated to the account-wide Songs/day-practice/material workflow (`SONG-PRACTICE-20261109`); 75 is allocated to calendar reminders and 76 to personal storage; future unique item IDs start at 77. This entry supersedes older ToDo and week-only Practice song behavior. Version 0.7.3 to 0.8.0 is a single MINOR bump because the release adds user-facing functionality.
+Owner invoked `/release-app` after the sandbox work, authorizing the normal release process for the current changes. Item 74 is allocated to the account-wide Songs/day-practice/material workflow (`SONG-PRACTICE-20261109`); 75 is allocated to calendar reminders and 76 to personal storage; items 77/78 are allocated in the 2026-11-13 intake; future unique item IDs start at 79. This entry supersedes older ToDo and week-only Practice song behavior. Version 0.7.3 to 0.8.0 is a single MINOR bump because the release adds user-facing functionality.
 
 - Replace active ToDo interfaces and reads/writes in Practice and Plan with the account-wide song library; preserve the existing `todos` table, rows and policies for compatibility with published clients.
 - Practice Songs supports adding and reversibly removing songs. Practice adds the selected song to the selected local date's Repertoire, without duplicate blocks, starting timers, marking Done, or inflating activity. Persist song selections independently of completed sessions; preserve other editor changes and guard stale account/date responses.
@@ -67,7 +98,7 @@ Verification: with the owner's Docker startup, Backend loaded all 40 local migra
 
 Updated 2026-11-10. This document owns scope, priorities and acceptance; the [handoff](project-handoff.md) owns continuation and release context. These are the two status sources of truth. The [review report](reviews/technical/project-review-2026-11-02.md) is a dated assessment, not another live backlog.
 
-The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; 72 is allocated to the approved Practice presentation cleanup; 73 is allocated to the Home screenshot design and silhouette interaction; 74 is allocated to the Songs workflow; 75 is allocated to calendar reminders and 76 to personal storage; future unique item IDs start at 77.
+The full [backlog through 2026-11-01](archive/backlog-through-2026-11-01.md) preserves original requests, contracts, decisions and QA evidence. Its pending approvals, Docker blockers, old UI descriptions and next steps are historical, superseded by this register. Reused historical IDs remain qualified in that archive; 66 is allocated to the UX review, and 67 is allocated to UX implementation; 68 is allocated to the zoom-policy correction; 69 is allocated to the density/guidance review; 70 is allocated to registration consistency and manual-account setup; 71 is allocated to compact Practice controls; 72 is allocated to the approved Practice presentation cleanup; 73 is allocated to the Home screenshot design and silhouette interaction; 74 is allocated to the Songs workflow; 75 is allocated to calendar reminders and 76 to personal storage; items 77/78 are allocated in the 2026-11-13 intake; future unique item IDs start at 79.
 
 ## Prior release baseline (through 0.7.3)
 

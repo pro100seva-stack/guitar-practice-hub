@@ -245,20 +245,40 @@ describe('Practice Current week navigation', () => {
   const templates = [{ id: 't1', key: 'rhythm', label: 'Rhythm', target_minutes: null }]
   const baseline = getSessionEditorState('2026-10-03', templates, [], ['rhythm'])
 
-  function setup(current: SessionEditorState, saving = false) {
+  function setup(current: SessionEditorState, saving = false, notes: { dirty?: boolean; saving?: boolean } = {}) {
     const setPendingDiscardAction = vi.fn()
-    const context = { saving, ...current, editorBaseline: baseline, snapshotBlockTimers, isSessionEditorDirty, setTimers: vi.fn(), setPendingDiscardAction }
-    const create = new Function(...Object.keys(context), `${compiled}\nreturn confirmDiscard;`) as (...values: unknown[]) => (action: () => void) => void
-    return { confirm: create(...Object.values(context)), setPendingDiscardAction }
+    const setSongNotesDrafts = vi.fn()
+    const context = { saving, ...current, editorBaseline: baseline, snapshotBlockTimers, isSessionEditorDirty, setTimers: vi.fn(), setPendingDiscardAction, hasUnsavedSongNotes: notes.dirty ?? false, songNotesSaving: new Set(notes.saving ? ['song-a'] : []), setSongNotesDrafts }
+    const create = new Function(...Object.keys(context), `${compiled}\nreturn confirmDiscard;`) as (...values: unknown[]) => (action: () => void, leavesPractice?: boolean) => void
+    return { confirm: create(...Object.values(context)), setPendingDiscardAction, setSongNotesDrafts }
   }
 
-  it('resolves the actual current week, badges only that selected week, and wires its button through the guard', () => {
+  it('resolves the actual current week and offers a guarded in-Practice return only while another week is selected', () => {
     const declaration = source.split('\n').find((line) => line.includes('const actualCurrentWeek =')) ?? ''
     const weeks = [{ id: 'past', start_date: '2026-09-01', end_date: '2026-09-07' }, { id: 'current', start_date: '2026-10-01', end_date: '2026-10-07' }]
     const current = new Function('weeks', 'todayDate', `${declaration}\nreturn actualCurrentWeek;`)(weeks, '2026-10-03') as { id: string }
     expect(current.id).toBe('current')
-    expect(source).toContain('actualCurrentWeek && planWeek?.id === actualCurrentWeek.id && (')
-    expect(source).toContain('confirmDiscard(() => navigate(`/plan?week=${encodeURIComponent(actualCurrentWeek.id)}`))')
+    const returnControls = source.slice(source.indexOf('{actualCurrentWeek &&'), source.indexOf('<div className="practice-week-navigation'))
+    const visibility = returnControls.match(/^\{(.+) && <div /)?.[1]
+    expect(visibility).toBeDefined()
+    const visible = new Function('actualCurrentWeek', 'planWeek', `return Boolean(${visibility});`) as (actual: { id: string } | null, selected: { id: string } | null) => boolean
+    expect(visible(current, { id: 'past' })).toBe(true)
+    expect(visible(current, { id: 'current' })).toBe(false)
+    expect(visible(null, { id: 'past' })).toBe(false)
+    expect(returnControls).toContain("{t('Jump to')}")
+    expect(returnControls).toContain('confirmDiscard(() => handleSelectWeek(actualCurrentWeek))')
+    expect(returnControls).not.toContain('navigate(')
+    expect(source).toContain("aria-label={t('Jump to')}")
+  })
+
+  it('opens the selected week Plan from the description inside expanded details, with unsaved-edit guards', () => {
+    const details = source.slice(source.indexOf('<div id="practice-week-details"'), source.indexOf('<div data-tour="practice-days"'))
+    expect(details).toContain('hidden={!isWeekDetailsOpen}')
+    expect(details).toContain('disabled={!planWeek || saving || songNotesSaving.size > 0}')
+    expect(details).toContain('confirmDiscard(() => navigate(`/plan?week=${encodeURIComponent(planWeek.id)}`), true)')
+    expect(details).toContain('underline underline-offset-4')
+    expect(details.indexOf('{programName')).toBeLessThan(details.indexOf("{t('Week description')}"))
+    expect(details.indexOf("{t('Week description')}")).toBeLessThan(details.indexOf('{planWeek?.tasks'))
   })
 
   it('navigates immediately from clean defaults, but prompts after removal or notes edits', () => {
@@ -270,11 +290,41 @@ describe('Practice Current week navigation', () => {
       const heldAction = vi.fn()
       fixture.confirm(heldAction)
       expect(heldAction).not.toHaveBeenCalled()
-      expect(fixture.setPendingDiscardAction).toHaveBeenCalledWith({ run: heldAction })
+      expect(fixture.setPendingDiscardAction).toHaveBeenCalledExactlyOnceWith({ run: expect.any(Function) })
       const pending = fixture.setPendingDiscardAction.mock.calls[0][0] as { run: () => void }
       pending.run()
       expect(heldAction).toHaveBeenCalledOnce()
+      expect(fixture.setSongNotesDrafts).not.toHaveBeenCalled()
     }
+  })
+
+  it('retains a song-note draft until leaving Practice is explicitly confirmed', () => {
+    const fixture = setup(structuredClone(baseline), false, { dirty: true })
+    const action = vi.fn()
+    fixture.confirm(action, true)
+    expect(action).not.toHaveBeenCalled()
+    expect(fixture.setSongNotesDrafts).not.toHaveBeenCalled()
+    const pending = fixture.setPendingDiscardAction.mock.calls[0][0] as { run: () => void }
+    pending.run()
+    expect(fixture.setSongNotesDrafts).toHaveBeenCalledExactlyOnceWith({})
+    expect(action).toHaveBeenCalledOnce()
+  })
+
+  it('keeps account-wide note drafts when changing the day or week within Practice', () => {
+    const fixture = setup(structuredClone(baseline), false, { dirty: true })
+    const action = vi.fn()
+    fixture.confirm(action)
+    expect(action).toHaveBeenCalledOnce()
+    expect(fixture.setPendingDiscardAction).not.toHaveBeenCalled()
+    expect(fixture.setSongNotesDrafts).not.toHaveBeenCalled()
+  })
+
+  it('does not leave Practice during a pending song-note save', () => {
+    const fixture = setup(structuredClone(baseline), false, { saving: true })
+    const action = vi.fn()
+    fixture.confirm(action, true)
+    expect(action).not.toHaveBeenCalled()
+    expect(fixture.setPendingDiscardAction).not.toHaveBeenCalled()
   })
 
   it('does not navigate while a save is pending', () => {

@@ -12,6 +12,16 @@ This guide describes implementation. Use the [backlog](guitar-hub-v1-scope-and-b
 - Supabase JS client
 - vite-plugin-pwa
 
+## Song tools and update notices (0.9.0 release preparation)
+
+Song notes use the existing nullable `songs.notes` column and owner RLS. The Practice UI edits them independently of session logging with explicit Save/Cancel; empty text becomes null and the client limits drafts to 10,000 characters. No schema migration is needed. Song metadata/notes are account-wide; attachment bytes remain browser-origin-local and use the existing canonical song material scope across the library, Repertoire and Learn a new song. Daily song removal unlinks only that date/role association.
+
+The song toolbar filters uploaded video/YouTube or PDFs, opens notes, and exposes the existing file/clipboard workflow through a plus context popup. Tablature shows a roadmap notice; it does not imply a working tablature player. Browsing a song's library materials does not start a practice timer; confirmed playback within a selected practice block retains the existing timer behavior.
+
+`ReleaseNotice` is mounted once in authenticated Layout and uses the actual build version to select localized summaries from `src/lib/releaseNotes.ts`. Dismissal is acknowledged per browser origin/version, with in-session fallback if storage is denied. Unknown or prerelease versions have no guessed summary; a later stable release must add its matching catalog entry/translations. Rollback must not overwrite a newer acknowledgment. The modal waits for tours/other dialogs and links to the repository changelog. The owner invoked `/release-app` for the 0.9.0 scope; release gates and delivery are tracked in the handoff.
+
+Practice's Current week text action beside Jump to returns to the actual current week in place. Inside the expanded focus details, the Week description Plan link sits between the program/date line and description text, targeting the selected week. The guitar-pick icon belongs to the song toolbar's tablature roadmap control. Library material browsing does not schedule or log practice.
+
 ## Architecture
 
 The React/Vite PWA runs in the browser and communicates directly with Supabase Auth, PostgREST, and authenticated database RPCs. `account-gateway` is the server-only boundary for account creation and password reset. Learning-material files and metadata remain on the device.

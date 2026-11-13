@@ -31,6 +31,14 @@ export async function archivePracticeSong(id: string) {
   if (error) throw error
 }
 
+/** Notes belong to the account-wide song; row ownership is enforced by songs RLS. */
+export async function savePracticeSongNotes(id: string, notes: string) {
+  if (notes.length > 10_000) throw new Error('SONG_NOTES_TOO_LONG')
+  const { data, error } = await supabase.from('songs').update({ notes: notes === '' ? null : notes }).eq('id', id).select('id,notes').single()
+  if (error) throw error
+  return data
+}
+
 /** Daily song choices are plans, independent of logged practice and editor changes. */
 export function withDaySongBlocks(state: SessionEditorState, songs: readonly Pick<DaySong, 'block_key'>[], templates: readonly { id: string; key: string; label: string; target_minutes: number | null }[]): SessionEditorState {
   const keys = new Set(songs.map((song) => song.block_key))

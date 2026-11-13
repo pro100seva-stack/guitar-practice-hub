@@ -500,9 +500,8 @@ export default function Stats() {
 
   return (
     <div className="page-wide">
-      <div className="pb-4">
-        <h1 className="page-title">{t('Stats')}</h1>
-        <p className="meta mt-1">{t('A simple overview of your practice history.')}</p>
+      <h1 className="sr-only">{t('Stats')}</h1>
+      <div>
         {error && <p role="alert" className="msg-error mt-2">{t('Error: {error}', { error })}</p>}
         {loading && <p role="status" className="state pb-0">{t('Loading…')}</p>}
       </div>
@@ -604,20 +603,19 @@ export default function Stats() {
           </section>
 
           <section className="section">
-            <div className="flex min-h-11 items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="meta">{t('Last session')}</p>
+            <div className="min-h-11">
+              <p className="meta">{t('Last session')}</p>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <p className="text-base font-medium text-slate-200">
                   {summary.lastSessionDate ? formatDate(summary.lastSessionDate, locale) : t('No sessions yet')}
                 </p>
+                <span className="badge badge-neutral shrink-0">{summary.lastSessionMinutes} {t('min')}</span>
               </div>
-              <span className="badge badge-neutral shrink-0">{summary.lastSessionMinutes} {t('min')}</span>
             </div>
           </section>
 
-          <div className="xl:grid xl:grid-cols-[2fr_1fr] xl:gap-x-6">
-            <div className="min-w-0">
-            <section className="border-t border-slate-800 py-4">
+          <div className="xl:grid xl:grid-cols-[2fr_1fr] xl:items-start xl:gap-x-6">
+            <section className="min-w-0 border-t border-slate-800 py-4 xl:col-start-1 xl:row-start-1">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="section-title">{t('Cumulative practice time')}</h2>
                 <div className="flex flex-wrap gap-2">
@@ -743,10 +741,7 @@ export default function Stats() {
                 </details>
               )}
             </section>
-            <PracticeCalendar practicedDates={practicedDates} loading={loading} failed={error !== null} />
-            </div>
-
-            <section className="border-t border-slate-800 py-4">
+            <section className="min-w-0 border-t border-slate-800 py-4 xl:col-start-2 xl:row-span-2 xl:row-start-1">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="section-title">{t('stats.categoriesTitle')}</h2>
                 <p className="meta">{t('Selected period')}</p>
@@ -789,6 +784,9 @@ export default function Stats() {
                 <p className="state">{t('No block data for this period.')}</p>
               )}
             </section>
+            <div className="min-w-0 xl:col-start-1 xl:row-start-2">
+              <PracticeCalendar practicedDates={practicedDates} loading={loading} failed={error !== null} />
+            </div>
           </div>
 
           <section className="section">
