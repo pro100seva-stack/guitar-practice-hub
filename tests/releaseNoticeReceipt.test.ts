@@ -1,144 +1,162 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createReleaseNoticeReceipts, releaseNoticeStorageKey } from '../src/lib/releaseNoticeReceipt'
-import { releaseAcknowledgementKey } from '../src/lib/releaseNotes'
+import { createReleaseNoticeReceipts, releaseNoticePendingKey, releaseNoticeStorageKey, type ReleaseReceiptStorage } from '../src/lib/releaseNoticeReceipt'
 
-function memoryStorage() {
+function memoryStorage(): ReleaseReceiptStorage {
   const values = new Map<string, string>()
   return {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => { values.set(key, value) },
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => { values.set(key, value) },
+    removeItem: (key) => { values.delete(key) },
   }
 }
 
-function parameters(overrides: Partial<Parameters<ReturnType<typeof createReleaseNoticeReceipts>['claimAndShow']>[0]> = {}) {
+function syncParameters(overrides: Partial<Parameters<ReturnType<typeof createReleaseNoticeReceipts>['syncPending']>[0]> = {}) {
   return {
-    owner: 'account-a', version: '0.9.0', storage: memoryStorage(),
-    claim: vi.fn(async () => true), isCurrent: () => true, canShow: () => true, show: vi.fn(),
+    owner: 'account-a',
+    storage: memoryStorage(),
+    claim: vi.fn(async () => true),
+    isCurrent: () => true,
     ...overrides,
   }
 }
 
-describe('account-wide release receipts', () => {
-  it('records the receipt before showing, so reload before dismissal cannot repeat it', async () => {
-    const cache = memoryStorage()
+describe('release notice dismissal receipts', () => {
+  it('does not create or synchronize a receipt merely because the notice is opened', async () => {
+    const storage = memoryStorage()
     const receipts = createReleaseNoticeReceipts()
-    const input = parameters({ storage: cache, show: vi.fn(() => {
-      expect(cache.getItem(releaseNoticeStorageKey('account-a'))).toBe('0.9.0')
-    }) })
-    expect(await receipts.claimAndShow(input)).toBe('shown')
-    const afterReload = createReleaseNoticeReceipts()
-    expect(await afterReload.claimAndShow(input)).toBe('seen')
-    expect(input.claim).toHaveBeenCalledTimes(1)
-    expect(input.show).toHaveBeenCalledTimes(1)
+    const input = syncParameters({ storage, claim: vi.fn(async () => false) })
+
+    expect(await receipts.syncPending(input)).toBe('empty')
+    expect(receipts.hasSeen(input.owner, '0.9.0', storage)).toBe(false)
+    expect(input.claim).not.toHaveBeenCalled()
+    expect(storage.getItem(releaseNoticeStorageKey(input.owner))).toBeNull()
   })
 
-  it('isolates accounts on the same browser and ignores an ownerless legacy receipt', async () => {
-    const cache = memoryStorage()
-    cache.setItem(releaseAcknowledgementKey, '9.0.0')
-    const receipts = createReleaseNoticeReceipts()
-    const first = parameters({ storage: cache })
-    expect(await receipts.claimAndShow(first)).toBe('shown')
-    const second = parameters({ owner: 'account-b', storage: cache })
-    expect(await receipts.claimAndShow(second)).toBe('shown')
-    expect(second.claim).toHaveBeenCalledTimes(1)
-    expect(first.show).toHaveBeenCalledTimes(1)
-    expect(second.show).toHaveBeenCalledTimes(1)
+  it('persists only an explicit dismissal and retries its queue after a fresh manager is created', async () => {
+    const storage = memoryStorage()
+    const firstSession = createReleaseNoticeReceipts()
+    firstSession.dismiss('account-a', '0.9.0', storage)
+    expect(storage.getItem(releaseNoticeStorageKey('account-a'))).toBe('0.9.0')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBe('0.9.0')
+
+    const afterRestart = createReleaseNoticeReceipts()
+    const input = syncParameters({ storage, claim: vi.fn(async () => true) })
+    expect(await afterRestart.syncPending(input)).toBe('synced')
+    expect(input.claim).toHaveBeenCalledWith('0.9.0')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBeNull()
+    expect(afterRestart.hasSeen('account-a', '0.9.0', storage)).toBe(true)
   })
 
-  it('shares one in-flight claim between concurrent mounts and permits only its winner to show', async () => {
+  it('treats a false monotonic claim result as successful synchronization', async () => {
+    const storage = memoryStorage()
+    const receipts = createReleaseNoticeReceipts()
+    receipts.dismiss('account-a', '0.9.0', storage)
+    const input = syncParameters({ storage, claim: vi.fn(async () => false) })
+
+    expect(await receipts.syncPending(input)).toBe('synced')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBeNull()
+    expect(receipts.hasSeen('account-a', '0.9.0', storage)).toBe(true)
+  })
+
+  it('reconciles an authenticated server version locally without queueing a claim', () => {
+    const storage = memoryStorage()
+    const receipts = createReleaseNoticeReceipts()
+    receipts.reconcileServerVersion('account-a', '0.10.0', storage)
+
+    expect(receipts.hasSeen('account-a', '0.9.0', storage)).toBe(true)
+    expect(storage.getItem(releaseNoticeStorageKey('account-a'))).toBe('0.10.0')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBeNull()
+    receipts.reconcileServerVersion('account-a', 'invalid', storage)
+    expect(storage.getItem(releaseNoticeStorageKey('account-a'))).toBe('0.10.0')
+  })
+
+  it('never rolls a newer local receipt back to an older server version', () => {
+    const storage = memoryStorage()
+    const receipts = createReleaseNoticeReceipts()
+    receipts.remember('account-a', '0.10.0', storage)
+    receipts.reconcileServerVersion('account-a', '0.9.0', storage)
+
+    expect(storage.getItem(releaseNoticeStorageKey('account-a'))).toBe('0.10.0')
+  })
+
+  it('retains the durable pending receipt after an actual network failure and retries later', async () => {
+    const storage = memoryStorage()
+    const receipts = createReleaseNoticeReceipts()
+    receipts.dismiss('account-a', '0.9.0', storage)
+    const input = syncParameters({ storage, claim: vi.fn(async (): Promise<boolean> => { throw new Error('offline') }) })
+
+    expect(await receipts.syncPending(input)).toBe('deferred')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBe('0.9.0')
+    input.claim = vi.fn(async () => true)
+    expect(await receipts.syncPending(input)).toBe('synced')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBeNull()
+  })
+
+  it('does not clear a pending receipt when the UID changes while a claim is in flight', async () => {
+    const storage = memoryStorage()
+    const receipts = createReleaseNoticeReceipts()
+    receipts.dismiss('account-a', '0.9.0', storage)
+    let current = true
     let resolve: (value: boolean) => void = () => {}
     const request = new Promise<boolean>((done) => { resolve = done })
+    const pending = receipts.syncPending(syncParameters({ storage, isCurrent: () => current, claim: () => request }))
+
+    current = false
+    resolve(true)
+    expect(await pending).toBe('deferred')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBe('0.9.0')
+  })
+
+  it('scopes receipts and queues independently by UID', async () => {
+    const storage = memoryStorage()
     const receipts = createReleaseNoticeReceipts()
-    const input = parameters({ claim: vi.fn(() => request) })
-    const pending = receipts.claimAndShow(input)
-    expect(await receipts.claimAndShow(input)).toBe('deferred')
+    receipts.dismiss('account-a', '0.9.0', storage)
+    expect(receipts.hasSeen('account-b', '0.9.0', storage)).toBe(false)
+    expect(await receipts.syncPending(syncParameters({ owner: 'account-b', storage }))).toBe('empty')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBe('0.9.0')
+  })
+
+  it('shares an in-flight claim for the same owner without losing the queued receipt', async () => {
+    const storage = memoryStorage()
+    const receipts = createReleaseNoticeReceipts()
+    receipts.dismiss('account-a', '0.9.0', storage)
+    let resolve: (value: boolean) => void = () => {}
+    const request = new Promise<boolean>((done) => { resolve = done })
+    const input = syncParameters({ storage, claim: vi.fn(() => request) })
+    const first = receipts.syncPending(input)
+
+    expect(await receipts.syncPending(input)).toBe('deferred')
     expect(input.claim).toHaveBeenCalledTimes(1)
     resolve(true)
-    expect(await pending).toBe('shown')
-    expect(input.show).toHaveBeenCalledTimes(1)
+    expect(await first).toBe('synced')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBeNull()
   })
 
-  it('uses the atomic server result to prevent two devices from showing the same release', async () => {
-    let claimed = false
-    const atomicClaim = vi.fn(async () => {
-      if (claimed) return false
-      claimed = true
-      return true
-    })
-    const phone = parameters({ claim: atomicClaim })
-    const desktop = parameters({ claim: atomicClaim })
-    const result = await Promise.all([
-      createReleaseNoticeReceipts().claimAndShow(phone),
-      createReleaseNoticeReceipts().claimAndShow(desktop),
-    ])
-    expect(result.sort()).toEqual(['seen', 'shown'])
-    expect(phone.show.mock.calls.length + desktop.show.mock.calls.length).toBe(1)
-  })
-
-  it('does not claim while blocked, offline, unauthenticated or otherwise unable to open', async () => {
+  it('preserves a newer pending receipt when an older release finishes synchronizing', async () => {
+    const storage = memoryStorage()
     const receipts = createReleaseNoticeReceipts()
-    for (const input of [parameters({ canShow: () => false }), parameters({ isCurrent: () => false }), parameters({ owner: '' })]) {
-      expect(await receipts.claimAndShow(input)).toBe('deferred')
-      expect(input.claim).not.toHaveBeenCalled()
-      expect(input.show).not.toHaveBeenCalled()
+    receipts.dismiss('account-a', '0.9.0', storage)
+    let resolve: (value: boolean) => void = () => {}
+    const request = new Promise<boolean>((done) => { resolve = done })
+    const first = receipts.syncPending(syncParameters({ storage, claim: () => request }))
+    receipts.dismiss('account-a', '0.10.0', storage)
+    resolve(true)
+
+    expect(await first).toBe('synced')
+    expect(storage.getItem(releaseNoticePendingKey('account-a'))).toBe('0.10.0')
+  })
+
+  it('retains session-only receipts when browser storage is unavailable', async () => {
+    const unavailable: ReleaseReceiptStorage = {
+      getItem: () => { throw new Error('denied') },
+      setItem: () => { throw new Error('quota') },
     }
-  })
-
-  it('suppresses late display after account change, unmount or a competing modal', async () => {
-    let current = true
     const receipts = createReleaseNoticeReceipts()
-    const input = parameters({ isCurrent: () => current, claim: vi.fn(async () => { current = false; return true }) })
-    expect(await receipts.claimAndShow(input)).toBe('deferred')
-    expect(input.show).not.toHaveBeenCalled()
-    // Its server claim is consumed even if navigation prevented the display.
-    expect(receipts.hasSeen(input.owner, input.version, input.storage)).toBe(true)
+    receipts.dismiss('account-a', '0.9.0', unavailable)
+    const input = syncParameters({ storage: unavailable, claim: vi.fn(async () => false) })
 
-    let clear = true
-    const modal = parameters({ owner: 'another-account', canShow: () => clear, claim: vi.fn(async () => { clear = false; return true }) })
-    expect(await receipts.claimAndShow(modal)).toBe('deferred')
-    expect(modal.show).not.toHaveBeenCalled()
-  })
-
-  it('quietly defers missing-RPC, offline and rejected claims without creating false receipts', async () => {
-    const receipts = createReleaseNoticeReceipts()
-    const input = parameters({ claim: vi.fn(async () => { throw new Error('PGRST202: RPC unavailable') }) })
-    expect(await receipts.claimAndShow(input)).toBe('deferred')
-    expect(input.show).not.toHaveBeenCalled()
-    expect(receipts.hasSeen(input.owner, input.version, input.storage)).toBe(false)
-    input.claim = vi.fn(async () => true)
-    expect(await receipts.claimAndShow(input)).toBe('shown')
-  })
-
-  it('keeps once-only behavior with unavailable browser storage by trusting the server and session receipt', async () => {
-    const unavailable = { getItem: () => { throw new Error('Denied') }, setItem: () => { throw new Error('Quota') } }
-    const receipts = createReleaseNoticeReceipts()
-    const input = parameters({ storage: unavailable })
-    expect(await receipts.claimAndShow(input)).toBe('shown')
-    expect(await receipts.claimAndShow(input)).toBe('seen')
-    expect(input.claim).toHaveBeenCalledTimes(1)
-    const newSession = parameters({ storage: unavailable, claim: vi.fn(async () => false) })
-    expect(await createReleaseNoticeReceipts().claimAndShow(newSession)).toBe('seen')
-    expect(newSession.show).not.toHaveBeenCalled()
-  })
-
-  it('preserves newer receipts during rollback, then permits the next release', async () => {
-    const cache = memoryStorage()
-    cache.setItem(releaseNoticeStorageKey('account-a'), '0.10.0')
-    const receipts = createReleaseNoticeReceipts()
-    const old = parameters({ storage: cache, version: '0.9.0' })
-    expect(await receipts.claimAndShow(old)).toBe('seen')
-    receipts.remember(old.owner, old.version, cache)
-    expect(cache.getItem(releaseNoticeStorageKey(old.owner))).toBe('0.10.0')
-    expect(old.claim).not.toHaveBeenCalled()
-    const next = parameters({ storage: cache, version: '0.11.0' })
-    expect(await receipts.claimAndShow(next)).toBe('shown')
-  })
-
-  it('consumes a winning claim before a display failure, instead of showing the release again', async () => {
-    const receipts = createReleaseNoticeReceipts()
-    const input = parameters({ show: vi.fn(() => { throw new Error('Window closed') }) })
-    expect(await receipts.claimAndShow(input)).toBe('deferred')
-    expect(await receipts.claimAndShow(input)).toBe('seen')
+    expect(receipts.hasSeen('account-a', '0.9.0', unavailable)).toBe(true)
+    expect(await receipts.syncPending(input)).toBe('synced')
     expect(input.claim).toHaveBeenCalledTimes(1)
   })
 })

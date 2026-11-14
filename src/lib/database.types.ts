@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           include_default_exercises: boolean
           language: string
+          last_seen_release_version: string | null
           metronome_beats: number
           metronome_bpm: number
           onboarding_tour_pending: boolean
@@ -29,6 +30,7 @@ export type Database = {
         Insert: {
           include_default_exercises?: boolean
           language?: string
+          last_seen_release_version?: string | null
           metronome_beats?: number
           metronome_bpm?: number
           onboarding_tour_pending?: boolean
@@ -40,6 +42,7 @@ export type Database = {
         Update: {
           include_default_exercises?: boolean
           language?: string
+          last_seen_release_version?: string | null
           metronome_beats?: number
           metronome_bpm?: number
           onboarding_tour_pending?: boolean
@@ -456,6 +459,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_release_notice: {
+        Args: { p_expected_user_id: string; p_version: string }
+        Returns: boolean
+      }
       archive_practice_song: {
         Args: { p_song_id: string }
         Returns: undefined

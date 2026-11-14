@@ -1,5 +1,19 @@
 # Pro100Practice — scope and backlog
 
+## Recovery 0.9.0: release-notice receipt repair (2026-11-14)
+
+Latest owner recovery handoff authorizes completing local review/fixes/full QA and a separate scoped local commit on `recovery-0.9.0`. No push, merge, version bump, release, cloud change or migration repair. This supersedes earlier no-commit wording for this recovery only; the selected only-on-dismiss receipt contract remains unchanged. Actual stable master/origin tracking refs both verified at `a476a94`; six recovered commits end at `13d8e58` before this work. Final evidence/results follow in the handoff.
+
+Owner approved local-only recovery work on `recovery-0.9.0`, based on `a476a94`. The release notice becomes acknowledged only after the user explicitly closes it. Opening the dialog, waiting behind another dialog, navigating away, or changing accounts must not create an acknowledgment.
+
+Read the current user's `last_seen_release_version` under existing RLS and reconcile it with a per-user local receipt. Persist the receipt and pending sync in available local storage so offline dismissal survives app restarts. Retry after startup, authentication of the matching user, network recovery, and tab focus. `claim_release_notice` is the only server write for this value; its `false` result means the same or a newer version is already recorded and is successful synchronization. Network failures retain the pending receipt. Audit existing `app_settings` writes for stale-column overwrites; do not directly update `last_seen_release_version`.
+
+Replace the former `claimAndShow()` claim-before-show semantics with explicit-dismiss acknowledgment. Keep scope to release-notice receipt logic and tests. Do not edit `releaseNotes.ts`, `Layout.tsx`, or other files unless a concrete dependency requires it; update the generated app-settings type only if required for the RLS-protected read. Exclude Sessions, Plan, Stats, Google Calendar, and all unrelated features. The later recovery handoff permits full local QA, one scoped local commit and read-only history/catalog analysis; migrations, production mutation, push, deployment and release remain prohibited.
+
+**Verified migration mapping:** separately authorized read-only recovery analysis found remote `20261114140514` with the same SQL as local `20261114115351` after newline normalization. The schema is already applied; do not replay it or use blanket migration push. No history repair is needed for this local receipt commit. Any future reconciliation of CLI history/file naming needs a separately reviewed plan and approval; no production mutation occurred.
+
+Recovery implementation reviewed and final gates passed: **898 tests/47 files**, lint with only two known warnings, TypeScript/Vite/PWA build and static artifact checks; all 224 inputs stable. Settings writes do not overwrite receipt state; all 74 Calendar keys resolve in all four languages. Real browser/device/PWA checks remain unverified; synthetic component tests are labeled accordingly. Version stays 0.9.0. One scoped local commit follows; no push/release. [Evidence](evidence/acceptance/recovery-release-notice-2026-11-14.md).
+
 ## Release 0.9.0: items 77/78 (2026-11-13)
 
 Owner invoked `/release-app` after the final link/pick refinements. One MINOR bump from 0.8.1 to 0.9.0 covers song materials/notes and update summaries plus the approved Practice/Stats presentation changes. Week description stays inside expanded focus details; tab uses the outlined guitar pick and roadmap notice. Source/docs/tests/evidence are in scope; existing one-off repair SQL and local runtime remain excluded. Required test/lint/build gates and scoped Git delivery are pending. No new schema, migration, dependency, hosting/account identity change or live backend access is needed. Calendar/personal-storage functionality and cross-origin material transfer remain deferred. The following sandbox entries retain acceptance/history; this release invocation supersedes their waiting-for-release status.
@@ -23,7 +37,7 @@ Owner reports **pro100practice.app** is the live address. Preserve old hosting/W
 
 ### Item 78: First-open update summary
 
-- Show a brief localized summary of important changes for the actual running version, with a link to the GitHub changelog. Once dismissed, do not repeat for the same version on the same browser; show again for a later known version. Keep acknowledgment local and tolerate unavailable browser storage.
+- Show a brief localized summary of important changes for the actual running version, with a link to the GitHub changelog. A version is acknowledged only on explicit user dismissal, never on opening. Keep an owner-scoped durable local receipt/pending-sync record for offline dismissal; synchronize through the monotonic `claim_release_notice` RPC and show again for a later known version.
 - Use an accessible dismissible dialog after sign-in; avoid colliding with Help/modal dialogs and restore focus. Do not announce unreleased future features as present in an older running build. Prepare summaries for the current and next feature release without bumping the app version during sandbox work.
 - Status: authorized sandbox implementation, not release. No notification service, account preference or background push permission is added.
 
