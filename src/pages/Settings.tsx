@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
 import { useI18n } from '../lib/i18n'
 import AppSelect from '../components/AppSelect'
+import CalendarSettings from '../components/CalendarSettings'
 
 type Preferences = {
   language: Language
@@ -157,6 +158,7 @@ export default function Settings() {
           </div>
         </section>
       ))}
+      <CalendarSettings />
     </div>
   )
 }
