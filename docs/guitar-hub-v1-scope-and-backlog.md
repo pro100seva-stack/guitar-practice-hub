@@ -1,5 +1,13 @@
 # Pro100Practice — scope and backlog
 
+## Release 0.10.0: Calendar reminders (2026-11-14)
+
+Owner invoked `/release-app`, explicitly approving tested recovery-history fast-forward into master and normal origin/master push. One MINOR bump 0.9.0 → 0.10.0 covers Calendar reminders: one-off/recurring/multiple dates, timed/all-day, session minutes/date-range picker, Google creation with opt-in persistent linkage, and manual Apple/Local imports. Includes recovered selected-provider UI/translations and explicit-dismiss owner-scoped update receipts, plus localized 0.10.0 summary/setup/release docs. No new external action or migration apply is part of release; existing remote/local migration timestamp mapping must be preserved. Broader personal-storage and two-way calendar synchronization remain deferred.
+
+Seven scoped recovery commits from stable a476a94 end at0828435 before release prep. Earlier recovery-only push prohibition is superseded for this run; no version/dependency/provider/storage identity changes beyond the required version bump/public configuration example. Required final tests/lint/build/artifact and Git delivery are pending. Physical browser/device/persistent OAuth acceptance gaps remain explicit; no release approval is presented as observed QA. Planner/Frontend/ReleaseEngineer/QA have disjoint file/resource ownership recorded in handoff.
+
+Final 0.10.0 executable checks passed: **899 tests/47 files**, lint exit 0 with two known warnings, TypeScript/Vite/PWA build exit 0; 222 selected inputs remained stable. Exact 13-file release-preparation scope and protected/excluded files reviewed. Final artifact/Git delivery recorded in [evidence](evidence/acceptance/release-0.10.0-2026-11-14.md); real browser/device/provider gaps remain. No backend mutation is part of this release.
+
 ## Recovery 0.9.0: release-notice receipt repair (2026-11-14)
 
 Latest owner recovery handoff authorizes completing local review/fixes/full QA and a separate scoped local commit on `recovery-0.9.0`. No push, merge, version bump, release, cloud change or migration repair. This supersedes earlier no-commit wording for this recovery only; the selected only-on-dismiss receipt contract remains unchanged. Actual stable master/origin tracking refs both verified at `a476a94`; six recovered commits end at `13d8e58` before this work. Final evidence/results follow in the handoff.

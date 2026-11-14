@@ -8,6 +8,23 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.10.0] - 2026-11-14
+
+### Added
+
+- Calendar practice reminders in Settings: one-off, recurring or several selected dates; all-day or timed sessions, with a 30-minute default session length and review before confirmation. Recurring start/end dates share one range picker.
+- Google Calendar connection with encrypted server-side refresh credentials, restored account linkage and retries limited to unfinished dates. Explicit Disconnect leaves previously created calendar events intact. Google may still require renewed consent after authorization expires or is revoked.
+- Apple and local-device calendar options prepare `.ics` files for manual import. Imports require confirmation in a calendar application and do not provide continuous or two-way synchronization.
+
+### Changed
+
+- Calendar starts with Set up practice reminder. A selected provider stays highlighted beside Disconnect; other provider choices are hidden until it is reset. Existing Google links appear automatically when returning to Settings. Apple/local highlighting represents an import choice, not a live connection.
+
+### Fixed
+
+- Version notices are acknowledged only after explicit dismissal. Owner-scoped local receipts and a durable pending queue retry server acknowledgment after network recovery; opening, navigation and account changes do not mark a notice as read.
+- Restored Calendar labels in English, Russian, Italian and French instead of showing internal translation keys.
+
 ## [0.9.0] - 2026-11-13
 
 Prepared minor release: song notes/material tools and localized update notices add user-facing functionality, so 0.8.1 becomes 0.9.0 once. The owner invoked `/release-app` for this scope. No new migration, dependency upgrade or hosting/provider operation is included; validation and Git delivery are recorded separately in the [handoff](project-handoff.md).

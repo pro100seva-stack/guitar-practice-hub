@@ -41,6 +41,13 @@ describe('release announcements', () => {
     expect(readReleaseAcknowledgement(local)).toBe('0.9.0')
   })
 
+  it('announces Calendar in 0.10.0 after 0.9.0 and suppresses the summary once acknowledged', () => {
+    expect(getReleaseSummary('0.10.0', '0.9.0')).toEqual(['release.0100.calendar', 'release.0100.connection', 'release.0100.notices'])
+    expect(getReleaseSummary('0.9.0', null)?.some((key) => key.startsWith('release.0100'))).toBe(false)
+    expect(getReleaseSummary('0.10.0', '0.10.0')).toBeNull()
+    expect(getReleaseSummary('0.10.0', '0.11.0')).toBeNull()
+  })
+
   it('compares numeric version components, including two-digit minor versions', () => {
     expect(compareReleaseVersions('0.10.0', '0.9.0')).toBe(1)
     expect(compareReleaseVersions('1.0.0', '0.99.0')).toBe(1)
