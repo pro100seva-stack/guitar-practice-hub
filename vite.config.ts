@@ -18,6 +18,10 @@ function commitHash() {
 }
 
 export default defineConfig({
+  build: {
+    // No source maps are emitted or uploaded in ordinary builds.
+    sourcemap: false,
+  },
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __APP_COMMIT__: JSON.stringify(commitHash()),
@@ -27,11 +31,12 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      injectRegister: null,
+      registerType: 'prompt',
       workbox: {
         // Without this, the SW answers iframe/object navigations to the PDFs with index.html.
         navigateFallbackDenylist: [/^\/assets\//, /^\/default-exercises\//, /^\/__guitar_practice_hub_local_media\//],
-        globIgnores: ['**/default-exercises/**'],
+        globIgnores: ['**/default-exercises/**', '**/*.map'],
       },
       manifest: {
         name: 'Pro100Practice',

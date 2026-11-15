@@ -36,10 +36,10 @@ describe('guided tour anchors', () => {
     { isLandingScreen: true, isOpen: true },
   ])('keeps Help rendered without replay recursion (Home: $isLandingScreen, tour open: $isOpen)', ({ isLandingScreen, isOpen }) => {
     const source = readFileSync('src/components/Layout.tsx', 'utf8')
-    const footer = source.slice(source.indexOf('        {tour.canReplay && ('), source.indexOf('        {isLandingScreen && <p'))
+    const footer = source.slice(source.indexOf('        {tour.canReplay && ('), source.indexOf('        {isLandingScreen && (', source.indexOf('        {tour.canReplay && (')))
     const replay = vi.fn()
     const node = runInNewContext(transpileModule(`const node = <>${footer}</>; node`, { fileName: 'fixture.tsx', compilerOptions: { jsx: JsxEmit.React } }).outputText, {
-      React: { createElement, Fragment }, tour: { canReplay: true, isOpen, replay }, isLandingScreen, t: (key: string) => key,
+      React: { createElement, Fragment }, tour: { canReplay: true, isOpen, replay }, isLandingScreen, isPracticeScreen: false, t: (key: string) => key,
     }) as ReactElement<{ children: ReactNode }>
     const html = renderToStaticMarkup(node)
     expect(html).toContain('data-tour="help"')
@@ -182,6 +182,24 @@ describe('guided tour anchors', () => {
     expect(layout).toContain('data-tour="help"')
     expect(layout).toContain('disabled={tour.isOpen}')
     expect(layout).not.toContain('hidden={tour.isOpen}')
+  })
+
+  it('opens the current release summary from the Home version label', () => {
+    const source = readFileSync('src/components/Layout.tsx', 'utf8')
+    const start = source.indexOf('className="home-version')
+    const triggerStart = source.lastIndexOf('{isLandingScreen && (', start)
+    const end = source.indexOf('</button>', start) + '</button>'.length
+    const trigger = source.slice(triggerStart, end)
+
+    expect(triggerStart).toBeGreaterThan(-1)
+    expect(trigger).toContain('className="home-version w-max cursor-pointer border-0 bg-transparent p-0')
+    expect(trigger).toContain("title={t('release.openSummary')}")
+    expect(trigger).toContain("aria-label={t('release.openSummary')}")
+    expect(trigger).toContain('onClick={() => setReleaseNoticeOpenRequest((request) => request + 1)}')
+    expect(trigger).toContain('{versionLabel}')
+    expect(source.match(/title=\{t\('release\.openSummary'\)\}/g)).toHaveLength(1)
+    const styles = readFileSync('src/index.css', 'utf8')
+    expect(styles).toContain('.app-home .home-version { position: absolute; z-index: 10; right: auto; bottom: max(0.25rem, env(safe-area-inset-bottom)); left: 50%; width: max-content; transform: translateX(-50%);')
   })
 
   it('has a data-tour attribute in the UI for every tourSteps selector', () => {

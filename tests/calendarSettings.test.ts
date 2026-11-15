@@ -200,6 +200,7 @@ describe('Calendar progressive disclosure', () => {
     const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props })
     const react = {
       useId: () => 'calendar-test', useEffect: (effect: () => void) => { if (effectCount++ === 0) mountEffect = effect },
+      useLayoutEffect: () => {},
       useRef: (initial: unknown) => { const position = cursor++; if (!(position in values)) values[position] = { current: initial }; return values[position] },
       useState: (initial: unknown) => {
         const position = cursor++
@@ -211,6 +212,7 @@ describe('Calendar progressive disclosure', () => {
       react, 'react/jsx-runtime': { jsx, jsxs: jsx }, '../lib/i18n': { useI18n: () => ({ language: 'en', t: (key: string) => key }) },
       '../lib/dateFormat': { localeForLanguage: () => 'en-GB', toLocalIsoDate: () => '2026-11-14' }, '../lib/calendarSchedule': calendarSchedule,
       '../lib/persistentGoogleCalendar': { createPersistentCalendarApi: () => ({}) },
+      '../lib/pwaUpdateRuntime': { registerPwaUpdateGuard: () => () => {}, setPwaUpdateGuard: vi.fn() },
       '../lib/googleCalendar': {}, '../lib/localMaterialAccess': { captureLocalMaterialAccess: () => ({}), isLocalMaterialAccessCurrent: () => true, onLocalMaterialInvalidation: () => () => {} }, '../lib/calendarConnection': { selectedCalendarProvider: () => null, retainedCalendarConnection: () => null, rememberCalendarProvider: vi.fn() }, '../lib/calendarIcs': {}, './AppSelect': { default: 'select-fixture' },
     }
     const module = { exports: {} as { default: () => Node } }

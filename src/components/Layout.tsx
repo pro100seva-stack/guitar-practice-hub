@@ -8,6 +8,7 @@ import { HeaderSlotsContext } from './headerSlots'
 import { isRenderedLazyPageReady, lazyChunkRecovery } from '../lib/lazyChunkRecovery'
 import { versionLabel } from '../lib/buildInfo'
 import ReleaseNotice from './ReleaseNotice'
+import { registerPwaUpdateGuard, setPwaUpdateGuard } from '../lib/pwaUpdateRuntime'
 
 const navigationItems = [
   { key: 'Home', path: '/landing' }, { key: 'Progress', path: '/progress' }, { key: 'Plan', path: '/plan' },
@@ -31,11 +32,26 @@ export default function Layout() {
   const mainRef = useRef<HTMLElement | null>(null)
   const focusedPathRef = useRef<string | null>(location.pathname)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [releaseNoticeOpenRequest, setReleaseNoticeOpenRequest] = useState(0)
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
   const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null)
   const headerSlots = useMemo(() => ({ actions: actionsSlot, panel: panelSlot }), [actionsSlot, panelSlot])
   const { t } = useI18n()
   const tour = useScreenTour(location.pathname)
+
+  useLayoutEffect(() => registerPwaUpdateGuard('layout', false), [])
+
+  useLayoutEffect(() => {
+    const syncGuard = () => {
+      const hasModal = Array.from(document.querySelectorAll<HTMLElement>('dialog[open], [role="dialog"][aria-modal="true"]'))
+        .some((element) => element.matches('dialog[open]') || element.getClientRects().length > 0)
+      setPwaUpdateGuard('layout', navigation.state === 'idle' && !menuOpen && !tour.isOpen && !hasModal)
+    }
+    syncGuard()
+    const observer = new MutationObserver(syncGuard)
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'aria-modal', 'hidden'] })
+    return () => observer.disconnect()
+  }, [navigation.state, menuOpen, tour.isOpen])
 
   useEffect(() => {
     const header = headerRef.current
@@ -286,10 +302,21 @@ export default function Layout() {
             </button>
           </footer>
         )}
-        {isLandingScreen && <p translate="no" className="home-version">{versionLabel}</p>}
+        {isLandingScreen && (
+          <button
+            type="button"
+            title={t('release.openSummary')}
+            aria-label={t('release.openSummary')}
+            onClick={() => setReleaseNoticeOpenRequest((request) => request + 1)}
+            className="home-version w-max cursor-pointer border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-900"
+            translate="no"
+          >
+            {versionLabel}
+          </button>
+        )}
       </main>
 
-      <ReleaseNotice blocked={tour.isOpen || navigation.state !== 'idle'} />
+      <ReleaseNotice blocked={tour.isOpen || navigation.state !== 'idle'} manualOpenRequest={releaseNoticeOpenRequest} />
       {tour.isOpen && <TourOverlay steps={tour.steps} index={tour.index} mode={tour.mode} onIndex={tour.goTo} onClose={tour.close} onSkip={tour.skip} isHome={isLandingScreen} />}
     </div>
     </HeaderSlotsContext.Provider>

@@ -13,6 +13,7 @@ import RemoveBlockIcon from '../components/icons/RemoveBlockIcon'
 import { catalogBlockLabel, createOtherBlock, loadActiveCatalog, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadProgramsWithBlockMode, readProgramBlockMode, replacePlanWeekBlocks, replaceProgramBlocks, setProgramBlockMode, type CatalogBlock, type ProgramBlockMode } from '../lib/catalogApi'
 import { queryWeekSongsWithSortOrder } from '../lib/weekSongsApi'
 import { duplicateWeekErrorKey, weekListAnchorScrollTop } from '../lib/planWeekList'
+import { registerPwaUpdateGuard, setPwaUpdateGuard } from '../lib/pwaUpdateRuntime'
 
 type PlanWeek = Database['public']['Tables']['plan_weeks']['Row']
 type Program = Database['public']['Tables']['programs']['Row']
@@ -268,6 +269,11 @@ export default function Plan() {
     || JSON.stringify(weekBlockKeys) !== JSON.stringify(compositionBaseline.weekKeys)
   )
   const isDirty = compositionDirty || isPlanWeekDirty(loadedDraft, { focus, programId: selectedProgramId, startDate: weekStartDate, endDate: weekEndDate, tasks, todos, songText: selectedSongIds.join('\n') })
+  const safeToUpdate = !isDirty && !saving && !compositionSaving && !compositionLoading && !loading && !pendingChange && !removalConfirmation
+    && !compositionPicker && !calendarOpen && !rangeCalendarOpen && !error && !actionError && !compositionError && !catalogError && !repertoireError
+    && pendingSongIds === null && !songSaveBusyRef.current && !songCreateBusyRef.current && !songCreating && !repertoireLoading
+  useLayoutEffect(() => registerPwaUpdateGuard('plan', false), [])
+  useLayoutEffect(() => { setPwaUpdateGuard('plan', safeToUpdate) }, [safeToUpdate])
   const songSaving = pendingSongIds !== null
   const shownSongIds = pendingSongIds ?? selectedSongIds
   const leaveApprovedRef = useRef(false)

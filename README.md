@@ -10,6 +10,8 @@ The app is now named **Pro100Practice**, with `pro100practice.app` as its curren
 
 **[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
 
+- **0.12.0 — Error diagnostics and safer PWA updates:** adds privacy-filtered browser error reporting when explicitly configured, safer update checks that defer activation while unsaved work is reported, and a Home-only version shortcut to the release summary. Hosted Sentry collection remains disabled until its project, privacy, retention and any consent requirements are approved and configured. Physical iPhone and hosted-app acceptance remain unverified.
+
 - **0.11.0 — Practice checkpoints and weekly songs:** Done or Pause saves the selected day's cumulative progress, including short pauses and switching to another exercise. Plan songs appear in every day’s Repertoire alongside daily additions. Only one timer runs at a time. The metronome now respects note values such as 8/8, and the update popup matches Home/login. Per-song durations are not tracked. See the [0.11.0 changelog](docs/CHANGELOG.md#0110---2026-11-15) and [handoff](docs/project-handoff.md) for validation, backend activation and delivery status.
 
 - **0.10.0 — Calendar practice reminders:** schedule one-off, recurring or several dates with all-day/timed sessions. Connect Google Calendar with saved account linkage, or prepare Apple/local-device calendar files for manual import. The selected provider stays visible, and version notices are acknowledged only when explicitly dismissed. See the [0.10.0 changelog](docs/CHANGELOG.md#0100---2026-11-14), [Calendar setup](docs/calendar-reminders-setup.md) and [handoff](docs/project-handoff.md) for configuration, acceptance and delivery status.
@@ -41,6 +43,8 @@ The app is now named **Pro100Practice**, with `pro100practice.app` as its curren
 
 Account data uses Supabase authentication and row-level security. Repertoire and Learn a new song share materials by song identity; other exercises retain block-specific references. User-added files, material metadata, and playback bookmarks stay in browser-local storage for that device and origin, not Supabase. Local access is scoped to the authenticated UID and auth epoch; IndexedDB v2 holds owned metadata/bookmarks, while file bytes use owner-scoped cache v2 when CacheStorage and Web Locks are available, or IndexedDB otherwise. Ownerless legacy records and bytes are preserved but hidden, with no automatic claim or legacy fallback. This is application-level isolation, not encryption or protection from OS/browser-profile access. Browser eviction or clearing storage can lose materials; deleting an account does not erase device-local files. Never clear owner/shared storage for QA. The PWA shell does not imply all data or linked media works offline.
 
+The PWA checks for updates on launch and resume, when connectivity returns, and every five minutes while visible. It delays applying an update while the current screen has unsaved work or an open dialog, and coordinates with other detected tabs before reloading.
+
 Built with React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 8, Supabase, and vite-plugin-pwa.
 
 ## Beta Limitations
@@ -64,7 +68,11 @@ Create a local `.env.local` with the frontend's Supabase settings:
 ```dotenv
 VITE_SUPABASE_URL=your-supabase-url
 VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+# Optional. Leave blank to disable Sentry reporting.
+VITE_SENTRY_DSN=
 ```
+
+Sentry reporting is disabled when `VITE_SENTRY_DSN` is blank. Do not enable hosted collection until the project owner has approved the provider's privacy/data-retention terms and any required consent or policy changes. After approval, create a browser JavaScript project and configure its DSN in the hosted build environment; keep credentials and local DSNs out of Git. The integration redacts error messages, request details, user identifiers and arbitrary breadcrumbs; reports include a coarse browser/device category and the version/commit release. Production builds do not emit source maps.
 
 ```sh
 npm run dev

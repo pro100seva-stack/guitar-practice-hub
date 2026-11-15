@@ -22,7 +22,7 @@ function localStorageOrNull(): ReleaseReceiptStorage | null {
   try { return window.localStorage } catch { return null }
 }
 
-export default function ReleaseNotice({ blocked }: { blocked: boolean }) {
+export default function ReleaseNotice({ blocked, manualOpenRequest = 0 }: { blocked: boolean; manualOpenRequest?: number }) {
   const { t } = useI18n()
   const dialogRef = useRef<HTMLDialogElement | null>(null)
   const closeRef = useRef<HTMLButtonElement | null>(null)
@@ -30,6 +30,8 @@ export default function ReleaseNotice({ blocked }: { blocked: boolean }) {
   const [owner, setOwner] = useState<string | null>(null)
   const [, setReceiptRevision] = useState(0)
   const [receiptCheck, setReceiptCheck] = useState<{ owner: string; epoch: number } | null>(null)
+  const [manualOpen, setManualOpen] = useState(false)
+  const manualRequestRef = useRef(manualOpenRequest)
   const ownerRef = useRef<string | null>(null)
   const ownerEpochRef = useRef(0)
 
@@ -148,12 +150,23 @@ export default function ReleaseNotice({ blocked }: { blocked: boolean }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (manualRequestRef.current === manualOpenRequest) return
+    manualRequestRef.current = manualOpenRequest
+    setManualOpen(true)
+  }, [manualOpenRequest])
+
   const storage = localStorageOrNull()
   const acknowledged = owner && releaseNoticeReceipts.hasSeen(owner, appVersion, storage)
   const receiptCheckComplete = Boolean(owner && receiptCheck?.owner === owner && receiptCheck.epoch === ownerEpochRef.current)
-  const summary = owner && receiptCheckComplete && !acknowledged ? getReleaseSummary(appVersion, null) : null
+  const currentSummary = owner && receiptCheckComplete ? getReleaseSummary(appVersion, null) : null
+  const summary = currentSummary && (manualOpen || !acknowledged) ? currentSummary : null
 
   function dismiss() {
+    if (manualOpen) {
+      setManualOpen(false)
+      return
+    }
     const currentOwner = owner
     if (!currentOwner || ownerRef.current !== currentOwner) return
     const currentEpoch = ownerEpochRef.current

@@ -23,6 +23,7 @@ const pageTranslations: Record<Language, Record<string, string>> = {
 }
 
 Object.assign(pageTranslations.en, {
+  'release.openSummary': 'Open the current release summary',
   'calendar.title': 'Calendar reminders', 'calendar.setUpReminder': 'Set up a reminder', 'calendar.provider': 'Calendar provider',
   'calendar.googleChoice': 'Google Calendar', 'calendar.appleChoice': 'Apple Calendar', 'calendar.deviceChoice': 'Device calendar',
   'calendar.apple': 'Apple Calendar', 'calendar.device': 'Device calendar',
@@ -69,6 +70,7 @@ Object.assign(pageTranslations.en, {
 })
 
 Object.assign(pageTranslations.ru, {
+  'release.openSummary': 'Открыть описание текущей версии',
   'calendar.title': 'Напоминания в календаре', 'calendar.setUpReminder': 'Настроить напоминание', 'calendar.provider': 'Календарь',
   'calendar.googleChoice': 'Google Календарь', 'calendar.appleChoice': 'Календарь Apple', 'calendar.deviceChoice': 'Календарь на устройстве',
   'calendar.apple': 'Календарь Apple', 'calendar.device': 'Календарь на устройстве',
@@ -115,6 +117,7 @@ Object.assign(pageTranslations.ru, {
 })
 
 Object.assign(pageTranslations.it, {
+  'release.openSummary': 'Apri il riepilogo della versione attuale',
   'calendar.title': 'Promemoria del calendario', 'calendar.setUpReminder': 'Configura un promemoria', 'calendar.provider': 'Calendario',
   'calendar.googleChoice': 'Google Calendar', 'calendar.appleChoice': 'Calendario Apple', 'calendar.deviceChoice': 'Calendario del dispositivo',
   'calendar.apple': 'Calendario Apple', 'calendar.device': 'Calendario del dispositivo',
@@ -161,6 +164,7 @@ Object.assign(pageTranslations.it, {
 })
 
 Object.assign(pageTranslations.fr, {
+  'release.openSummary': 'Ouvrir le résumé de la version actuelle',
   'calendar.title': 'Rappels du calendrier', 'calendar.setUpReminder': 'Configurer un rappel', 'calendar.provider': 'Calendrier',
   'calendar.googleChoice': 'Google Agenda', 'calendar.appleChoice': 'Calendrier Apple', 'calendar.deviceChoice': 'Calendrier de l’appareil',
   'calendar.apple': 'Calendrier Apple', 'calendar.device': 'Calendrier de l’appareil',
@@ -1242,6 +1246,9 @@ Object.assign(pageTranslations.en, {
   'songTools.saveNotes': 'Save notes', 'songTools.saveBeforeRemove': 'Save or cancel the note draft before removing this song.',
   'songTools.tabRoadmap': 'Tab support is on the roadmap and is being worked on.', 'songTools.notesFor': 'Notes for {song}', 'songTools.notesSaved': 'Song notes saved.', 'songTools.notesError': 'Could not save these notes. Your draft is still here. Try again.', 'songTools.removeFromDay': 'Remove {song} from this day',
   'release.title': 'What’s new in Pro100Practice', 'release.version': 'Version {version}', 'release.changelog': 'Read the full changelog', 'release.dismiss': 'Got it',
+  'release.0120.updates': 'PWA updates are checked on launch and resume, and wait while you have unsaved work or an open dialog.',
+  'release.0120.monitoring': 'Optional privacy-filtered error reports help diagnose app failures; reporting stays off unless a Sentry project is configured.',
+  'release.0120.summary': 'Tap the version on Home to reopen this release summary.',
   'release.0100.calendar': 'Schedule one-off, recurring or multi-date practice reminders, at a chosen time or for the whole day.',
   'release.0110.repertoire': 'Songs assigned in Plan now appear in Repertoire on every day of that week.',
   'release.0110.autosave': 'Done or Pause saves practice time to the selected day. Starting another block pauses the previous timer.',
@@ -1256,6 +1263,9 @@ Object.assign(pageTranslations.ru, {
   'songTools.saveNotes': 'Сохранить заметки', 'songTools.saveBeforeRemove': 'Сохраните или отмените черновик заметок перед удалением песни из списка.',
   'songTools.tabRoadmap': 'Поддержка табулатур запланирована и находится в работе.', 'songTools.notesFor': 'Заметки к песне «{song}»', 'songTools.notesSaved': 'Заметки к песне сохранены.', 'songTools.notesError': 'Не удалось сохранить заметки. Черновик остался здесь. Повторите попытку.', 'songTools.removeFromDay': 'Убрать «{song}» из этого дня',
   'release.title': 'Что нового в Pro100Practice', 'release.version': 'Версия {version}', 'release.changelog': 'Полный список изменений', 'release.dismiss': 'Понятно',
+  'release.0120.updates': 'Приложение проверяет обновления при запуске и возвращении; установка ждёт, пока у вас есть несохранённая работа или открытый диалог.',
+  'release.0120.monitoring': 'Необязательные отчёты об ошибках с очисткой личных данных помогают находить сбои; отправка выключена, пока не настроен проект Sentry.',
+  'release.0120.summary': 'Нажмите на версию на главном экране, чтобы снова открыть это описание.',
   'release.0100.calendar': 'Планируйте разовые, повторяющиеся напоминания о практике или выбирайте несколько дат — на определённое время или весь день.',
   'release.0110.repertoire': 'Песни, выбранные в плане, теперь появляются в репертуаре каждого дня этой недели.',
   'release.0110.autosave': 'Отметка «Готово» или пауза сохраняет время практики за выбранный день. Запуск другого блока приостанавливает предыдущий таймер.',
@@ -1270,6 +1280,9 @@ Object.assign(pageTranslations.it, {
   'songTools.saveNotes': 'Salva note', 'songTools.saveBeforeRemove': 'Salva o annulla la bozza delle note prima di rimuovere questo brano.',
   'songTools.tabRoadmap': 'Il supporto alle tablature è previsto ed è in lavorazione.', 'songTools.notesFor': 'Note per {song}', 'songTools.notesSaved': 'Note del brano salvate.', 'songTools.notesError': 'Impossibile salvare le note. La bozza è ancora qui. Riprova.', 'songTools.removeFromDay': 'Rimuovi {song} da questo giorno',
   'release.title': 'Novità di Pro100Practice', 'release.version': 'Versione {version}', 'release.changelog': 'Leggi tutte le modifiche', 'release.dismiss': 'Ho capito',
+  'release.0120.updates': 'Gli aggiornamenti PWA vengono controllati all’avvio e alla ripresa e attendono se hai modifiche non salvate o una finestra di dialogo aperta.',
+  'release.0120.monitoring': 'Le segnalazioni facoltative e filtrate per la privacy aiutano a diagnosticare gli errori; l’invio resta disattivato finché non viene configurato un progetto Sentry.',
+  'release.0120.summary': 'Tocca la versione nella Home per riaprire questo riepilogo.',
   'release.0100.calendar': 'Programma promemoria di pratica singoli, ricorrenti o per più date, a un orario scelto o per tutto il giorno.',
   'release.0110.repertoire': 'I brani assegnati nel piano ora compaiono nel repertorio di ogni giorno della settimana.',
   'release.0110.autosave': 'Completato o Pausa salva il tempo di pratica nel giorno selezionato. Avviare un altro blocco mette in pausa il timer precedente.',
@@ -1284,6 +1297,9 @@ Object.assign(pageTranslations.fr, {
   'songTools.saveNotes': 'Enregistrer les notes', 'songTools.saveBeforeRemove': 'Enregistrez ou annulez le brouillon des notes avant de retirer ce morceau.',
   'songTools.tabRoadmap': 'La prise en charge des tablatures est prévue et en cours de préparation.', 'songTools.notesFor': 'Notes pour {song}', 'songTools.notesSaved': 'Notes du morceau enregistrées.', 'songTools.notesError': 'Impossible d’enregistrer les notes. Votre brouillon est toujours ici. Réessayez.', 'songTools.removeFromDay': 'Retirer {song} de cette journée',
   'release.title': 'Les nouveautés de Pro100Practice', 'release.version': 'Version {version}', 'release.changelog': 'Lire toutes les modifications', 'release.dismiss': 'Compris',
+  'release.0120.updates': 'Les mises à jour PWA sont vérifiées au lancement et à la reprise, et attendent si votre travail n’est pas enregistré ou si une fenêtre de dialogue est ouverte.',
+  'release.0120.monitoring': 'Les rapports d’erreur facultatifs et filtrés pour protéger la vie privée aident à diagnostiquer les problèmes ; l’envoi reste désactivé tant qu’un projet Sentry n’est pas configuré.',
+  'release.0120.summary': 'Touchez la version sur l’accueil pour rouvrir ce résumé.',
   'release.0100.calendar': 'Planifiez des rappels de pratique ponctuels, récurrents ou à plusieurs dates, à une heure choisie ou pour toute la journée.',
   'release.0110.repertoire': 'Les morceaux choisis dans le plan apparaissent désormais dans le répertoire de chaque jour de la semaine.',
   'release.0110.autosave': 'Terminé ou Pause enregistre le temps de pratique pour le jour sélectionné. Démarrer un autre bloc met le minuteur précédent en pause.',
@@ -1313,6 +1329,58 @@ Object.assign(pageTranslations.fr, {
   'practice.progressSaved': 'Pratique enregistrée.',
   'practice.autosaveFailed': 'Impossible d’enregistrer la pratique. Les modifications restent dans le formulaire ; utilisez Enregistrer la séance pour réessayer.',
   'practice.precisionUnavailable': 'L’enregistrement nécessite une mise à jour de la base de données. Les modifications restent dans le formulaire ; réessayez après la mise à jour.',
+})
+Object.assign(pageTranslations.en, {
+  'pwa.updateReady': 'Update ready',
+  'pwa.applying': 'Applying the update…',
+  'pwa.checkingTabs': 'Checking that every open tab is safe to update…',
+  'pwa.safeAutomatic': 'The update will apply when it is safe for every open tab.',
+  'pwa.offline': 'Reconnect to check and apply this update.',
+  'pwa.safetyBlocked': 'Finish or save your current work, close dialogs, and try again.',
+  'pwa.coordinationUnavailable': 'Safe update coordination is unavailable. Keep using this version and try again.',
+  'pwa.tabNotResponding': 'Another open tab did not confirm it is safe. Keep it open and try again.',
+  'pwa.workerFailed': 'The update could not be applied. Reconnect if needed, then try again.',
+  'pwa.later': 'Later',
+  'pwa.updateNow': 'Update now',
+})
+Object.assign(pageTranslations.ru, {
+  'pwa.updateReady': 'Доступно обновление',
+  'pwa.applying': 'Установка обновления…',
+  'pwa.checkingTabs': 'Проверяем, безопасно ли обновлять все открытые вкладки…',
+  'pwa.safeAutomatic': 'Обновление установится, когда это будет безопасно для всех открытых вкладок.',
+  'pwa.offline': 'Подключитесь к сети, чтобы проверить и установить обновление.',
+  'pwa.safetyBlocked': 'Завершите или сохраните текущую работу, закройте диалоги и повторите попытку.',
+  'pwa.coordinationUnavailable': 'Не удалось безопасно согласовать обновление. Продолжайте работу и попробуйте позже.',
+  'pwa.tabNotResponding': 'Другая открытая вкладка не подтвердила безопасность обновления. Оставьте её открытой и повторите попытку.',
+  'pwa.workerFailed': 'Не удалось установить обновление. При необходимости подключитесь к сети и повторите попытку.',
+  'pwa.later': 'Позже',
+  'pwa.updateNow': 'Обновить сейчас',
+})
+Object.assign(pageTranslations.it, {
+  'pwa.updateReady': 'Aggiornamento disponibile',
+  'pwa.applying': 'Applicazione dell’aggiornamento…',
+  'pwa.checkingTabs': 'Verifica che ogni scheda aperta possa essere aggiornata in sicurezza…',
+  'pwa.safeAutomatic': 'L’aggiornamento verrà applicato quando sarà sicuro per tutte le schede aperte.',
+  'pwa.offline': 'Riconnettiti per controllare e applicare questo aggiornamento.',
+  'pwa.safetyBlocked': 'Completa o salva il lavoro in corso, chiudi le finestre di dialogo e riprova.',
+  'pwa.coordinationUnavailable': 'Il coordinamento sicuro dell’aggiornamento non è disponibile. Continua a usare questa versione e riprova.',
+  'pwa.tabNotResponding': 'Un’altra scheda aperta non ha confermato che l’aggiornamento è sicuro. Lasciala aperta e riprova.',
+  'pwa.workerFailed': 'Impossibile applicare l’aggiornamento. Se necessario, riconnettiti e riprova.',
+  'pwa.later': 'Più tardi',
+  'pwa.updateNow': 'Aggiorna ora',
+})
+Object.assign(pageTranslations.fr, {
+  'pwa.updateReady': 'Mise à jour disponible',
+  'pwa.applying': 'Installation de la mise à jour…',
+  'pwa.checkingTabs': 'Vérification que chaque onglet ouvert peut être mis à jour en toute sécurité…',
+  'pwa.safeAutomatic': 'La mise à jour sera appliquée lorsqu’elle sera sûre pour tous les onglets ouverts.',
+  'pwa.offline': 'Reconnectez-vous pour vérifier et appliquer cette mise à jour.',
+  'pwa.safetyBlocked': 'Terminez ou enregistrez votre travail, fermez les fenêtres de dialogue et réessayez.',
+  'pwa.coordinationUnavailable': 'La coordination sécurisée de la mise à jour est indisponible. Continuez à utiliser cette version et réessayez.',
+  'pwa.tabNotResponding': 'Un autre onglet ouvert n’a pas confirmé que la mise à jour était sûre. Laissez-le ouvert et réessayez.',
+  'pwa.workerFailed': 'Impossible d’appliquer la mise à jour. Reconnectez-vous si nécessaire, puis réessayez.',
+  'pwa.later': 'Plus tard',
+  'pwa.updateNow': 'Mettre à jour',
 })
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)

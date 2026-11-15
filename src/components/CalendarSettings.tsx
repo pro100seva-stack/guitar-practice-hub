@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { useI18n } from '../lib/i18n'
 import { localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { addCalendarDays, createCalendarEventDrafts, isCalendarDate, selectCalendarRange, validateCalendarSchedule, type CalendarEventDraft, type CalendarFrequency, type CalendarSchedule, type CalendarScheduleError } from '../lib/calendarSchedule'
@@ -8,6 +8,7 @@ import { createCalendarIcs } from '../lib/calendarIcs'
 import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from '../lib/localMaterialAccess'
 import { forgetCalendarConnection, hasPersistentCalendarSupport, rememberCalendarProvider, rememberPersistentCalendarSupport, retainCalendarConnection, retainedCalendarConnection, selectedCalendarProvider } from '../lib/calendarConnection'
 import { createPersistentCalendarApi, loadCalendarServerStatus, requestPersistentCalendarCode, type CalendarAuthorizationBegin } from '../lib/persistentGoogleCalendar'
+import { registerPwaUpdateGuard, setPwaUpdateGuard } from '../lib/pwaUpdateRuntime'
 
 export type CalendarProvider = 'google' | 'apple' | 'device'
 type ReviewedReminder = { planId: string; provider: CalendarProvider; calendarId: string; calendarName: string; title: string; schedule: CalendarSchedule; events: readonly CalendarEventDraft[] }
@@ -416,6 +417,9 @@ export default function CalendarSettings() {
   const finished = review?.provider === 'google' && pendingDates !== null && pendingDates.length === 0
   const formLocked = busy || review !== null
   const durationOptions = [5, 15, 30, 45, 60, 90, 120]
+  const safeToUpdate = !busy && !review && !sectionOpen && !error
+  useLayoutEffect(() => registerPwaUpdateGuard('calendar-settings', false), [])
+  useLayoutEffect(() => { setPwaUpdateGuard('calendar-settings', safeToUpdate) }, [safeToUpdate])
 
   return <section className="section" aria-labelledby={`${prefix}-heading`}>
     <h2 id={`${prefix}-heading`} className="section-title">{t('calendar.title')}</h2>

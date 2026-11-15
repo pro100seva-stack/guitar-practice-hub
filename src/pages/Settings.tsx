@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
 import { useI18n } from '../lib/i18n'
 import AppSelect from '../components/AppSelect'
 import CalendarSettings from '../components/CalendarSettings'
+import { registerPwaUpdateGuard, setPwaUpdateGuard } from '../lib/pwaUpdateRuntime'
 
 type Preferences = {
   language: Language
@@ -42,6 +43,10 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const { t, setLanguage: setInterfaceLanguage } = useI18n()
+  const safeToUpdate = !loading && savingKey === null && !error
+
+  useLayoutEffect(() => registerPwaUpdateGuard('settings', false), [])
+  useLayoutEffect(() => { setPwaUpdateGuard('settings', safeToUpdate) }, [safeToUpdate])
 
   useEffect(() => {
     async function loadPreferences() {

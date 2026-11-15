@@ -83,11 +83,11 @@ function flush() {
   return Promise.resolve().then(() => Promise.resolve()).then(() => Promise.resolve())
 }
 
-function render(blocked: boolean): unknown {
+function render(blocked: boolean, manualOpenRequest = 0): unknown {
   componentHarness.cursor = 0
   componentHarness.effects = []
   componentHarness.layoutEffects = []
-  return ReleaseNotice({ blocked })
+  return ReleaseNotice({ blocked, manualOpenRequest })
 }
 
 function attachDialog() {
@@ -226,6 +226,36 @@ describe('release notice component receipts', () => {
 
     if (typeof mounted.cleanupLayout === 'function') mounted.cleanupLayout()
     if (typeof mounted.cleanupEffect === 'function') mounted.cleanupEffect()
+  })
+
+  it('manually reopens the current summary after acknowledgment without changing or resending its receipt', async () => {
+    storage.setItem(releaseNoticeStorageKey(owner), '0.9.0')
+    render(false)
+    const cleanupEffect = componentHarness.effects[0]()
+    await flush()
+
+    expect(render(false)).toBeNull()
+    expect(componentHarness.supabase.rpc).not.toHaveBeenCalled()
+    expect(storage.getItem(releaseNoticePendingKey(owner))).toBeNull()
+
+    render(false, 1)
+    componentHarness.effects[1]()
+    const element = render(false, 1)
+    const dialog = attachDialog()
+    const openEffect = componentHarness.layoutEffects.at(-1)
+    expect(openEffect).toBeDefined()
+    const cleanupLayout = openEffect?.()
+    expect(dialog.showModal).toHaveBeenCalledOnce()
+
+    const closeManually = findDismiss(element)
+    expect(closeManually).not.toBeNull()
+    closeManually?.()
+
+    expect(storage.getItem(releaseNoticeStorageKey(owner))).toBe('0.9.0')
+    expect(storage.getItem(releaseNoticePendingKey(owner))).toBeNull()
+    expect(componentHarness.supabase.rpc).not.toHaveBeenCalled()
+    if (typeof cleanupLayout === 'function') cleanupLayout()
+    if (typeof cleanupEffect === 'function') cleanupEffect()
   })
 
   it.each(['0.9.0', '0.10.0'])('reconciles a same/newer server version locally without opening or claiming (%s)', async (version) => {

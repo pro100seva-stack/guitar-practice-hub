@@ -8,6 +8,18 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.12.0] - 2026-11-15
+
+### Added
+
+- Privacy-filtered browser error reporting through Sentry when a project DSN is configured. Hosted collection is not enabled by this source release and remains subject to explicit privacy, data-retention and consent/policy approval.
+- Safe PWA update handling with update checks on launch/resume/reconnect, coordination across open tabs and a localized prompt when app state is not safe for immediate activation.
+- A centered, accessible version shortcut on Home that opens the existing release summary; the Practice screen has no version shortcut.
+
+### Changed
+
+- Delay applying a waiting PWA update while the app reports unsaved work, active timers, pending persistence or other unsafe UI state; keep the update available to apply later.
+
 ## [0.11.0] - 2026-11-15
 
 ### Added

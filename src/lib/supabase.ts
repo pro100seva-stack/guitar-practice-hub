@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from './database.types'
+import { createSupabaseMonitoringFetch } from './monitoring'
 
 export const supabase = createClient<Database>(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  { global: { fetch: createSupabaseMonitoringFetch(fetch) } },
 )

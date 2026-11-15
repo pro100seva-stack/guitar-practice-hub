@@ -55,6 +55,12 @@ describe('release announcements', () => {
     expect(getReleaseSummary('0.11.0', '0.12.0')).toBeNull()
   })
 
+  it('announces safe updates and privacy-filtered monitoring in 0.12.0', () => {
+    expect(getReleaseSummary('0.12.0', '0.11.0')).toEqual(['release.0120.updates', 'release.0120.monitoring', 'release.0120.summary'])
+    expect(getReleaseSummary('0.11.0', null)?.some((key) => key.startsWith('release.0120'))).toBe(false)
+    expect(getReleaseSummary('0.12.0', '0.12.0')).toBeNull()
+  })
+
   it('compares numeric version components, including two-digit minor versions', () => {
     expect(compareReleaseVersions('0.10.0', '0.9.0')).toBe(1)
     expect(compareReleaseVersions('1.0.0', '0.99.0')).toBe(1)

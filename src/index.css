@@ -448,7 +448,7 @@ body {
 .app-home .home-note-copy { margin-top: 0.6rem; font-size: 1rem; line-height: 1.45; }
 .app-home .home-footer { position: absolute; z-index: 10; bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); left: 50%; transform: translateX(-50%); }
 .app-home .home-help { min-width: 3rem; min-height: 3rem; border-radius: 0.5rem; padding: 0.5rem; font-size: 0.75rem; }
-.app-home .home-version { position: absolute; z-index: 10; right: 0.75rem; bottom: max(0.25rem, env(safe-area-inset-bottom)); left: 0.75rem; color: #244b38; text-align: center; font-size: 0.625rem; }
+.app-home .home-version { position: absolute; z-index: 10; right: auto; bottom: max(0.25rem, env(safe-area-inset-bottom)); left: 50%; width: max-content; transform: translateX(-50%); color: #244b38; text-align: center; font-size: 0.625rem; }
 .app-home .home-menu { overscroll-behavior: contain; }
 .app-home .home-tour-highlight { border: 2px solid var(--home-mint); border-radius: 0.75rem; }
 .app-home .home-tour-card { border: 1px solid rgb(164 234 192 / 0.65); border-radius: 1rem; overscroll-behavior: contain; box-shadow: 0 0.75rem 2rem rgb(20 39 29 / 0.35); }

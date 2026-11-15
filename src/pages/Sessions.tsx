@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useHeaderSlots } from '../components/headerSlots'
@@ -36,6 +36,7 @@ import LocalVideoPracticePlayer from '../components/LocalVideoPracticePlayer'
 import SongMaterialTools, { SongToolIcon } from '../components/SongMaterialTools'
 import { matchesSongMaterialFilter, songMaterialKind, type SongMaterialFilter } from '../lib/songMaterialTypes'
 import { savePracticeSongNotes } from '../lib/songPracticeApi'
+import { registerPwaUpdateGuard, setPwaUpdateGuard } from '../lib/pwaUpdateRuntime'
 
 type MaterialFeedback = { error: string | null; notice: string | null; saveState: 'idle' | 'saving' | 'saved'; cancellable?: boolean; retryUpload?: boolean }
 const emptyMaterialFeedback: MaterialFeedback = { error: null, notice: null, saveState: 'idle' }
@@ -2080,6 +2081,18 @@ export default function Sessions() {
     return song ? draft !== (songNotesValue(song) ?? '') : draft !== ''
   })
   const isDirty = isSessionEditorDirty(editorBaseline, { comment, timers: displayTimers, selectedBlocks }) || hasUnsavedSongNotes
+  const hasRunningTimer = Object.values(timers).some((timer) => timer.isRunning)
+  const hasPendingMaterialWrite = Object.values(materialFeedback).some((feedback) => feedback.saveState === 'saving' || feedback.error !== null)
+  const hasSongNotesError = Object.keys(songNotesErrors).length > 0
+  const safeToUpdate = !isDirty && !saving && pendingSavesRef.current === 0 && !loading && !catalogLoading && !songsLoading
+    && !hasRunningTimer && !songBusy
+    && songNotesSaving.size === 0 && !songOperationRef.current && !pendingDiscardAction && !isBlockPickerOpen
+    && !isWeekDetailsOpen && !isRecentSessionsOpen && !isMetronomePlaying && !isMetronomeSettingsOpen && !isTunerOpen
+    && !songToRemove && !songViewerRow && !songNotesRow && !activeMaterial && !activeDefaultMaterial
+    && !materialAddScope && !materialRename && !materialCleanupPending && !hasPendingMaterialWrite
+    && !hasSongNotesError && !error && !mediaError && !songsError && !catalogError
+  useLayoutEffect(() => registerPwaUpdateGuard('practice', false), [])
+  useLayoutEffect(() => { setPwaUpdateGuard('practice', safeToUpdate) }, [safeToUpdate])
   const canSave = selectedBlocks.length > 0 || savedForDate
   const selectableTemplates = templates.filter(isSelectableCatalogBlock)
 
