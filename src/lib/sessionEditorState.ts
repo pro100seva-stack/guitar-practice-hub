@@ -25,7 +25,7 @@ type EditorTemplate = {
 type EditorSession = {
   session_date: string
   comment: string | null
-  session_blocks: Array<{ block_key: string; actual_minutes: number | null; done: boolean }>
+  session_blocks: Array<{ block_key: string; actual_minutes: number | null; actual_seconds?: number | null; done: boolean }>
 }
 
 export type SessionEditorState = {
@@ -68,8 +68,9 @@ export function getSessionEditorState(date: string, templates: EditorTemplate[],
   const timers: Record<string, BlockTimerState> = {}
 
   for (const template of sessionTemplates) {
-    const actualMinutes = savedBlocks.get(template.key)?.actual_minutes
-    if (actualMinutes != null) timers[template.id] = { isRunning: false, elapsedSeconds: actualMinutes * 60 }
+    const savedBlock = savedBlocks.get(template.key)
+    const seconds = savedBlock?.actual_seconds ?? (savedBlock?.actual_minutes != null ? savedBlock.actual_minutes * 60 : null)
+    if (seconds != null) timers[template.id] = { isRunning: false, elapsedSeconds: seconds }
   }
 
   return {

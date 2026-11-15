@@ -1243,6 +1243,9 @@ Object.assign(pageTranslations.en, {
   'songTools.tabRoadmap': 'Tab support is on the roadmap and is being worked on.', 'songTools.notesFor': 'Notes for {song}', 'songTools.notesSaved': 'Song notes saved.', 'songTools.notesError': 'Could not save these notes. Your draft is still here. Try again.', 'songTools.removeFromDay': 'Remove {song} from this day',
   'release.title': 'What’s new in Pro100Practice', 'release.version': 'Version {version}', 'release.changelog': 'Read the full changelog', 'release.dismiss': 'Got it',
   'release.0100.calendar': 'Schedule one-off, recurring or multi-date practice reminders, at a chosen time or for the whole day.',
+  'release.0110.repertoire': 'Songs assigned in Plan now appear in Repertoire on every day of that week.',
+  'release.0110.autosave': 'Done or Pause saves practice time to the selected day. Starting another block pauses the previous timer.',
+  'release.0110.metronome': 'The metronome now respects the note value: 8/8 clicks twice as fast as 4/4 at the same BPM.',
   'release.0100.connection': 'Connect Google Calendar in Settings and keep it linked between visits, or import reminder files into Apple/device calendars.',
   'release.0100.notices': 'Update notices are acknowledged only when you close them, with offline confirmations synced later.',
   'release.081.brand': 'Our new name is Pro100Practice.', 'release.081.login': 'The sign-in page now matches Home, with a clearer Show password option.', 'release.081.practice': 'Practice blocks have play/pause icons and fewer generic reference tips.',
@@ -1254,6 +1257,9 @@ Object.assign(pageTranslations.ru, {
   'songTools.tabRoadmap': 'Поддержка табулатур запланирована и находится в работе.', 'songTools.notesFor': 'Заметки к песне «{song}»', 'songTools.notesSaved': 'Заметки к песне сохранены.', 'songTools.notesError': 'Не удалось сохранить заметки. Черновик остался здесь. Повторите попытку.', 'songTools.removeFromDay': 'Убрать «{song}» из этого дня',
   'release.title': 'Что нового в Pro100Practice', 'release.version': 'Версия {version}', 'release.changelog': 'Полный список изменений', 'release.dismiss': 'Понятно',
   'release.0100.calendar': 'Планируйте разовые, повторяющиеся напоминания о практике или выбирайте несколько дат — на определённое время или весь день.',
+  'release.0110.repertoire': 'Песни, выбранные в плане, теперь появляются в репертуаре каждого дня этой недели.',
+  'release.0110.autosave': 'Отметка «Готово» или пауза сохраняет время практики за выбранный день. Запуск другого блока приостанавливает предыдущий таймер.',
+  'release.0110.metronome': 'Метроном учитывает длительность ноты: при одинаковом BPM в размере 8/8 щелчки звучат вдвое чаще, чем в 4/4.',
   'release.0100.connection': 'Подключите Google Календарь в настройках с сохранением подключения между посещениями или импортируйте файл напоминаний в календарь Apple или устройства.',
   'release.0100.notices': 'Уведомления об обновлениях считаются просмотренными только после закрытия; подтверждения без сети синхронизируются позже.',
   'release.081.brand': 'Наше новое название — Pro100Practice.', 'release.081.login': 'Страница входа теперь оформлена как главный экран, а переключатель показа пароля стал понятнее.', 'release.081.practice': 'В блоках практики появились значки запуска и паузы, а общих подсказок стало меньше.',
@@ -1265,6 +1271,9 @@ Object.assign(pageTranslations.it, {
   'songTools.tabRoadmap': 'Il supporto alle tablature è previsto ed è in lavorazione.', 'songTools.notesFor': 'Note per {song}', 'songTools.notesSaved': 'Note del brano salvate.', 'songTools.notesError': 'Impossibile salvare le note. La bozza è ancora qui. Riprova.', 'songTools.removeFromDay': 'Rimuovi {song} da questo giorno',
   'release.title': 'Novità di Pro100Practice', 'release.version': 'Versione {version}', 'release.changelog': 'Leggi tutte le modifiche', 'release.dismiss': 'Ho capito',
   'release.0100.calendar': 'Programma promemoria di pratica singoli, ricorrenti o per più date, a un orario scelto o per tutto il giorno.',
+  'release.0110.repertoire': 'I brani assegnati nel piano ora compaiono nel repertorio di ogni giorno della settimana.',
+  'release.0110.autosave': 'Completato o Pausa salva il tempo di pratica nel giorno selezionato. Avviare un altro blocco mette in pausa il timer precedente.',
+  'release.0110.metronome': 'Il metronomo rispetta il valore della nota: a parità di BPM, in 8/8 i clic sono due volte più rapidi rispetto a 4/4.',
   'release.0100.connection': 'Collega Google Calendar nelle impostazioni e mantieni il collegamento tra le visite, oppure importa i file dei promemoria nei calendari Apple o del dispositivo.',
   'release.0100.notices': 'Le novità sono confermate solo quando le chiudi; le conferme offline vengono sincronizzate in seguito.',
   'release.081.brand': 'Il nostro nuovo nome è Pro100Practice.', 'release.081.login': 'La pagina di accesso riprende lo stile della Home, con un’opzione Mostra password più chiara.', 'release.081.practice': 'I blocchi di pratica hanno icone di avvio e pausa e meno suggerimenti generici.',
@@ -1276,12 +1285,35 @@ Object.assign(pageTranslations.fr, {
   'songTools.tabRoadmap': 'La prise en charge des tablatures est prévue et en cours de préparation.', 'songTools.notesFor': 'Notes pour {song}', 'songTools.notesSaved': 'Notes du morceau enregistrées.', 'songTools.notesError': 'Impossible d’enregistrer les notes. Votre brouillon est toujours ici. Réessayez.', 'songTools.removeFromDay': 'Retirer {song} de cette journée',
   'release.title': 'Les nouveautés de Pro100Practice', 'release.version': 'Version {version}', 'release.changelog': 'Lire toutes les modifications', 'release.dismiss': 'Compris',
   'release.0100.calendar': 'Planifiez des rappels de pratique ponctuels, récurrents ou à plusieurs dates, à une heure choisie ou pour toute la journée.',
+  'release.0110.repertoire': 'Les morceaux choisis dans le plan apparaissent désormais dans le répertoire de chaque jour de la semaine.',
+  'release.0110.autosave': 'Terminé ou Pause enregistre le temps de pratique pour le jour sélectionné. Démarrer un autre bloc met le minuteur précédent en pause.',
+  'release.0110.metronome': 'Le métronome respecte la valeur de la note : au même BPM, les clics en 8/8 sont deux fois plus rapides qu’en 4/4.',
   'release.0100.connection': 'Connectez Google Agenda dans les paramètres et conservez la connexion entre les visites, ou importez les fichiers de rappels dans les calendriers Apple ou de l’appareil.',
   'release.0100.notices': 'Les nouveautés sont confirmées uniquement à leur fermeture ; les confirmations hors ligne sont synchronisées plus tard.',
   'release.081.brand': 'Notre nouveau nom est Pro100Practice.', 'release.081.login': 'La page de connexion reprend le style de l’accueil, avec une option d’affichage du mot de passe plus claire.', 'release.081.practice': 'Les blocs de pratique ont des icônes de lecture et de pause et moins de conseils génériques.',
   'release.090.songs': 'Ouvrez les supports depuis la liste des morceaux, filtrez les vidéos et PDF et gardez des notes pour chaque morceau.', 'release.090.practice': 'Revenez à la semaine de pratique actuelle et ouvrez le plan de la semaine choisie depuis sa description.', 'release.090.stats': 'Les statistiques sont plus compactes : sur téléphone, le graphique des catégories précède le calendrier.',
 })
 
+Object.assign(pageTranslations.en, {
+  'practice.progressSaved': 'Practice progress saved.',
+  'practice.autosaveFailed': 'Could not save practice progress. Your changes are kept; use Save session to retry.',
+  'practice.precisionUnavailable': 'Practice saving needs a database update. Your changes are kept; please retry after the update.',
+})
+Object.assign(pageTranslations.ru, {
+  'practice.progressSaved': 'Практика сохранена.',
+  'practice.autosaveFailed': 'Не удалось сохранить практику. Изменения сохранены в форме; нажмите «Сохранить сессию», чтобы повторить.',
+  'practice.precisionUnavailable': 'Для сохранения практики нужно обновление базы данных. Изменения остались в форме; повторите после обновления.',
+})
+Object.assign(pageTranslations.it, {
+  'practice.progressSaved': 'Progressi di pratica salvati.',
+  'practice.autosaveFailed': 'Impossibile salvare i progressi. Le modifiche restano nel modulo; usa Salva sessione per riprovare.',
+  'practice.precisionUnavailable': 'Il salvataggio richiede un aggiornamento del database. Le modifiche restano nel modulo; riprova dopo l’aggiornamento.',
+})
+Object.assign(pageTranslations.fr, {
+  'practice.progressSaved': 'Pratique enregistrée.',
+  'practice.autosaveFailed': 'Impossible d’enregistrer la pratique. Les modifications restent dans le formulaire ; utilisez Enregistrer la séance pour réessayer.',
+  'practice.precisionUnavailable': 'L’enregistrement nécessite une mise à jour de la base de données. Les modifications restent dans le formulaire ; réessayez après la mise à jour.',
+})
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)
 Object.assign(translations.it, pageTranslations.it)

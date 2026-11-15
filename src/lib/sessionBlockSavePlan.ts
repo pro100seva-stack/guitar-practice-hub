@@ -17,7 +17,7 @@ export function sessionBlockMinutes(block: Pick<SessionBlockSaveInput, 'elapsedS
 
 export function isPracticedSessionBlock(block: Pick<SessionBlockSaveInput, 'done' | 'elapsedSeconds' | 'actualMinutes'>) {
   const minutes = sessionBlockMinutes(block)
-  return block.done || (minutes != null && minutes > 0)
+  return block.done || (block.elapsedSeconds != null && block.elapsedSeconds > 0) || (minutes != null && minutes > 0)
 }
 
 // Only practiced blocks are persisted; untouched pre-filled blocks stay editor-only.
@@ -42,7 +42,15 @@ export function planSessionBlockSave(sessionId: string, selectedBlocks: SessionB
       done: block.done,
       target_minutes: block.targetMinutes,
       actual_minutes: sessionBlockMinutes(block),
+      actual_seconds: sessionBlockSeconds(block),
     })),
     blockKeysToKeep: selectedBlocks.map((block) => block.key),
   }
+}
+
+/** Keep integer seconds without inventing precision for legacy minute-only records. */
+export function sessionBlockSeconds(block: Pick<SessionBlockSaveInput, 'elapsedSeconds' | 'actualMinutes'>): number | null {
+  if (block.elapsedSeconds != null && Number.isFinite(block.elapsedSeconds) && (block.elapsedSeconds > 0 || !block.actualMinutes)) return Math.max(0, Math.round(block.elapsedSeconds))
+  const minutes = block.actualMinutes === '' ? null : Number(block.actualMinutes)
+  return minutes != null && Number.isFinite(minutes) ? Math.max(0, Math.round(minutes * 60)) : null
 }

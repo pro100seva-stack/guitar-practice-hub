@@ -1,7 +1,7 @@
 ---
 name: "Release Engineer"
 description: "Use when coordinating delivery for Release app /release-app or preparing a Git-based application release: audit assigned release docs, validate gates, bump the version, create a scoped commit, push to the configured upstream, and report automatic deployment handoff. Also assess Node engines, Vite/PWA compatibility, and migration readiness."
-tools: [read, search, edit, execute, todo]
+tools: [read, search, edit, execute, todo, terminal/execute]
 agents: []
 user-invocable: true
 ---

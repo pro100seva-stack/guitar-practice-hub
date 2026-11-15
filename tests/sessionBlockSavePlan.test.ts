@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { hasUnsupportedSessionBlocks, isPracticedSessionBlock, planSessionBlockSave, selectPracticedSessionBlocks, sessionBlockMinutes } from '../src/lib/sessionBlockSavePlan'
+import { hasUnsupportedSessionBlocks, isPracticedSessionBlock, planSessionBlockSave, selectPracticedSessionBlocks, sessionBlockMinutes, sessionBlockSeconds } from '../src/lib/sessionBlockSavePlan'
 import { getSessionEditorState, isSessionEditorDirty, shouldDeleteClearedSession } from '../src/lib/sessionEditorState'
 
 describe('legacy block save preflight', () => {
@@ -41,16 +41,18 @@ describe('legacy block save preflight', () => {
 
   it('returns before any parent mutation or child deletion when preflight refuses the save', () => {
     const source = readFileSync(new URL('../src/pages/Sessions.tsx', import.meta.url), 'utf8')
-    const submit = source.slice(source.indexOf('async function handleSubmit'), source.indexOf('const totalBlockMinutes ='))
-    const guard = submit.indexOf('if (savedSession && hasUnsupportedSessionBlocks(savedSession.session_blocks, templates))')
-    const parentDelete = submit.indexOf(".from('sessions')")
-    const childDelete = submit.indexOf(".from('session_blocks')")
+    const submit = source.slice(source.indexOf('function queueSessionSave('), source.indexOf('const displayTimers ='))
+    const guard = submit.indexOf('if (savedSession && hasUnsupportedSessionBlocks(savedSession.session_blocks, catalog))')
+    const parentDelete = submit.indexOf(".from('sessions').delete()")
+    const parentUpsert = submit.indexOf(".from('sessions').upsert(")
+    const childDelete = submit.indexOf("const removal = supabase.from('session_blocks').delete()")
     expect(guard).toBeGreaterThan(-1)
     expect(parentDelete).toBeGreaterThan(guard)
+    expect(parentUpsert).toBeGreaterThan(guard)
     expect(childDelete).toBeGreaterThan(parentDelete)
     expect(guard).toBeLessThan(submit.indexOf('const saveTimers ='))
-    expect(guard).toBeLessThan(submit.indexOf('setSaving(true)'))
-    expect(submit.slice(guard, parentDelete)).toMatch(/setError\(t\('Cannot save this session[^\r\n]+\r?\n\s+return\r?\n\s+}/)
+    expect(guard).toBeLessThan(submit.indexOf('await supabase.auth.getUser()'))
+    expect(submit.slice(guard, submit.indexOf('const saveTimers ='))).toMatch(/throw new Error\(t\('Cannot save this session[^\r\n]+/)
   })
 })
 
@@ -64,7 +66,8 @@ describe('selectPracticedSessionBlocks', () => {
     [{ actualMinutes: '0' }, false],
     [{ actualMinutes: 'abc' }, false],
     [{ elapsedSeconds: 0 }, false],
-    [{ elapsedSeconds: 29 }, false],
+    [{ elapsedSeconds: 7 }, true],
+    [{ elapsedSeconds: 29 }, true],
     [{ elapsedSeconds: 30 }, true],
     [{ actualMinutes: '7' }, true],
     [{ actualMinutes: '0.5' }, true],
@@ -108,6 +111,7 @@ describe('planSessionBlockSave', () => {
         done: true,
         target_minutes: 15,
         actual_minutes: 1,
+        actual_seconds: 61,
       },
     ])
     expect(plan.blockKeysToKeep).toEqual(['technique'])
@@ -136,6 +140,20 @@ describe('planSessionBlockSave', () => {
     expect(sessionBlockMinutes({ elapsedSeconds, actualMinutes: '7' })).toBe(7)
     expect(sessionBlockMinutes({ elapsedSeconds, actualMinutes: '' })).toBeNull()
     expect(sessionBlockMinutes({ elapsedSeconds, actualMinutes: '0' })).toBe(0)
+  })
+
+  it('preserves a short pause as exact seconds even when rounded minutes are zero', () => {
+    const blocks = selectPracticedSessionBlocks([{ key: 'technique', label: 'Technique', done: false, targetMinutes: null, actualMinutes: '', elapsedSeconds: 7 }])
+    const saved = planSessionBlockSave('session-1', blocks)
+    expect(saved.upserts).toHaveLength(1)
+    expect(saved.upserts[0]).toMatchObject({ actual_minutes: 0, actual_seconds: 7, done: false })
+    expect(saved.blockKeysToKeep).toEqual(['technique'])
+  })
+
+  it.each([undefined, 0])('keeps manual minute fallback consistent in exact seconds with %s elapsed', (elapsedSeconds) => {
+    expect(sessionBlockSeconds({ elapsedSeconds, actualMinutes: '7' })).toBe(420)
+    expect(sessionBlockSeconds({ elapsedSeconds, actualMinutes: '0.5' })).toBe(30)
+    expect(sessionBlockSeconds({ elapsedSeconds: 7, actualMinutes: '7' })).toBe(7)
   })
 
   it('sums the same per-block minutes as save, including unfinished manual entries', () => {

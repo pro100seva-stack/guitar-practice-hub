@@ -10,7 +10,8 @@ import { supabase } from '../lib/supabase'
 import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from '../lib/localMaterialAccess'
 import { assignLocalMaterialToSong, deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, localMaterialCleanupPending, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, retryPendingLocalMaterialCleanup, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate, type PlaybackBookmark } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
-import { archivePracticeSong, createPracticeSong, fetchDaySongs, fetchPracticeSongs, isSongBlock, selectDaySong, withDaySongBlocks, type DaySong, type PracticeSong, type SongBlockKey } from '../lib/songPracticeApi'
+import { archivePracticeSong, createPracticeSong, fetchDaySongs, fetchPracticeSongs, fetchWeekPracticeSongs, withWeekPracticeSongs, isSongBlock, selectDaySong, withDaySongBlocks, type DaySong, type PracticeSong, type SongBlockKey } from '../lib/songPracticeApi'
+import { createSessionSaveQueue } from '../lib/sessionSaveQueue'
 import { catalogBlockLabel, createOtherBlock, isSelectableCatalogBlock, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadSessionRestorationCatalog, readProgramBlockMode, type CatalogBlock } from '../lib/catalogApi'
 import { formatDate, formatDateRange, localeForLanguage, toLocalIsoDate } from '../lib/dateFormat'
 import { useI18n } from '../lib/i18n'
@@ -29,6 +30,7 @@ import type { PlaybackIntent } from '../lib/youtubePractice'
 import { formatPracticeKey, isPracticeKeyBlock, pickPracticeKey, type PracticeKeyBlock } from '../lib/practiceKey'
 import { adjacentPracticeWeeks } from '../lib/practiceWeekNavigation'
 import { metronomeClickGain, parseMetronomeVolume, readMetronomeVolume, writeMetronomeVolume } from '../lib/metronomeVolume'
+import { metronomeBeatSeconds } from '../lib/metronomeTiming'
 import YouTubePracticePlayer from '../components/YouTubePracticePlayer'
 import LocalVideoPracticePlayer from '../components/LocalVideoPracticePlayer'
 import SongMaterialTools, { SongToolIcon } from '../components/SongMaterialTools'
@@ -170,6 +172,7 @@ export default function Sessions() {
   const [sessions, setSessions] = useState<SessionWithBlocks[]>([])
   const [songLibrary, setSongLibrary] = useState<PracticeSong[]>([])
   const [daySongs, setDaySongs] = useState<DaySong[]>([])
+  const [weeklySongs, setWeeklySongs] = useState<{ weekId: string; songs: PracticeSong[] } | null>(null)
   const [songsDate, setSongsDate] = useState('')
   const [songsError, setSongsError] = useState<string | null>(null)
   const [songsLoading, setSongsLoading] = useState(false)
@@ -199,7 +202,8 @@ export default function Sessions() {
   const [error, setError] = useState<string | null>(null)
   const [date, setDate] = useState(toLocalIsoDate())
   songDateRef.current = date
-  const selectedDaySongs = songsDate === date ? daySongs : []
+  const inheritedSongs = weeklySongs?.weekId === planWeek?.id ? weeklySongs?.songs ?? [] : []
+  const selectedDaySongs = withWeekPracticeSongs(date, inheritedSongs, songsDate === date ? daySongs : [])
   const [comment, setComment] = useState('')
   const [selectedBlocks, setSelectedBlocks] = useState<SelectedBlock[]>([])
   const [expandedBlockIds, setExpandedBlockIds] = useState<Set<string>>(new Set())
@@ -277,6 +281,7 @@ export default function Sessions() {
   const removedBlockTimeoutRef = useRef<number | null>(null)
   const bpmRef = useRef(bpm)
   const beatsPerMeasureRef = useRef(beatsPerMeasure)
+  const metronomeBeatUnitRef = useRef(4)
   const lookaheadRef = useRef(0.12)
   const metronomeVolumeRef = useRef(metronomeVolume)
   const nextNoteTimeRef = useRef(0)
@@ -284,9 +289,15 @@ export default function Sessions() {
   const editorRevisionRef = useRef(0)
   const dataRequestRef = useRef(0)
   const defaultsSuppressedDateRef = useRef<string | null>(null)
+  const [saveQueue] = useState(createSessionSaveQueue)
+  const pendingSavesRef = useRef(0)
+  const latestEditorRef = useRef({ date, weekId: planWeek?.id ?? null, comment, selectedBlocks, timers })
+  latestEditorRef.current = { date, weekId: planWeek?.id ?? null, comment, selectedBlocks, timers }
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   const applyMembership = useEffectEvent((weekId: string, keys: string[]) => {
     if (saving || defaultsSuppressedDateRef.current === date || !canInitializeSessionDefaults(weekId, planWeek?.id ?? null, hasSavedSession(date, sessions), editorBaseline, { comment, selectedBlocks, timers: snapshotBlockTimers(timers, Date.now()) })) return
-    const state = getSessionEditorState(date, templates, sessions, keys)
+    const state = withDaySongBlocks(getSessionEditorState(date, templates, sessions, keys), selectedDaySongs, templates)
     setComment(state.comment)
     setSelectedBlocks(state.selectedBlocks)
     setTimers(state.timers)
@@ -424,7 +435,11 @@ export default function Sessions() {
     const blocked = playbackBlockedRef.current.has(key) || selectedBlocks.some((block) => block.id === blockId && block.done)
     if (intent === 'explicit') playbackBlockedRef.current.delete(key)
     if (intent === 'explicit' || !blocked) editorRevisionRef.current++
-    setTimers((current) => activateBlockTimer(current, blockId, Date.now(), intent, blocked))
+    const current = latestEditorRef.current
+    const next = activateBlockTimer(current.timers, blockId, Date.now(), intent, blocked)
+    if (next === current.timers) return
+    const pausedPrevious = Object.keys(current.timers).some((id) => current.timers[id].isRunning && !next[id]?.isRunning)
+    commitPracticeProgress(current.selectedBlocks, next, pausedPrevious)
   }
 
   useEffect(() => {
@@ -947,7 +962,7 @@ export default function Sessions() {
     return <article key={song.id} className="min-w-0 border-b border-slate-800 py-1 last:border-0">
       <div className="flex min-h-11 items-center gap-2">
         <h4 className="min-w-0 flex-1"><button type="button" aria-expanded={open} aria-controls={`song-materials-${rowKey}`} onClick={() => toggleSongRow(song, blockKey)} className="min-h-11 w-full break-words rounded text-left text-base font-semibold text-slate-100 underline decoration-slate-600 underline-offset-4 hover:text-sky-200 focus-visible:outline-2 focus-visible:outline-sky-400">{song.name}</button></h4>
-        {libraryActions ?? (isSongBlock(blockKey) && <button type="button" disabled={songBusy || songsLoading} aria-label={t('songTools.removeFromDay', { song: song.name })} title={t('songTools.removeFromDay', { song: song.name })} onClick={() => { void removeSongFromDay(song, blockKey) }} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-40"><span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-500 text-slate-950 hover:bg-slate-400"><svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.8"><path d="m5 5 10 10M15 5 5 15" /></svg></span></button>)}
+        {libraryActions ?? (isSongBlock(blockKey) && !(blockKey === 'repertoire' && inheritedSongs.some((entry) => entry.id === song.id)) && <button type="button" disabled={songBusy || songsLoading} aria-label={t('songTools.removeFromDay', { song: song.name })} title={t('songTools.removeFromDay', { song: song.name })} onClick={() => { void removeSongFromDay(song, blockKey) }} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-40"><span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-500 text-slate-950 hover:bg-slate-400"><svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.8"><path d="m5 5 10 10M15 5 5 15" /></svg></span></button>)}
       </div>
       {open && <div className="space-y-2 pb-2">
         <div id={`song-materials-${rowKey}`}>
@@ -1241,19 +1256,27 @@ export default function Sessions() {
   }
 
   function toggleBlock(templateId: string, done: boolean) {
-    const block = selectedBlocks.find((item) => item.id === templateId)
+    const current = latestEditorRef.current
+    const block = current.selectedBlocks.find((item) => item.id === templateId)
     if (!block) return
     editorRevisionRef.current++
     if (!block.done && done) {
       const nowMs = Date.now()
       playbackBlockedRef.current.add(`${date}:${templateId}`)
-      setTimers((current) => completeBlockTimer(current, templateId, done, nowMs))
+      const nextTimers = completeBlockTimer(current.timers, templateId, done, nowMs)
+      commitPracticeProgress(current.selectedBlocks.map((entry) => entry.id === templateId ? { ...entry, done } : entry), nextTimers, true)
+      return
     }
-    setSelectedBlocks((current) =>
-      current.map((block) =>
-        block.id === templateId ? { ...block, done } : block
-      )
-    )
+    commitPracticeProgress(current.selectedBlocks.map((entry) => entry.id === templateId ? { ...entry, done } : entry), current.timers, true)
+  }
+
+  function commitPracticeProgress(blocks: SelectedBlock[], nextTimers: Record<string, BlockTimerState>, checkpoint: boolean) {
+    const current = latestEditorRef.current
+    const next = { ...current, selectedBlocks: blocks, timers: nextTimers }
+    latestEditorRef.current = next
+    setSelectedBlocks(blocks)
+    setTimers(nextTimers)
+    if (checkpoint) void queueSessionSave(next)
   }
 
   function toggleBlockDetails(templateId: string, blockKey: string) {
@@ -1288,26 +1311,30 @@ export default function Sessions() {
     setSongsError(null)
     setDaySongs([])
     setSongsDate('')
-    Promise.all([fetchPracticeSongs(), fetchDaySongs(selectedDate)]).then(([songs, choices]) => {
+    const selectedWeekId = planWeek?.id ?? null
+    Promise.all([fetchPracticeSongs(), fetchDaySongs(selectedDate), selectedWeekId ? fetchWeekPracticeSongs(selectedWeekId) : Promise.resolve([])]).then(([songs, choices, plannedSongs]) => {
       if (cancelled || request !== songRequestRef.current || songDateRef.current !== selectedDate || !materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
       setSongLibrary(songs)
+      setWeeklySongs(selectedWeekId ? { weekId: selectedWeekId, songs: plannedSongs } : null)
       setDaySongs(choices)
       setSongsDate(selectedDate)
-      setEditorBaseline((current) => withDaySongBlocks(current, choices, templates))
-      setSelectedBlocks((current) => withDaySongBlocks({ comment: '', timers: {}, selectedBlocks: current }, choices, templates).selectedBlocks)
+      const effective = withWeekPracticeSongs(selectedDate, plannedSongs, choices)
+      setEditorBaseline((current) => withDaySongBlocks(current, effective, templates))
+      setSelectedBlocks((current) => withDaySongBlocks({ comment: '', timers: {}, selectedBlocks: current }, effective, templates).selectedBlocks)
     }).catch(() => {
       if (!cancelled && request === songRequestRef.current && songDateRef.current === selectedDate && materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setSongsError(songLoadError())
     }).finally(() => {
       if (!cancelled && request === songRequestRef.current && songDateRef.current === selectedDate && materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setSongsLoading(false)
     })
     return () => { cancelled = true }
-  }, [date, templates, materialAccess, loading])
+  }, [date, planWeek?.id, templates, materialAccess, loading])
 
   function applyDaySongs(choices: DaySong[], key?: SongBlockKey) {
     setDaySongs(choices)
     setSongsDate(date)
-    setEditorBaseline((current) => withDaySongBlocks(current, choices, templates))
-    setSelectedBlocks((current) => withDaySongBlocks({ comment: '', timers: {}, selectedBlocks: current }, choices, templates).selectedBlocks)
+    const effective = withWeekPracticeSongs(date, inheritedSongs, choices)
+    setEditorBaseline((current) => withDaySongBlocks(current, effective, templates))
+    setSelectedBlocks((current) => withDaySongBlocks({ comment: '', timers: {}, selectedBlocks: current }, effective, templates).selectedBlocks)
     const template = templates.find((item) => item.key === key)
     if (template) {
       setExpandedBlockIds(new Set([template.id]))
@@ -1435,7 +1462,7 @@ export default function Sessions() {
 
   async function removeBlock(templateId: string) {
     const block = selectedBlocks.find((item) => item.id === templateId)
-    const choices = selectedDaySongs.filter((row) => row.block_key === block?.key)
+    const choices = (songsDate === date ? daySongs : []).filter((row) => row.block_key === block?.key)
     if (choices.length) {
       if (songOperationRef.current) return
       const selectedDate = date
@@ -1783,7 +1810,7 @@ export default function Sessions() {
         if (!activeContext) return
         while (nextNoteTimeRef.current < activeContext.currentTime + lookaheadRef.current) {
           scheduleMetronomeClick(nextNoteTimeRef.current)
-          nextNoteTimeRef.current += 60 / clampBpm(bpmRef.current)
+          nextNoteTimeRef.current += metronomeBeatSeconds(clampBpm(bpmRef.current), metronomeBeatUnitRef.current)
         }
       }, 25)
     }
@@ -1855,6 +1882,7 @@ export default function Sessions() {
       setBeatsPerMeasure(normalizedBeatValue)
       setCustomBeatCount(String(normalizedBeatValue))
       setCustomMeasureCount(String(normalizedMeasureValue))
+      metronomeBeatUnitRef.current = normalizedMeasureValue
       return
     }
 
@@ -1862,6 +1890,7 @@ export default function Sessions() {
     setBeatsPerMeasure(mappedValue)
     setCustomBeatCount(String(mappedValue))
     setCustomMeasureCount('4')
+    metronomeBeatUnitRef.current = 4
   }
 
   function handleCustomBeatChange(value: string) {
@@ -1886,14 +1915,18 @@ export default function Sessions() {
     if (Number.isFinite(parsedValue)) {
       const normalizedValue = Math.max(2, Math.min(12, Math.round(parsedValue)))
       setCustomMeasureCount(String(normalizedValue))
+      metronomeBeatUnitRef.current = normalizedValue
     }
   }
 
   function toggleTimer(templateId: string) {
     editorRevisionRef.current++
-    if (timers[templateId]?.isRunning) playbackBlockedRef.current.add(`${date}:${templateId}`)
+    const current = latestEditorRef.current
     const nowMs = Date.now()
-    setTimers((current) => toggleBlockTimer(current, templateId, nowMs))
+    const next = toggleBlockTimer(current.timers, templateId, nowMs)
+    const paused = Object.keys(current.timers).filter((id) => current.timers[id].isRunning && !next[id]?.isRunning)
+    paused.forEach((id) => playbackBlockedRef.current.add(`${current.date}:${id}`))
+    commitPracticeProgress(current.selectedBlocks, next, paused.length > 0)
   }
 
   function resetTimer(templateId: string) {
@@ -1921,122 +1954,108 @@ export default function Sessions() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!canSave) return
-    const savedSession = sessions.find((session) => session.session_date === date)
-    if (savedSession && hasUnsupportedSessionBlocks(savedSession.session_blocks, templates)) {
-      setMessage(null)
-      setError(t('Cannot save this session because it contains unsupported legacy blocks. All saved blocks and notes have been preserved.'))
-      return
+    await queueSessionSave(latestEditorRef.current, true)
+  }
+
+  function queueSessionSave(state: SessionEditorState, manual = false) {
+    const access = materialAccess
+    if (!isLocalMaterialAccessCurrent(access)) return Promise.resolve()
+    const owner = localMaterialOwner(access)
+    const origin = latestEditorRef.current
+    const selectedDate = origin.date
+    const weekId = origin.weekId
+    const navigation = editorNavigationRef.current
+    const revision = editorRevisionRef.current
+    const captured: SessionEditorState = {
+      comment: state.comment,
+      selectedBlocks: state.selectedBlocks.map((block) => ({ ...block })),
+      timers: snapshotBlockTimers(state.timers, Date.now(), true),
     }
-    const saveTimers = snapshotBlockTimers(timers, Date.now())
-    const saveBlocks = selectPracticedSessionBlocks(selectedBlocks.map((block) => ({
-      key: block.key,
-      label: block.label,
-      done: block.done,
-      targetMinutes: block.targetMinutes,
-      actualMinutes: block.actualMinutes,
-      elapsedSeconds: saveTimers[block.id]?.elapsedSeconds,
-    })))
-    const saveTotalMinutes = saveBlocks.reduce((sum, block) => sum + (sessionBlockMinutes(block) ?? 0), 0)
+    const catalog = [...templates]
+    pendingSavesRef.current++
     setSaving(true)
     setPendingDiscardAction(null)
     setMessage(null)
     setError(null)
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        setError(t('Not signed in.'))
-        return
-      }
-
-      const existingSession = sessions.find((session) => session.session_date === date && session.user_id === user.id)
-      if (!existingSession && saveBlocks.length === 0 && comment.trim() === '') {
-        setMessage(t('Nothing was saved. Log practice time or mark a block done first.'))
-        return
-      }
-
-      if (existingSession && shouldDeleteClearedSession(true, saveBlocks.length, comment)) {
-        try {
-          const { error: deletionError } = await supabase
-            .from('sessions')
-            .delete()
-            .eq('id', existingSession.id)
-            .eq('user_id', user.id)
-            .eq('session_date', date)
-            .select('id')
-            .single()
-
-          if (deletionError) {
-            setError(t('Could not delete the empty session. Your changes have been kept.'))
-            return
-          }
-        } catch {
-          setError(t('Could not delete the empty session. Your changes have been kept.'))
-          return
-        }
-
-        defaultsSuppressedDateRef.current = date
-        await loadData({ date, weekId: planWeek?.id ?? null, cleared: true })
-        setMessage(t('Empty session deleted successfully.'))
-        return
-      }
-
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('sessions')
-        .upsert(
-          {
-            user_id: user.id,
-            session_date: date,
-            total_minutes: saveTotalMinutes,
-            comment: comment.trim() ? comment.trim() : null,
-            week_id: planWeek?.id ?? null,
-            source: 'app',
-          },
-          { onConflict: 'user_id,session_date' }
-        )
-        .select()
-        .single()
-
-      if (sessionError || !sessionData) {
-        setError(sessionError?.message ?? t('Could not save the session.'))
-        return
-      }
-
-      const blockSavePlan = planSessionBlockSave(sessionData.id, saveBlocks)
-      const blocksRemovalQuery = supabase
-        .from('session_blocks')
-        .delete()
-        .eq('session_id', sessionData.id)
-
-      const { error: blocksRemovalError } = blockSavePlan.blockKeysToKeep.length > 0
-        ? await blocksRemovalQuery.not('block_key', 'in', `(${blockSavePlan.blockKeysToKeep.join(',')})`)
-        : await blocksRemovalQuery
-
-      if (blocksRemovalError) {
-        setError(blocksRemovalError.message)
-        return
-      }
-
-      if (blockSavePlan.upserts.length > 0) {
-        const { error: blocksError } = await supabase
-          .from('session_blocks')
-          .upsert(blockSavePlan.upserts, { onConflict: 'session_id,block_key' })
-
-        if (blocksError) {
-          setError(blocksError.message)
-          return
-        }
-      }
-
-      await loadData({ date, weekId: planWeek?.id ?? null })
-      setMessage(t('Session saved successfully.'))
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : t('Could not save the session.'))
-    } finally {
-      setSaving(false)
+    const sameEditor = () => materialsMountedRef.current && isLocalMaterialAccessCurrent(access)
+      && latestEditorRef.current.date === selectedDate && latestEditorRef.current.weekId === weekId
+      && editorNavigationRef.current === navigation
+    const assertOwner = () => {
+      if (!isLocalMaterialAccessCurrent(access) || localMaterialOwner(access) !== owner) throw new Error(t('Not signed in.'))
     }
+    return saveQueue.enqueue(async () => {
+      assertOwner()
+      const savedSession = sessionsRef.current.find((session) => session.session_date === selectedDate && session.user_id === owner)
+      if (savedSession && hasUnsupportedSessionBlocks(savedSession.session_blocks, catalog)) {
+        throw new Error(t('Cannot save this session because it contains unsupported legacy blocks. All saved blocks and notes have been preserved.'))
+      }
+      const saveTimers = captured.timers
+      const saveBlocks = selectPracticedSessionBlocks(captured.selectedBlocks.map((block) => ({
+        key: block.key, label: block.label, done: block.done, targetMinutes: block.targetMinutes,
+        actualMinutes: block.actualMinutes, elapsedSeconds: saveTimers[block.id]?.elapsedSeconds,
+      })))
+      const saveTotalMinutes = saveBlocks.reduce((sum, block) => sum + (sessionBlockMinutes(block) ?? 0), 0)
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      assertOwner()
+      if (authError || user?.id !== owner) throw new Error(t('Not signed in.'))
+      // Detect an unapplied precision migration before modifying any parent or child row.
+      const { error: precisionError } = await supabase.from('session_blocks').select('actual_seconds').limit(0)
+      assertOwner()
+      if (precisionError) throw new Error(t('practice.precisionUnavailable'))
+      if (!savedSession && saveBlocks.length === 0 && captured.comment.trim() === '') {
+        if (sameEditor()) setMessage(t('Nothing was saved. Log practice time or mark a block done first.'))
+        return
+      }
+      let nextSession: SessionWithBlocks | null = null
+      if (savedSession && shouldDeleteClearedSession(true, saveBlocks.length, captured.comment)) {
+        assertOwner()
+        const { error: deletionError } = await supabase.from('sessions').delete()
+          .eq('id', savedSession.id).eq('user_id', owner).eq('session_date', selectedDate).select('id').single()
+        assertOwner()
+        if (deletionError) throw deletionError
+        if (sameEditor()) defaultsSuppressedDateRef.current = selectedDate
+      } else {
+        assertOwner()
+        const { data: sessionData, error: sessionError } = await supabase.from('sessions').upsert({
+          user_id: owner, session_date: selectedDate, total_minutes: saveTotalMinutes,
+          comment: captured.comment.trim() || null, week_id: weekId, source: 'app',
+        }, { onConflict: 'user_id,session_date' }).select().single()
+        assertOwner()
+        if (sessionError || !sessionData) throw sessionError ?? new Error(t('Could not save the session.'))
+        const blockSavePlan = planSessionBlockSave(sessionData.id, saveBlocks)
+        const removal = supabase.from('session_blocks').delete().eq('session_id', sessionData.id)
+        const { error: removalError } = blockSavePlan.blockKeysToKeep.length
+          ? await removal.not('block_key', 'in', '(' + blockSavePlan.blockKeysToKeep.join(',') + ')') : await removal
+        assertOwner()
+        if (removalError) throw removalError
+        let rows: SessionBlock[] = []
+        if (blockSavePlan.upserts.length) {
+          const { data, error: blocksError } = await supabase.from('session_blocks')
+            .upsert(blockSavePlan.upserts, { onConflict: 'session_id,block_key' }).select()
+          assertOwner()
+          if (blocksError) throw blocksError
+          rows = data ?? []
+        }
+        nextSession = { ...sessionData, session_blocks: rows }
+      }
+      assertOwner()
+      const updated = sessionsRef.current.filter((session) => session.id !== savedSession?.id && !(session.user_id === owner && session.session_date === selectedDate))
+      if (nextSession) updated.push(nextSession)
+      sessionsRef.current = updated
+      if (materialsMountedRef.current) setSessions(updated)
+      if (sameEditor() && editorRevisionRef.current === revision) {
+        // The live timer/expansion/drafts remain untouched. Only acknowledge the saved revision.
+        setEditorBaseline(captured)
+        setError(null)
+        setMessage(t(!nextSession ? 'Empty session deleted successfully.' : manual ? 'Session saved successfully.' : 'practice.progressSaved'))
+      }
+    }).catch((problem: unknown) => {
+      if (sameEditor()) setError(problem instanceof Error && [t('practice.precisionUnavailable'), t('Not signed in.'), t('Cannot save this session because it contains unsupported legacy blocks. All saved blocks and notes have been preserved.')].includes(problem.message)
+        ? problem.message : t('practice.autosaveFailed'))
+    }).finally(() => {
+      pendingSavesRef.current--
+      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setSaving(pendingSavesRef.current > 0)
+    })
   }
 
   const displayTimers = snapshotBlockTimers(timers, Date.now())

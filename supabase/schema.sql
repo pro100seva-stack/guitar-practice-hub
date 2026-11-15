@@ -143,6 +143,7 @@ create table if not exists session_blocks (
   label text not null,
   target_minutes int,                -- null for imported rows (Notion never tracked per-category time)
   actual_minutes int,                -- null for imported rows (only the checkbox was known, not duration)
+  actual_seconds int constraint session_blocks_actual_seconds_nonnegative check (actual_seconds is null or actual_seconds >= 0), -- null retains legacy minute-only precision
   done boolean not null default false,
   unique (session_id, block_key)
 );

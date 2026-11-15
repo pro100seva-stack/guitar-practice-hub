@@ -11,6 +11,9 @@ describe('confirmed playback activation', () => {
     const handler = source.slice(source.indexOf('function confirmMaterialPlayback('), source.indexOf('\n  useEffect(() => {\n    activeMaterialRecordRef'))
     const compiled = transpileModule(handler, { compilerOptions: { target: 9 } }).outputText
     const block = { id: 'block', key: 'warmup', done: true }
+    let authorized = false
+    let timers: ReturnType<typeof toggleBlockTimer> = { block: { isRunning: false, elapsedSeconds: 12 } }
+    const latestEditorRef = { current: { timers, selectedBlocks: [block] } }
     const context = {
       editorRevisionRef: { current: 0 }, materialAccess: {},
       isLocalMaterialAccessCurrent: () => authorized,
@@ -18,11 +21,13 @@ describe('confirmed playback activation', () => {
       expandedBlockIds: new Set(['block']), selectedBlocks: [block],
       activeMaterial: { id: 'material', blockKey: 'warmup' }, activeMaterialRecord: { id: 'material' },
       playbackBlockedRef: { current: new Set(['2026-10-04:block']) }, activateBlockTimer,
-      setTimers: (update: (current: ReturnType<typeof toggleBlockTimer>) => ReturnType<typeof toggleBlockTimer>) => { timers = update(timers) },
+      latestEditorRef,
+      commitPracticeProgress: (selectedBlocks: Array<typeof block>, nextTimers: ReturnType<typeof toggleBlockTimer>) => {
+        timers = nextTimers
+        latestEditorRef.current = { ...latestEditorRef.current, selectedBlocks, timers: nextTimers }
+      },
     }
     const playbackScopeRef = { current: context }
-    let authorized = false
-    let timers: ReturnType<typeof toggleBlockTimer> = { block: { isRunning: false, elapsedSeconds: 12 } }
     const create = new Function(...Object.keys(context), 'playbackScopeRef', `${compiled}; return confirmMaterialPlayback`) as (...values: unknown[]) => (date: string, week: string, id: string, key: string, material: string, intent: string) => void
     const confirm = create(...Object.values(context), playbackScopeRef)
     const initial = timers

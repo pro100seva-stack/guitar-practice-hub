@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
-import { isSongBlock, withDaySongBlocks } from '../src/lib/songPracticeApi'
+import { isSongBlock, withDaySongBlocks, withWeekPracticeSongs, type DaySong, type PracticeSong } from '../src/lib/songPracticeApi'
 import { isSessionEditorDirty, type SessionEditorState } from '../src/lib/sessionEditorState'
 import { selectPracticedSessionBlocks } from '../src/lib/sessionBlockSavePlan'
 import { readFileSync } from 'node:fs'
@@ -11,6 +11,45 @@ const templates = [
   { id: 'learn', key: 'learn_song', label: 'Learn a new song', target_minutes: null },
 ]
 const empty: SessionEditorState = { comment: '', timers: {}, selectedBlocks: [] }
+
+const song = (id: string, name = id): PracticeSong => ({ id, name, user_id: 'owner', status: 'learning', notes: null, tuning: null, archived_at: null, created_at: '2026-11-09T00:00:00Z' })
+const daySong = (entry: PracticeSong, block_key: 'repertoire' | 'learn_song' = 'repertoire', date = '2026-11-09'): DaySong => ({ user_id: entry.user_id, practice_date: date, block_key, song_id: entry.id, created_at: '2026-11-09T01:00:00Z', songs: entry })
+
+describe('weekly Plan repertoire defaults', () => {
+  it('preserves Plan order, deduplicates daily repertoire and keeps day-only extras', () => {
+    const first = song('first'), second = song('second'), extra = song('extra')
+    const inheritedDayChoice = daySong(second)
+    const dailyExtra = daySong(extra)
+    const learningChoice = daySong(first, 'learn_song')
+    const daily = [dailyExtra, inheritedDayChoice, learningChoice]
+    const result = withWeekPracticeSongs('2026-11-09', [second, first], daily)
+    expect(result.map((row) => `${row.block_key}:${row.song_id}`)).toEqual(['repertoire:second', 'repertoire:first', 'repertoire:extra', 'learn_song:first'])
+    expect(result[2]).toBe(dailyExtra)
+    expect(result[3]).toBe(learningChoice)
+    expect(daily).toEqual([dailyExtra, inheritedDayChoice, learningChoice])
+  })
+
+  it('derives the same week songs for each selected day without changing the canonical song', () => {
+    const planned = song('planned', 'A weekly song')
+    for (const date of ['2026-11-09', '2026-11-10', '2026-11-15']) {
+      const result = withWeekPracticeSongs(date, [planned], [])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ practice_date: date, block_key: 'repertoire', song_id: planned.id })
+      expect(result[0].songs).toBe(planned)
+      const editor = withDaySongBlocks(empty, result, templates)
+      expect(editor.selectedBlocks.map((block) => block.key)).toEqual(['repertoire'])
+      expect(editor.timers).toEqual({})
+      expect(selectPracticedSessionBlocks(editor.selectedBlocks)).toEqual([])
+    }
+  })
+
+  it('keeps daily selections when Plan has no songs and replaces defaults after a Plan edit', () => {
+    const previous = song('old'), next = song('new'), extra = daySong(song('extra'))
+    expect(withWeekPracticeSongs('2026-11-09', [], [extra])).toEqual([extra])
+    expect(withWeekPracticeSongs('2026-11-09', [previous], [extra]).map((row) => row.song_id)).toEqual(['old', 'extra'])
+    expect(withWeekPracticeSongs('2026-11-09', [next], [extra]).map((row) => row.song_id)).toEqual(['new', 'extra'])
+  })
+})
 
 describe('daily song planning', () => {
   it.each(['current', 'date changed', 'account changed', 'duplicate tap'])('guards a pending Practice request: %s', async (scenario) => {

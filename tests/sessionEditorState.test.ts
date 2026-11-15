@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
+vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 import { readFileSync } from 'node:fs'
 import { ScriptTarget, transpileModule } from 'typescript'
 import { canInitializeSessionDefaults, getSessionEditorState, hasSavedSession, isSessionEditorDirty, shouldDeleteClearedSession } from '../src/lib/sessionEditorState'
 import { resolvePracticeDeepLink } from '../src/lib/practiceDeepLink'
+import { withDaySongBlocks } from '../src/lib/songPracticeApi'
 
 const templates = [
   { id: 't1', key: 'warmup', label: 'Warm-up', target_minutes: 10 },
@@ -68,6 +70,28 @@ describe('getSessionEditorState', () => {
   it('reports whether a day has a saved session', () => {
     expect(hasSavedSession('2026-10-01', sessions)).toBe(true)
     expect(hasSavedSession('2026-10-02', sessions)).toBe(false)
+  })
+
+  it('restores a seven-second pause instead of its zero rounded minutes', () => {
+    const saved = [{ session_date: '2026-10-02', comment: null, session_blocks: [{ block_key: 'warmup', actual_minutes: 0, actual_seconds: 7, done: false }] }]
+    const state = getSessionEditorState('2026-10-02', templates, saved)
+    expect(state.timers.t1).toEqual({ isRunning: false, elapsedSeconds: 7 })
+    expect(state.selectedBlocks[0]).toMatchObject({ key: 'warmup', done: false, actualMinutes: '0' })
+    expect(isSessionEditorDirty(state, structuredClone(state))).toBe(false)
+  })
+
+  it('falls back to legacy minutes only for absent or NULL seconds, preserving exact zero', () => {
+    const saved = [{ session_date: '2026-10-02', comment: null, session_blocks: [
+      { block_key: 'warmup', actual_minutes: 2, actual_seconds: null, done: false },
+      { block_key: 'technique', actual_minutes: 3, done: true },
+      { block_key: 'harmony', actual_minutes: 1, actual_seconds: 0, done: false },
+    ] }]
+    const state = getSessionEditorState('2026-10-02', templates, saved)
+    expect(state.timers).toEqual({
+      t1: { isRunning: false, elapsedSeconds: 120 },
+      t2: { isRunning: false, elapsedSeconds: 180 },
+      t3: { isRunning: false, elapsedSeconds: 0 },
+    })
   })
 
   it('restores notes-only rows without adding blocks or timers', () => {
@@ -211,12 +235,12 @@ describe('Practice configured membership effect', () => {
   const effectSource = source.slice(source.indexOf('useEffect(() => {\n    const weekId = planWeek?.id'), source.indexOf('useEffect(() => {\n    const linkedWeekId'))
   const compile = (code: string) => transpileModule(code, { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText
 
-  function setup(mode = 'same_every_week') {
+  function setup(mode = 'same_every_week', selectedDaySongs: Array<{ block_key: string }> = [], catalog = templates) {
     const state = {
       date: '2026-10-03', weekId: 'w1', saving: false, suppressedDate: null as string | null,
       sessions: [...sessions],
-      baseline: getSessionEditorState('2026-10-03', templates, sessions),
-      editor: getSessionEditorState('2026-10-03', templates, sessions),
+      baseline: getSessionEditorState('2026-10-03', catalog, sessions),
+      editor: getSessionEditorState('2026-10-03', catalog, sessions),
     }
     const responses: Array<{ resolve: (keys: string[]) => void; reject: (error: Error) => void }> = []
     const pending = () => new Promise<string[]>((resolve, reject) => { responses.push({ resolve, reject }) })
@@ -228,7 +252,8 @@ describe('Practice configured membership effect', () => {
         useEffectEvent: (callback: (id: string, keys: string[]) => void) => callback,
         saving: state.saving, planWeek: { id: state.weekId }, date: state.date,
         defaultsSuppressedDateRef: { current: state.suppressedDate },
-        sessions: state.sessions, templates, editorBaseline: state.baseline,
+        sessions: state.sessions, templates: catalog, editorBaseline: state.baseline,
+        selectedDaySongs, withDaySongBlocks,
         ...state.editor, canInitializeSessionDefaults, hasSavedSession, getSessionEditorState,
         snapshotBlockTimers: (timers: typeof state.editor.timers) => timers,
         setComment: (comment: string) => { state.editor.comment = comment },
@@ -264,6 +289,18 @@ describe('Practice configured membership effect', () => {
     expect(fixture.state.editor.selectedBlocks.map((block) => block.key)).toEqual(['harmony', 'warmup'])
     expect(isSessionEditorDirty(fixture.state.baseline, fixture.state.editor)).toBe(false)
     expect(fixture.state.editor.timers).toEqual({})
+  })
+
+  it('keeps inherited weekly Repertoire alongside configured blocks with a clean baseline', async () => {
+    const catalog = [...templates, { id: 'rep', key: 'repertoire', label: 'Repertoire', target_minutes: 10 }]
+    const fixture = setup('same_every_week', [{ block_key: 'repertoire' }], catalog)
+    fixture.start()
+    fixture.responses[0].resolve(['warmup'])
+    await Promise.resolve()
+    expect(fixture.state.editor.selectedBlocks.map((block) => block.key)).toEqual(['warmup', 'repertoire'])
+    expect(fixture.state.editor.timers).toEqual({})
+    expect(fixture.state.editor.selectedBlocks.every((block) => !block.done && block.actualMinutes === '')).toBe(true)
+    expect(isSessionEditorDirty(fixture.state.baseline, fixture.state.editor)).toBe(false)
   })
 
   it('uses selected-week membership and ignores a slower cancelled week response', async () => {

@@ -8,6 +8,21 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.11.0] - 2026-11-15
+
+### Added
+
+- Practice checkpoints save the selected day's cumulative time on Done or Pause, including the previous timer automatically paused when another block or material starts. Manual and automatic saves share one ordered queue; only one timer runs at a time. Short pauses retain their seconds after reload, and older minute-only records remain readable.
+
+### Changed
+
+- Matched the release notice to Home/login with green and mint colors, Aldrich/Asar fonts and a wood-textured dismissal button, preserving explicit-dismiss acknowledgment.
+- Plan's weekly songs now appear on each corresponding Practice day under Repertoire, ordered and deduplicated with day-specific selections. Plan remains the source for inherited song assignments.
+
+### Fixed
+
+- Metronome timing now respects the time-signature denominator at quarter-note BPM. An 8/8 bar clicks twice as fast as 4/4 and lasts the same time; live custom changes and quarter-note presets update the existing scheduler safely.
+
 ## [0.10.0] - 2026-11-14
 
 ### Added

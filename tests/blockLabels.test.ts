@@ -31,6 +31,7 @@ describe('block label editor and save integration', () => {
     expect(plan.upserts).toEqual(templates.map((template, index) => ({
       session_id: 'session-id', block_key: template.key, label: aliases[index][1],
       done: index !== 1, actual_minutes: index + 1.5, target_minutes: template.target_minutes,
+      actual_seconds: (index + 1.5) * 60,
     })))
     const material: LocalMaterial = {
       id: 'material-id', blockKey: key, name: 'Warmup.pdf', type: 'application/pdf', size: 5,

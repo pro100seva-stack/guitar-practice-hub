@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { Database } from './database.types'
 import type { SessionEditorState } from './sessionEditorState'
+import { queryWeekSongsWithSortOrder } from './weekSongsApi'
 
 export type PracticeSong = Database['public']['Tables']['songs']['Row']
 export type SongBlockKey = 'repertoire' | 'learn_song'
@@ -16,6 +17,22 @@ export async function fetchDaySongs(date: string) {
   const { data, error } = await supabase.from('practice_day_songs').select('*, songs(*)').eq('practice_date', date).order('created_at')
   if (error) throw error
   return data as DaySong[]
+}
+
+export async function fetchWeekPracticeSongs(weekId: string): Promise<PracticeSong[]> {
+  const { data, error } = await queryWeekSongsWithSortOrder(async (ordered) => {
+    const query = supabase.from('week_songs').select('song_id, songs(*)').eq('week_id', weekId)
+    return ordered ? await query.order('sort_order') : await query.order('song_id')
+  })
+  if (error) throw error
+  return (data ?? []).flatMap((row) => row.songs ? [row.songs as PracticeSong] : [])
+}
+
+/** Plan provides defaults, daily selections add to them; viewing never creates membership rows. */
+export function withWeekPracticeSongs(date: string, weekly: readonly PracticeSong[], daily: readonly DaySong[]): DaySong[] {
+  const planned = weekly.map((song) => ({ user_id: song.user_id, practice_date: date, block_key: 'repertoire', song_id: song.id, created_at: '', songs: song }))
+  const inherited = new Set(weekly.map((song) => song.id))
+  return [...planned, ...daily.filter((row) => row.block_key !== 'repertoire' || !inherited.has(row.song_id))]
 }
 export async function createPracticeSong(name: string, date?: string, key?: SongBlockKey) {
   const { data, error } = await supabase.rpc('create_practice_song', { p_name: name, p_practice_date: date ?? null, p_block_key: key ?? null })

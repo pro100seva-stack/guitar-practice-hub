@@ -209,17 +209,17 @@ export default function ReleaseNotice({ blocked }: { blocked: boolean }) {
       aria-modal="true"
       aria-labelledby="release-notice-heading"
       aria-describedby="release-notice-version"
-      className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(28rem,calc(100%-2rem))] overflow-y-auto overscroll-contain rounded-2xl border border-slate-600 bg-slate-900 p-5 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"
+      className="release-notice"
       onCancel={(event) => { event.preventDefault(); dismiss() }}
     >
-      <h2 id="release-notice-heading" className="text-lg font-semibold">{t('release.title')}</h2>
-      <p id="release-notice-version" className="mt-1 text-sm text-slate-400">{t('release.version', { version: appVersion })}</p>
-      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-200">
+      <h2 id="release-notice-heading" className="release-notice-title">{t('release.title')}</h2>
+      <p id="release-notice-version" className="release-notice-version">{t('release.version', { version: appVersion })}</p>
+      <ul className="release-notice-changes">
         {summary.map((key) => <li key={key}>{t(key)}</li>)}
       </ul>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <a href={changelogUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded text-sm text-sky-300 underline underline-offset-4 hover:text-sky-100 focus-visible:outline-2 focus-visible:outline-sky-400">{t('release.changelog')}</a>
-        <button ref={closeRef} type="button" onClick={dismiss} className="btn btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400">{t('release.dismiss')}</button>
+      <div className="release-notice-actions">
+        <a href={changelogUrl} target="_blank" rel="noopener noreferrer" className="release-notice-link">{t('release.changelog')}</a>
+        <button ref={closeRef} type="button" onClick={dismiss} className="btn release-notice-dismiss">{t('release.dismiss')}</button>
       </div>
     </dialog>,
     document.body,

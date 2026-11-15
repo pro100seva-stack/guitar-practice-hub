@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { ScriptTarget, transpileModule } from 'typescript'
 import { completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, timerElapsedSeconds, toggleBlockTimer } from '../src/lib/sessionBlockTimer'
 import { getSessionEditorState, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState } from '../src/lib/sessionEditorState'
+import { createSessionSaveQueue } from '../src/lib/sessionSaveQueue'
 import { hasUnsupportedSessionBlocks, planSessionBlockSave, selectPracticedSessionBlocks, sessionBlockMinutes } from '../src/lib/sessionBlockSavePlan'
 
 describe('timestamp-based block timers', () => {
@@ -103,7 +104,7 @@ describe('Sessions save handler timer regressions', () => {
   const compiled = transpileModule(submit, { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText
   type Timers = Record<string, BlockTimerState>
   type SaveStep = 'auth' | 'session-upsert' | 'blocks-delete' | 'blocks-upsert' | 'session-delete'
-  type QueryResult = { data: { id: string }; error: { message: string } | null }
+  type QueryResult = { data: Record<string, unknown> | unknown[]; error: { message: string } | null }
   type LiveState = { timers: Timers }
 
   afterEach(() => vi.useRealTimers())
@@ -112,6 +113,8 @@ describe('Sessions save handler timer regressions', () => {
     failure?: SaveStep
     throws?: boolean
     missingAuth?: boolean
+    authOwner?: string
+    schemaMissing?: boolean
     legacy?: boolean
     clear?: boolean
     newDay?: boolean
@@ -136,7 +139,7 @@ describe('Sessions save handler timer regressions', () => {
       vi.setSystemTime(Date.now() + 60000)
       options.onStep?.(step, state)
       if (options.failure === step && options.throws) throw new Error(`${step} failed`)
-      return { data: { id: 'session' }, error: options.failure === step ? { message: `${step} failed` } : null }
+      return { data: step === 'blocks-upsert' ? [] : { id: 'session', user_id: 'user', session_date: '2026-10-04' }, error: options.failure === step ? { message: `${step} failed` } : null }
     })
     const payloads: { table: string; payload: unknown }[] = []
     const from = vi.fn((table: string) => {
@@ -152,6 +155,7 @@ describe('Sessions save handler timer regressions', () => {
         },
         eq: () => query,
         select: () => query,
+        limit: async () => ({ data: [], error: options.schemaMissing ? { message: 'missing actual_seconds' } : null }),
         single: () => request(step),
         not: () => request(step),
         then(resolve: (value: QueryResult) => unknown, reject: (reason: unknown) => unknown) {
@@ -162,7 +166,7 @@ describe('Sessions save handler timer regressions', () => {
     })
     const getUser = vi.fn(async () => {
       await request('auth')
-      return { data: { user: options.missingAuth ? null : { id: 'user' } } }
+      return { data: { user: options.missingAuth ? null : { id: options.authOwner ?? 'user' } } }
     })
     const setTimers = vi.fn((next: Timers | ((current: Timers) => Timers)) => {
       state.timers = typeof next === 'function' ? next(state.timers) : next
@@ -184,30 +188,87 @@ describe('Sessions save handler timer regressions', () => {
         id: 'session', user_id: 'user', session_date: '2026-10-04',
         session_blocks: [{ block_key: 'warmup' }, ...(options.legacy ? [{ block_key: 'legacy' }] : [])],
       }],
+      latestEditorRef: { current: { date: '2026-10-04', weekId: null, comment: options.comment ?? '', selectedBlocks, timers: initialTimers } },
+      materialAccess: {}, localMaterialOwner: () => 'user', isLocalMaterialAccessCurrent: () => true,
+      materialsMountedRef: { current: true }, editorNavigationRef: { current: 0 }, editorRevisionRef: { current: 0 },
+      pendingSavesRef: { current: 0 }, saveQueue: createSessionSaveQueue(),
+      setSessions: vi.fn(), setEditorBaseline: vi.fn(),
       supabase: { auth: { getUser }, from },
       snapshotBlockTimers, sessionBlockMinutes, planSessionBlockSave, selectPracticedSessionBlocks,
       hasUnsupportedSessionBlocks, shouldDeleteClearedSession,
       setTimers, setSaving, setPendingDiscardAction, setError, setMessage, loadData, t: (text: string) => text,
     }
-    const createHandler = new Function(...Object.keys(context), `${compiled}\nreturn handleSubmit;`) as
+    const sessionsRef = { current: context.sessions };
+    const contextWithRefs = { ...context, sessionsRef };
+    const createHandler = new Function(...Object.keys(contextWithRefs), `${compiled}\nreturn handleSubmit;`) as
       (...values: unknown[]) => (event: { preventDefault: () => void }) => Promise<void>
-    const handleSubmit = createHandler(...Object.values(context))
+    const handleSubmit = createHandler(...Object.values(contextWithRefs))
     return {
       state, initialTimers, request, payloads, setTimers, setSaving, setPendingDiscardAction, setError, setMessage, loadData,
+      context: contextWithRefs,
       save: () => handleSubmit({ preventDefault: vi.fn() }),
     }
   }
 
-  it('rejects unsupported mixed legacy saves before auth or save-state mutation, leaving the run untouched', async () => {
+  it('rejects unsupported mixed legacy saves before auth or database mutation, leaving the run untouched', async () => {
     const fixture = setup({ legacy: true })
     await fixture.save()
     vi.setSystemTime(451000)
     expect(fixture.request).not.toHaveBeenCalled()
-    expect(fixture.setSaving).not.toHaveBeenCalled()
+    expect(fixture.setSaving).toHaveBeenLastCalledWith(false)
     expect(fixture.setTimers).not.toHaveBeenCalled()
     expect(fixture.state.timers).toBe(fixture.initialTimers)
     expect(timerElapsedSeconds(fixture.state.timers.warmup, Date.now())).toBe(450)
     expect(fixture.setError).toHaveBeenCalledWith(expect.stringContaining('unsupported legacy blocks'))
+  })
+
+  it('refuses an unavailable seconds schema before any parent or child mutation', async () => {
+    const fixture = setup({ schemaMissing: true })
+    await fixture.save()
+    expect(fixture.payloads).toEqual([])
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth'])
+    expect(fixture.setError).toHaveBeenLastCalledWith('practice.precisionUnavailable')
+    expect(fixture.state.timers).toBe(fixture.initialTimers)
+  })
+
+  it('refuses an account-switched bearer before any parent or child mutation', async () => {
+    const fixture = setup({ authOwner: 'other-user' })
+    await fixture.save()
+    expect(fixture.payloads).toEqual([])
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth'])
+    expect(fixture.setError).toHaveBeenLastCalledWith('Not signed in.')
+    expect(fixture.state.timers).toBe(fixture.initialTimers)
+  })
+
+  it('keeps a checkpoint on its captured day without overwriting a newly selected day', async () => {
+    const fixture = setup({ onStep(step) {
+      if (step === 'auth') fixture.context.latestEditorRef.current.date = '2026-10-05'
+    } })
+    await fixture.save()
+    expect(fixture.payloads[0].payload).toMatchObject({ session_date: '2026-10-04' })
+    expect(fixture.context.setEditorBaseline).not.toHaveBeenCalled()
+    expect(fixture.setMessage).not.toHaveBeenCalledWith('Session saved successfully.')
+    expect(fixture.loadData).not.toHaveBeenCalled()
+  })
+
+  it('does not mark a newer editor revision as saved after an old checkpoint completes', async () => {
+    const fixture = setup({ onStep(step) {
+      if (step === 'auth') fixture.context.editorRevisionRef.current++
+    } })
+    await fixture.save()
+    expect(fixture.context.setEditorBaseline).not.toHaveBeenCalled()
+    expect(fixture.setMessage).not.toHaveBeenCalledWith('Session saved successfully.')
+  })
+
+  it('persists absolute seconds on retry without adding the previous saved duration twice', async () => {
+    const fixture = setup()
+    await fixture.save()
+    await fixture.save()
+    const writes = fixture.payloads.filter((payload) => payload.table === 'session_blocks')
+    expect(writes).toHaveLength(2)
+    expect(writes[0].payload).toMatchObject([{ actual_seconds: 150 }, { actual_seconds: 120 }])
+    expect(writes[1].payload).toMatchObject([{ actual_seconds: 390 }, { actual_seconds: 120 }])
+    expect(fixture.setTimers).not.toHaveBeenCalled()
   })
 
   it('keeps the original running anchor and paused elapsed after missing auth and network delay', async () => {
@@ -237,8 +298,7 @@ describe('Sessions save handler timer regressions', () => {
         expect(fixture.state.timers.warmup.anchor).toBe(fixture.initialTimers.warmup.anchor)
         expect(fixture.state.timers.technique).toEqual({ isRunning: false, elapsedSeconds: 120 })
         expect(fixture.setTimers).not.toHaveBeenCalled()
-        expect(fixture.setError).toHaveBeenLastCalledWith(failure === 'session-delete'
-          ? 'Could not delete the empty session. Your changes have been kept.' : `${failure} failed`)
+        expect(fixture.setError).toHaveBeenLastCalledWith('practice.autosaveFailed')
         expect(fixture.setSaving).toHaveBeenLastCalledWith(false)
         expect(fixture.loadData).not.toHaveBeenCalled()
         expect(fixture.request.mock.calls.at(-1)?.[0]).toBe(failure)
@@ -273,31 +333,41 @@ describe('Sessions save handler timer regressions', () => {
         user_id: 'user', session_date: '2026-10-04', total_minutes: 5, comment: null, week_id: null, source: 'app',
       } },
       { table: 'session_blocks', payload: [
-        { session_id: 'session', block_key: 'warmup', label: 'Warm-up', done: false, target_minutes: 10, actual_minutes: 3 },
-        { session_id: 'session', block_key: 'technique', label: 'technique', done: false, target_minutes: 10, actual_minutes: 2 },
+        { session_id: 'session', block_key: 'warmup', label: 'Warm-up', done: false, target_minutes: 10, actual_minutes: 3, actual_seconds: 150 },
+        { session_id: 'session', block_key: 'technique', label: 'technique', done: false, target_minutes: 10, actual_minutes: 2, actual_seconds: 120 },
       ] },
     ])
   })
 
-  it('keeps payload minutes at submit time and reloads only after all save operations succeed', async () => {
+  it('keeps payload minutes at submit time and never reloads or resets the live timer on success', async () => {
     const fixture = setup()
     await fixture.save()
     expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-upsert', 'blocks-delete', 'blocks-upsert'])
     expect(fixture.payloads[0].payload).toMatchObject({ total_minutes: 5 })
     expect(fixture.payloads[1].payload).toMatchObject([{ actual_minutes: 3 }, { actual_minutes: 2 }])
-    expect(fixture.loadData).toHaveBeenCalledOnce()
-    expect(fixture.loadData).toHaveBeenCalledWith({ date: '2026-10-04', weekId: null })
+    expect(fixture.loadData).not.toHaveBeenCalled()
     expect(fixture.setMessage).toHaveBeenLastCalledWith('Session saved successfully.')
     expect(fixture.setSaving).toHaveBeenLastCalledWith(false)
     expect(fixture.setPendingDiscardAction).toHaveBeenCalledWith(null)
   })
 
-  it('reloads a deleted cleared session without immediately readding configured defaults', async () => {
+  it('deletes a cleared session without reloading or readding configured defaults', async () => {
     const fixture = setup({ clear: true })
     await fixture.save()
     expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-delete'])
-    expect(fixture.loadData).toHaveBeenCalledWith({ date: '2026-10-04', weekId: null, cleared: true })
+    expect(fixture.loadData).not.toHaveBeenCalled()
+    expect(fixture.context.defaultsSuppressedDateRef.current).toBe('2026-10-04')
     expect(fixture.setMessage).toHaveBeenLastCalledWith('Empty session deleted successfully.')
+  })
+
+  it('does not suppress defaults on the new day after a captured old-day deletion completes', async () => {
+    const fixture = setup({ clear: true, onStep(step) {
+      if (step === 'auth') fixture.context.latestEditorRef.current.date = '2026-10-05'
+    } })
+    await fixture.save()
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-delete'])
+    expect(fixture.context.defaultsSuppressedDateRef.current).toBe(null)
+    expect(fixture.context.setEditorBaseline).not.toHaveBeenCalled()
   })
 
   it('saves only practiced blocks and removes untouched pre-filled blocks from the session', async () => {
@@ -332,7 +402,7 @@ describe('Sessions save handler timer regressions', () => {
     const fixture = setup({ untouched: true })
     await fixture.save()
     expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-delete'])
-    expect(fixture.loadData).toHaveBeenCalledWith({ date: '2026-10-04', weekId: null, cleared: true })
+    expect(fixture.loadData).not.toHaveBeenCalled()
   })
 
   it('keeps an existing notes-only session and removes all unpracticed blocks', async () => {
@@ -360,16 +430,16 @@ describe('Sessions timer wiring', () => {
   it('stops on false-to-true only, outside the selected-block updater, and passes the checkbox value', () => {
     const completion = handler('function toggleBlock(', 'function toggleBlockDetails(')
     expect(completion).toContain('if (!block.done && done)')
-    expect(completion).toContain('completeBlockTimer(current, templateId, done, nowMs)')
-    expect(completion.indexOf('setTimers(')).toBeLessThan(completion.indexOf('setSelectedBlocks('))
-    expect(completion).toContain('{ ...block, done }')
+    expect(completion).toContain('completeBlockTimer(current.timers, templateId, done, nowMs)')
+    expect(completion).toContain('commitPracticeProgress(')
+    expect(completion).toContain('{ ...entry, done }')
     expect(source).toContain('toggleBlock(template.id, event.target.checked)')
   })
 
   it('captures save-click elapsed without changing live timers and shares it for totals and blocks', () => {
     const submit = handler('async function handleSubmit', 'const displayTimers =')
-    expect(submit).toContain('const saveTimers = snapshotBlockTimers(timers, Date.now())')
-    expect(submit.indexOf('const saveTimers =')).toBeLessThan(submit.indexOf('await supabase.auth.getUser()'))
+    expect(submit).toContain('timers: snapshotBlockTimers(state.timers, Date.now(), true)')
+    expect(submit.indexOf('timers: snapshotBlockTimers(')).toBeLessThan(submit.indexOf('await supabase.auth.getUser()'))
     expect(submit).not.toContain('setTimers(')
     expect(submit).toContain('elapsedSeconds: saveTimers[block.id]?.elapsedSeconds')
     expect(submit).toContain('saveBlocks.reduce((sum, block) => sum + (sessionBlockMinutes(block) ?? 0), 0)')

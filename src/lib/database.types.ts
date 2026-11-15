@@ -245,6 +245,7 @@ export type Database = {
       session_blocks: {
         Row: {
           actual_minutes: number | null
+          actual_seconds: number | null
           block_key: string
           done: boolean
           id: string
@@ -254,6 +255,7 @@ export type Database = {
         }
         Insert: {
           actual_minutes?: number | null
+          actual_seconds?: number | null
           block_key: string
           done?: boolean
           id?: string
@@ -263,6 +265,7 @@ export type Database = {
         }
         Update: {
           actual_minutes?: number | null
+          actual_seconds?: number | null
           block_key?: string
           done?: boolean
           id?: string
