@@ -1,5 +1,13 @@
 # Pro100Practice — scope and backlog
 
+## Release 0.13.1 — PWA Update activation reload (2026-11-17)
+
+Patch **0.13.0 → 0.13.1**, bug fix only. The explicit Update action reloads when the waiting ServiceWorker reaches `activated`, including when `controllerchange` is not emitted (`clientsClaim: false`), while preserving the safety lock through activation. Regression coverage verifies the activation/reload behavior.
+
+**Live hosted/device behavior is unverified.** Versioned-snapshot gates: tests **1,061/1,061 across 58 files**; lint exit 0 with two warnings (i18n Fast Refresh; Sessions hook dependencies); build exit 0 (TypeScript/Vite/PWA, 21 precache entries, 1,159.67 KiB; Sentry disabled with a one-space environment override). Artifact review: 61 files, zero source maps, 21 precache references, manifest icons present, no PDF/default-exercise/local-media/map entries in precache, coordinator companion byte-identical with import before generic `SKIP_WAITING`, navigation denylist covers assets/default-exercises/local media, and exact local DSN absent. SHA-256: index `B29ED4EB5F2AAFE71BCFEA38736398F9259E0466D0415E870E640CE9D568DFE4`; manifest `1C1834DD290B5B9D24CC3CDFDB35D49285C201A5163E518296A6B8DB6AAD3BAC`; service worker `CC0C9797CBCD664CE3B9CBC9DE8F9322162CDC4534B4E6E14C33609149A21724`; coordinator `5A61976C5D6DAEF9693B070E0A14C6BCC565CF700C46E7787192F8B6D3DC9737`.
+
+No database/schema/dependency changes; no production data changed. Physical-device and live hosted behavior were not tested. No publication is claimed.
+
 ## Release 0.13.0 scope (2026-11-17)
 
 Owner `/release-app` approves delivery of pending items80/82/84/85: silent checkpoint success feedback, error-only minimized diagnostics, next-visit explicit PWA updates, manual material entry/icons, slim actual-rate wheel with double-click reset, saved two-lane regions/library/repeat/Play All, compact workspace, whole-region movement and magnetic edges. This feature set requires0.12.0→0.13.0. No migration, dependency install/update or provider operation; local material/loop persistence remains device/browser scoped.

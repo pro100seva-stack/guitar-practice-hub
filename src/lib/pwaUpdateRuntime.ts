@@ -14,7 +14,10 @@ let workflow: ReturnType<typeof createPwaUpdateWorkflow> | null = null
 let initialized = false
 let applyingReload = false
 let reloadedThisBoot = false
+let activationReady = false
 let activationFinished: (() => void) | null = null
+let activationWorker: ServiceWorker | null = null
+let activationStateListener: (() => void) | null = null
 let approval: { worker: ServiceWorker; token: string; requestId: string } | null = null
 let updateCheckTimer: number | null = null
 const uninitializedSnapshot: PwaUpdateSnapshot = { waiting: false, visible: false, checking: false, applying: false, online: true, reason: null }
@@ -45,6 +48,15 @@ function askWorker(worker: ServiceWorker, action: 'inspect' | 'activate', id: st
   })
 }
 
+function finishActivationIfReady() {
+  if (!applyingReload || !activationReady || reloadedThisBoot || !isSafe() || !navigator.onLine) return
+  reloadedThisBoot = true
+  applyingReload = false
+  activationReady = false
+  activationFinished?.()
+  window.location.reload()
+}
+
 async function prepareUpdate(): Promise<PwaUpdateReadiness> {
   approval = null
   const worker = registration?.waiting
@@ -64,27 +76,45 @@ async function activateWorker() {
   approval = null
   if (!current || registration?.waiting !== current.worker || !isSafe() || !navigator.onLine) throw new Error('Update approval expired')
   applyingReload = true
+  activationReady = false
   reloadedThisBoot = false
   await new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      if (activationWorker && activationStateListener) activationWorker.removeEventListener('statechange', activationStateListener)
+      activationWorker = null
+      activationStateListener = null
+    }
     const fail = () => {
       window.clearTimeout(timeout)
+      cleanup()
       applyingReload = false
+      activationReady = false
       activationFinished = null
       reject(new Error('Service worker activation unavailable'))
     }
     const timeout = window.setTimeout(fail, activationTimeoutMs)
-    activationFinished = () => { window.clearTimeout(timeout); activationFinished = null; resolve() }
+    activationWorker = current.worker
+    activationStateListener = () => {
+      if (current.worker.state !== 'activated') return
+      activationReady = true
+      finishActivationIfReady()
+    }
+    activationFinished = () => {
+      window.clearTimeout(timeout)
+      cleanup()
+      activationFinished = null
+      resolve()
+    }
+    current.worker.addEventListener('statechange', activationStateListener)
+    if (current.worker.state === 'activated') activationStateListener()
     void askWorker(current.worker, 'activate', current.requestId, current.token).then((result) => { if (!result.ready) fail() }).catch(fail)
   })
 }
 
 function reloadAfterControllerChange() {
   if (!shouldReloadForPwaControllerChange(applyingReload, reloadedThisBoot)) return
-  if (!isSafe() || !navigator.onLine) return
-  reloadedThisBoot = true
-  applyingReload = false
-  activationFinished?.()
-  window.location.reload()
+  activationReady = true
+  finishActivationIfReady()
 }
 
 /** Lifecycle checks never offer a newly discovered update during an active visit. */

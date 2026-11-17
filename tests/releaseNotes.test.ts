@@ -61,6 +61,12 @@ describe('release announcements', () => {
     expect(getReleaseSummary('0.12.0', '0.12.0')).toBeNull()
   })
 
+  it('announces the PWA activation fix only for 0.13.1 and suppresses an acknowledged version', () => {
+    expect(getReleaseSummary('0.13.1', '0.13.0')).toEqual(['release.0131.pwa'])
+    expect(getReleaseSummary('0.13.0', null)?.some((key) => key.startsWith('release.0131'))).toBe(false)
+    expect(getReleaseSummary('0.13.1', '0.13.1')).toBeNull()
+  })
+
   it('compares numeric version components, including two-digit minor versions', () => {
     expect(compareReleaseVersions('0.10.0', '0.9.0')).toBe(1)
     expect(compareReleaseVersions('1.0.0', '0.99.0')).toBe(1)

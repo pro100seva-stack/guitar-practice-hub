@@ -8,6 +8,12 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.13.1] - 2026-11-17
+
+### Fixed
+
+- Complete the page reload when the waiting service worker reaches `activated`, even when the browser does not emit `controllerchange` because the new worker does not claim existing clients. Avoid the false activation-timeout error after a successful worker activation.
+
 ## [0.13.0] - 2026-11-17
 
 ### Added

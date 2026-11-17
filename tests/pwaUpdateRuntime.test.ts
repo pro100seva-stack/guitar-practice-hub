@@ -17,10 +17,17 @@ function fixture() {
   let resolveUpdate!: () => void
   const update = vi.fn(() => new Promise<void>((resolve) => { resolveUpdate = resolve }))
   const reload = vi.fn()
+  const workerStateListeners = new Set<() => void>()
   const postMessage = vi.fn((message: { protocol: string; action: string; requestId: string }, ports: Port[]) => {
     ports[0].postMessage({ protocol: message.protocol, requestId: message.requestId, ready: true, token: 'grant' })
   })
-  const registration = { waiting: { postMessage }, installing: null, update, addEventListener: vi.fn() }
+  const waitingWorker = {
+    state: 'installed',
+    postMessage,
+    addEventListener: (type: string, listener: () => void) => { if (type === 'statechange') workerStateListeners.add(listener) },
+    removeEventListener: (type: string, listener: () => void) => { if (type === 'statechange') workerStateListeners.delete(listener) },
+  }
+  const registration = { waiting: waitingWorker, installing: null, update, addEventListener: vi.fn() }
   class Element {
     constructor(readonly control = false) {}
     closest() { return this.control ? this : null }
@@ -47,6 +54,10 @@ function fixture() {
   return {
     exports, hooks, registration, window, navigator, reload, registerSW, postMessage,
     tick, resolveUpdate: () => resolveUpdate(),
+    activateWorker: () => {
+      waitingWorker.state = 'activated'
+      workerStateListeners.forEach((listener) => listener())
+    },
     event: (type: string, control = false) => documentListeners.get(type)?.({ target: new Element(control) }),
     tab: () => documentListeners.get('keydown')?.(new KeyboardEvent('Tab')),
     resume: (type = 'focus') => windowListeners.get(type)?.(),
@@ -110,6 +121,21 @@ describe('PWA registration and next-visit runtime', () => {
     await pending
     expect(app.exports.isPwaUpdateLocked()).toBe(false)
     expect(app.snapshot().reason).toBe('workerFailed')
+  })
+
+  it('reloads when the waiting worker activates even if clientsClaim prevents controllerchange', async () => {
+    const app = fixture()
+    const pending = app.exports.pwaUpdateNow() as Promise<void>
+    await app.tick()
+    app.activateWorker()
+    await app.tick()
+    await pending
+
+    expect(app.reload).toHaveBeenCalledOnce()
+    expect(app.snapshot()).toMatchObject({ applying: true, reason: null })
+    app.hooks.onNeedReload()
+    app.controlling()
+    expect(app.reload).toHaveBeenCalledOnce()
   })
 
   it('keeps late initial-check completion from reopening a suppressed visit', async () => {

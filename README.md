@@ -10,6 +10,8 @@ The app is now named **Pro100Practice**, with `pro100practice.app` as its curren
 
 **[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
 
+- **0.13.1 — PWA update reliability:** completes the reload after a service worker activates, including browsers that do not send `controllerchange`. The app stays protected from new interaction during the brief activation step so work cannot become unsaved immediately before reload.
+
 - **0.13.0 — Video practice regions:** save named, colored loops on a two-row timeline, move or resize them with magnetic edge snapping, repeat a selected phrase or play all loops in order. A compact speed wheel supports drag/keyboard controls and double-click reset. Material actions are clearer, practice autosaves stay quiet, diagnostics send only minimized error fields, and update offers wait for a fresh app opening. Loops and bookmarks remain local to the owning account/material on this browser. See the [release evidence](docs/evidence/acceptance/release-0.13.0-2026-11-17.md) for validation and remaining device checks.
 
 - **0.12.0 — Error diagnostics and safer PWA updates:** adds privacy-filtered browser error reporting when explicitly configured, safer update checks that defer activation while unsaved work is reported, and a Home-only version shortcut to the release summary. Hosted Sentry collection remains disabled until its project, privacy, retention and any consent requirements are approved and configured. Physical iPhone and hosted-app acceptance remain unverified.

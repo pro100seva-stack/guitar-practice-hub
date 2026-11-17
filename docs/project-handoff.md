@@ -1,5 +1,15 @@
 # Project handoff
 
+## Release 0.13.1 — PWA Update activation reload (2026-11-17)
+
+**Live hosted/device behavior is unverified.** Patch version moves from **0.13.0 to 0.13.1** for a bug fix only. The explicit Update flow now reloads when its waiting ServiceWorker reaches `activated`, even if `controllerchange` is not emitted (`clientsClaim: false`); the safety lock remains held through activation. Regression tests cover this activation/reload path.
+
+Verified on the versioned snapshot: `npm test` **1,061/1,061 across 58 files**; `npm run lint` exit 0 with two warnings (i18n Fast Refresh; Sessions hook dependencies); `npm run build` exit 0 (TypeScript/Vite/PWA, **21 precache entries, 1,159.67 KiB**). Build disabled Sentry through a one-space environment override.
+
+Artifact review passed: **61 files**, zero source maps, 21 precache references, all manifest icons exist, no PDF/default-exercise/local-media/map entries in precache; coordinator companion copied byte-for-byte and its import precedes the generic `SKIP_WAITING` handler; navigation denylist includes assets/default-exercises/local media; exact local DSN absent. SHA-256 — `index.html` `B29ED4EB5F2AAFE71BCFEA38736398F9259E0466D0415E870E640CE9D568DFE4`; manifest `1C1834DD290B5B9D24CC3CDFDB35D49285C201A5163E518296A6B8DB6AAD3BAC`; `sw.js` `CC0C9797CBCD664CE3B9CBC9DE8F9322162CDC4534B4E6E14C33609149A21724`; coordinator `5A61976C5D6DAEF9693B070E0A14C6BCC565CF700C46E7787192F8B6D3DC9737`.
+
+No database/schema/dependency changes and no production data changed. Physical-device and live hosted behavior were not tested; no published state is claimed.
+
 ## Release 0.13.0 — player regions and quiet saves (2026-11-17)
 
 The owner invoked `/release-app` after the final wheel reset and magnetic-snap refinements. This run includes all approved pending item80/82/84/85 source/tests/docs: quiet Practice checkpoints, minimized technical diagnostics, next-fresh-visit explicit updates, manual material entry and action icons, slim speed wheel, saved multi-region loops, compact workspace, region movement and snapping. Version policy requires a minor bump from0.12.0 to0.13.0 for the new user-facing region features.
