@@ -34,6 +34,9 @@ export default defineConfig({
       injectRegister: null,
       registerType: 'prompt',
       workbox: {
+        skipWaiting: false,
+        clientsClaim: false,
+        importScripts: ['/pwa-update-coordinator.js'],
         // Without this, the SW answers iframe/object navigations to the PDFs with index.html.
         navigateFallbackDenylist: [/^\/assets\//, /^\/default-exercises\//, /^\/__guitar_practice_hub_local_media\//],
         globIgnores: ['**/default-exercises/**', '**/*.map'],

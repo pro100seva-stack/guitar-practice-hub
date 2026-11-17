@@ -22,54 +22,54 @@ beforeEach(() => {
 afterEach(() => { stop?.(); stop = undefined; vi.unstubAllGlobals() })
 
 describe('authenticated local material authority', () => {
-  it.each(['valid', 'empty', 'invalid', 'denied', 'unavailable', 'identity', 'navigation', 'duplicate'])('handles an explicit YouTube clipboard action: %s', async (scenario) => {
+  it.each(['normal', 'identity-before-open', 'identity-before-focus', 'navigation', 'unmounted', 'url-saving', 'upload-saving', 'clipboard-unavailable'])('opens manual YouTube entry without reading or saving clipboard content: %s', (scenario) => {
     const source = readFileSync('src/pages/Sessions.tsx', 'utf8')
     const start = source.indexOf('  function addYouTubeMaterial(')
     const end = source.indexOf('  function renderMaterialAddControls(', start)
     const handler = transpileModule(source.slice(start, end), { compilerOptions: { target: 9 } }).outputText
-    let release: (value: string) => void = () => {}
-    const wait = new Promise<string>((resolve) => { release = resolve })
-    const readText = vi.fn(() => scenario === 'denied' ? Promise.reject(new DOMException('Denied', 'NotAllowedError')) : wait)
+    const clipboardAccess = vi.fn(() => { throw new Error('Clipboard must not be accessed') })
+    const navigator = scenario === 'clipboard-unavailable' ? {} : Object.defineProperty({}, 'clipboard', { get: clipboardAccess })
     const save = vi.fn()
     const feedback = vi.fn()
     const manual = vi.fn()
+    const focus = vi.fn()
+    const frames: FrameRequestCallback[] = []
     let current = true
     const navigation = { current: 1 }
+    const scope = 'repertoire:song:song-one'
     const context = {
       localMaterialScopeKey: (blockKey: string, songId?: string) => songId ? `${blockKey}:song:${songId}` : blockKey,
-      clipboardReadsRef: { current: new Set<string>() },
-      urlSavesRef: { current: new Set<string>() },
-      uploadControllersRef: { current: {} },
-      captureMaterialAccess: () => ({}),
+      urlSavesRef: { current: new Set(scenario === 'url-saving' ? [scope] : []) },
+      uploadControllersRef: { current: scenario === 'upload-saving' ? { [scope]: {} } : {} },
+      captureMaterialAccess: () => { if (scenario === 'identity-before-open') throw new Error('Account changed'); return {} },
       isLocalMaterialAccessCurrent: () => current,
       materialNavigationRef: navigation,
-      materialsMountedRef: { current: true },
+      materialsMountedRef: { current: scenario !== 'unmounted' },
+      materialUrlInputRefs: { current: { 'library-row': { focus } } },
       setMaterialAddScope: vi.fn(),
       setManualYouTubeScopes: manual,
       patchMaterialFeedback: feedback,
-      navigator: scenario === 'unavailable' ? {} : { clipboard: { readText } },
+      navigator,
+      window: { requestAnimationFrame: (callback: FrameRequestCallback) => { frames.push(callback); return frames.length } },
       toYouTubeEmbedUrl,
       addMaterialUrl: save,
       t: (key: string) => key,
     }
-    const create = new Function(...Object.keys(context), `${handler}; return pasteYouTubeMaterial`) as (...values: unknown[]) => (blockKey: string, songId?: string) => Promise<void>
+    const create = new Function(...Object.keys(context), `${handler}; return openYouTubeMaterialInput`) as (...values: unknown[]) => (blockKey: string, songId?: string, instanceKey?: string) => void
     const run = create(...Object.values(context))
-    const pending = run('repertoire', 'song-one')
-    if (scenario !== 'unavailable') expect(readText).toHaveBeenCalledOnce()
-    if (scenario === 'duplicate') { await run('repertoire', 'song-one'); expect(readText).toHaveBeenCalledOnce() }
-    if (scenario === 'identity') current = false
+    run('repertoire', 'song-one', 'library-row')
+    if (scenario === 'identity-before-focus') current = false
     if (scenario === 'navigation') navigation.current++
-    release(scenario === 'empty' ? '  ' : scenario === 'invalid' ? 'https://example.com/video' : '  https://youtu.be/dQw4w9WgXcQ  ')
-    await pending
-    if (scenario === 'valid' || scenario === 'duplicate') expect(save).toHaveBeenCalledWith('repertoire', 'song-one', 'https://youtu.be/dQw4w9WgXcQ')
-    else expect(save).not.toHaveBeenCalled()
-    if (scenario === 'denied' || scenario === 'unavailable') {
+    frames.forEach((frame) => frame(0))
+    expect(clipboardAccess).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    if (['normal', 'identity-before-focus', 'navigation', 'clipboard-unavailable'].includes(scenario)) {
       expect(manual).toHaveBeenCalledOnce()
-      expect(manual.mock.calls[0][0]({})).toEqual({ 'repertoire:song:song-one': true })
-      expect(feedback).toHaveBeenCalledWith('repertoire:song:song-one', expect.objectContaining({ notice: 'materials.pasteManually' }))
+      expect(manual.mock.calls[0][0]({ existing: true })).toEqual({ existing: true, [scope]: true })
+      expect(feedback).toHaveBeenCalledWith(scope, { error: null, notice: null, saveState: 'idle' })
     } else expect(manual).not.toHaveBeenCalled()
-    if (scenario === 'empty' || scenario === 'invalid') expect(feedback).toHaveBeenCalledWith('repertoire:song:song-one', expect.objectContaining({ error: 'materials.youtubeRequired' }))
-    expect(context.clipboardReadsRef.current.size).toBe(0)
+    if (scenario === 'normal' || scenario === 'clipboard-unavailable') expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    else expect(focus).not.toHaveBeenCalled()
   })
 
   it.each(['.', '..'])('rejects dot-segment owner %s rather than granting a cache namespace', (uid) => {

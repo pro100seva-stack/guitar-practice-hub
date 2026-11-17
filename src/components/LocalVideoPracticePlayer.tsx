@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
+import { useMemo, useEffect, useRef, useState, type SyntheticEvent } from 'react'
 import { useI18n } from '../lib/i18n'
-import { clampVideoPosition, createPlaybackTransition, loopSeekTarget, validDuration, videoShortcut, type LoopRange, type PlaybackIntent } from '../lib/youtubePractice'
+import { clampVideoPosition, createPlaybackTransition, validDuration, videoShortcut, type PlaybackIntent } from '../lib/youtubePractice'
+import { loopPlaybackDecision, normalizeLoopRegions, type LoopPlaybackState, type LoopRegion } from '../lib/loopRegions'
 import VideoPracticeControls from './VideoPracticeControls'
 import { isLocalMaterialIdentityReady, onLocalMaterialInvalidation, onLocalMaterialVerification } from '../lib/localMaterialAccess'
 import type { PlaybackBookmark } from '../lib/localMaterials'
@@ -10,21 +11,30 @@ type Props = {
   url: string
   name: string
   bookmarks: PlaybackBookmark[]
+  loops?: LoopRegion[]
+  onLoopsChange?: (loops: LoopRegion[]) => Promise<void>
   onBookmarksChange: (bookmarks: PlaybackBookmark[]) => Promise<void>
   onPlaybackConfirmed: (intent: PlaybackIntent) => void
 }
 
 type MediaEvent = SyntheticEvent<HTMLMediaElement>
 
-export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bookmarks, onBookmarksChange, onPlaybackConfirmed }: Props) {
+export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bookmarks, loops = [], onLoopsChange, onBookmarksChange, onPlaybackConfirmed }: Props) {
   const { t } = useI18n()
   const videoRef = useRef<HTMLVideoElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const transitionRef = useRef(createPlaybackTransition())
-  const rangeRef = useRef<LoopRange | null>(null)
+  const [loopState, setLoopState] = useState<LoopPlaybackState>({ mode: 'off', selectedId: null })
+  const loopStateRef = useRef<LoopPlaybackState>(loopState)
+  const regionsRef = useRef<LoopRegion[]>([])
+  const regions = useMemo(() => normalizeLoopRegions(loops), [loops])
+  regionsRef.current = regions
   const seekingRef = useRef(false)
   const automaticRestartRef = useRef(false)
   const mountedRef = useRef(false)
+  const source = useMemo(() => ({ url, kind }), [url, kind])
+  const activeSourceRef = useRef<typeof source | null>(null)
+  const bufferingRef = useRef(false)
   const [duration, setDuration] = useState(0)
   const [position, setPosition] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -34,20 +44,41 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
   const shortcuts = kind === 'audio'
     ? t('Audio shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native audio controls keep their own shortcuts.')
     : t('Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.')
+  function changeLoopState(next: LoopPlaybackState) {
+    loopStateRef.current = next
+    setLoopState(next)
+  }
+  useEffect(() => {
+    if (loopStateRef.current.selectedId && !regionsRef.current.some((region) => region.id === loopStateRef.current.selectedId)) {
+      changeLoopState({ mode: 'off', selectedId: null })
+    }
+  }, [loops])
   useEffect(() => {
     mountedRef.current = true
+    activeSourceRef.current = source
     const media = videoRef.current ?? audioRef.current
     if (media) media.src = url
+    setDuration(0)
+    setPosition(0)
+    setPlaying(false)
+    setRate(1)
+    setError(false)
+    transitionRef.current = createPlaybackTransition()
+    bufferingRef.current = false
+    automaticRestartRef.current = false
+    changeLoopState({ mode: 'off', selectedId: null })
+    seekingRef.current = false
     const detach = () => {
       mountedRef.current = false
+      activeSourceRef.current = null
       transitionRef.current.cancelPlay()
-      rangeRef.current = null
+      loopStateRef.current = { mode: 'off', selectedId: null }
       if (media) { media.pause(); media.removeAttribute('src'); media.load() }
     }
     const unsubscribe = onLocalMaterialInvalidation(detach)
     const stopVerification = onLocalMaterialVerification((ready) => { if (!ready) media?.pause() })
     return () => { unsubscribe(); stopVerification(); detach() }
-  }, [url, kind])
+  }, [url, kind, source])
   useEffect(() => { playbackCallbackRef.current = onPlaybackConfirmed }, [onPlaybackConfirmed])
 
   function mediaElement(): HTMLMediaElement | null {
@@ -60,7 +91,10 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
     automaticRestartRef.current = !explicit
     if (explicit) transitionRef.current.requestPlay()
     else transitionRef.current.automaticPlay()
-    void media.play().catch(() => { transitionRef.current.cancelPlay(); automaticRestartRef.current = false; if (mountedRef.current) setPlaying(false) })
+    void media.play().catch(() => {
+      if (activeSourceRef.current !== source) return
+      transitionRef.current.cancelPlay(); automaticRestartRef.current = false; if (mountedRef.current) setPlaying(false)
+    })
   }
 
   function toggle() {
@@ -72,47 +106,78 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
 
   function seek(position: number) {
     const media = mediaElement()
-    if (!media) return
+    if (!media) return false
     const target = clampVideoPosition(position, media.duration)
-    if (target === null) return
+    if (target === null) return false
     seekingRef.current = true
     media.currentTime = target
     setPosition(target)
+    return true
+  }
+
+  function playFrom(position: number) {
+    if (!mountedRef.current || !isLocalMaterialIdentityReady()) return
+    if (seek(position)) play(true)
   }
 
   function sample(media: HTMLMediaElement, state: number) {
     if (!mountedRef.current || !isLocalMaterialIdentityReady()) return
     setPosition(Number.isFinite(media.currentTime) ? media.currentTime : 0)
-    const range = rangeRef.current
-    const target = loopSeekTarget(range && range.end <= media.duration ? range : null, media.currentTime, state, seekingRef.current)
-    if (target === null) return
-    seek(target)
-    if (state === 0) play(false)
+    const decision = loopPlaybackDecision({ ...loopStateRef.current,
+      regions: regionsRef.current.filter((region) => region.end <= media.duration), time: media.currentTime,
+      state, seeking: seekingRef.current,
+    })
+    if (decision?.kind === 'seek') {
+      if (decision.regionId !== loopStateRef.current.selectedId) changeLoopState({ ...loopStateRef.current, selectedId: decision.regionId })
+      seek(decision.time)
+      if (state === 0) play(false)
+    } else if (decision?.kind === 'stop') {
+      const last = regionsRef.current.find((region) => region.id === loopStateRef.current.selectedId)
+      changeLoopState({ mode: 'off', selectedId: loopStateRef.current.selectedId })
+      if (last && media.currentTime > last.end) seek(last.end)
+      media.pause()
+      setPlaying(false)
+    }
   }
+  const sampleRef = useRef(sample)
+  sampleRef.current = sample
+
+  useEffect(() => {
+    if (!playing) return
+    const timer = setInterval(() => {
+      const media = mediaElement()
+      if (media) sampleRef.current(media, bufferingRef.current ? 3 : media.paused ? 2 : 1)
+    }, 125)
+    return () => clearInterval(timer)
+  }, [playing, url, kind])
+
+  const currentSource = () => mountedRef.current && activeSourceRef.current === source
 
   const mediaProps = {
     src: url,
     'aria-label': name,
     controls: true,
     preload: 'metadata',
-    onLoadedMetadata: (event: MediaEvent) => setDuration(event.currentTarget.duration),
-    onDurationChange: (event: MediaEvent) => setDuration(event.currentTarget.duration),
-    onPlay: () => { if (!automaticRestartRef.current) transitionRef.current.requestPlay() },
+    onLoadedMetadata: (event: MediaEvent) => { if (currentSource()) setDuration(event.currentTarget.duration) },
+    onDurationChange: (event: MediaEvent) => { if (currentSource()) setDuration(event.currentTarget.duration) },
+    onPlay: () => { if (currentSource() && !automaticRestartRef.current) transitionRef.current.requestPlay() },
     onPlaying: () => {
-      if (!mountedRef.current) return
+      if (!currentSource()) return
       if (!isLocalMaterialIdentityReady()) { mediaElement()?.pause(); return }
       setPlaying(true)
+      bufferingRef.current = false
       const intent = transitionRef.current.observe(1)
       automaticRestartRef.current = false
       if (intent) playbackCallbackRef.current(intent)
     },
-    onPause: (event: MediaEvent) => { setPlaying(false); if (!event.currentTarget.ended) transitionRef.current.observe(2) },
-    onWaiting: () => { transitionRef.current.observe(3) },
-    onEnded: (event: MediaEvent) => { setPlaying(false); transitionRef.current.observe(0); sample(event.currentTarget, 0) },
-    onTimeUpdate: (event: MediaEvent) => sample(event.currentTarget, event.currentTarget.paused ? 2 : 1),
-    onSeeked: () => { seekingRef.current = false },
-    onRateChange: (event: MediaEvent) => setRate(event.currentTarget.playbackRate),
-    onError: () => setError(true),
+    onPause: (event: MediaEvent) => { if (!currentSource()) return; setPlaying(false); if (!event.currentTarget.ended) transitionRef.current.observe(2) },
+    onWaiting: () => { if (currentSource()) { bufferingRef.current = true; transitionRef.current.observe(3) } },
+    onEnded: (event: MediaEvent) => { if (currentSource()) { setPlaying(false); transitionRef.current.observe(0); sample(event.currentTarget, 0) } },
+    onTimeUpdate: (event: MediaEvent) => { if (currentSource()) sample(event.currentTarget, bufferingRef.current ? 3 : event.currentTarget.paused ? 2 : 1) },
+    onSeeked: () => { if (currentSource()) seekingRef.current = false },
+    onSeeking: () => { if (currentSource()) seekingRef.current = true },
+    onRateChange: (event: MediaEvent) => { if (currentSource()) setRate(event.currentTarget.playbackRate) },
+    onError: () => { if (currentSource()) setError(true) },
   } as const
 
   return (
@@ -131,10 +196,12 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
         : <video ref={videoRef} {...mediaProps} playsInline className="max-h-[420px] w-full" />}
       {error && <p role="alert" className="py-2 text-sm text-rose-300">{kind === 'audio' ? t('The audio codec is not supported by this browser.') : t('This video codec or container is not fully supported by this browser.')}</p>}
       {!validDuration(duration) && !error && <p role="status" className="py-2 text-sm text-slate-300">{kind === 'audio' ? t('Loading audio...') : t('Loading video...')}</p>}
-      <VideoPracticeControls kind={kind} usable={validDuration(duration) && !error} playing={playing} duration={duration} position={position} rates={[0.25, 0.5, 1, 1.5, 2]} rate={rate} bookmarks={bookmarks} shortcuts={shortcuts}
+      <VideoPracticeControls kind={kind} usable={validDuration(duration) && !error} playing={playing} duration={duration} position={position} rates={[0.25, 0.5, 1, 1.5, 2]} rate={rate} rateMode="continuous" bookmarks={bookmarks} shortcuts={shortcuts}
         getPosition={() => mediaElement()?.currentTime ?? NaN} onToggle={toggle} onSeek={seek}
         onRate={(value) => { const media = mediaElement(); if (!media) return; try { media.playbackRate = value; setRate(media.playbackRate) } catch { setRate(media.playbackRate) } }}
-        onLoopRange={(range) => { rangeRef.current = range }} onBookmarksChange={onBookmarksChange} />
+        loops={regionsRef.current} loopState={loopState} onLoopStateChange={changeLoopState}
+        onLoopsChange={onLoopsChange ?? (() => Promise.reject(new Error('LOOP_PERSISTENCE_UNAVAILABLE')))} onPlayFrom={playFrom}
+        onBookmarksChange={onBookmarksChange} />
     </div>
   )
 }

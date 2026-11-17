@@ -12,6 +12,7 @@ export interface YouTubePlayer {
 }
 
 export type YouTubePlayerOptions = {
+  playerVars?: { controls: 0; playsinline: 1; enablejsapi: 1; origin: string }
   events: {
     onReady: (event: { target: YouTubePlayer }) => void
     onStateChange: (event: { target: YouTubePlayer; data: number }) => void

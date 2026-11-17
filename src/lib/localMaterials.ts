@@ -1,4 +1,5 @@
 import { localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from './localMaterialAccess'
+import { normalizeLoopRegions, type LoopRegion } from './loopRegions'
 
 export type PlaybackBookmark = { seconds: number; name?: string }
 // Legacy records store bare seconds; they are only rewritten when that material's bookmarks change.
@@ -16,6 +17,7 @@ export type LocalMaterial = {
   url?: string
   blob?: Blob
   bookmarks?: StoredBookmark[]
+  loops?: LoopRegion[]
   storage?: 'indexeddb' | 'cache'
   createdAt: string
 }
@@ -211,6 +213,7 @@ export async function saveLocalMaterial(access: LocalMaterialAccess, input: Loca
     id: input.id, ...normalizeMaterialScope({ blockKey: input.blockKey === 'warmup' ? 'chromatic' : input.blockKey, songId: input.songId }),
     name: input.name, type: input.type, size: input.size, source: input.source, url: input.url,
     blob: input.source === 'file' ? input.blob : undefined, bookmarks: input.bookmarks ? normalizeBookmarks(input.bookmarks) : undefined,
+    loops: input.loops ? normalizeLoopRegions(input.loops) : undefined,
     createdAt: input.createdAt, ownerUid, storage: 'indexeddb',
   }
   return withMaterialLock(ownerUid, material.id, async () => {
@@ -283,7 +286,7 @@ export async function loadLocalMaterialBlob(access: LocalMaterialAccess, ref: Ma
   })
 }
 
-export type MaterialMetadataPatch = { name?: string; bookmarks?: StoredBookmark[] }
+export type MaterialMetadataPatch = { name?: string; bookmarks?: StoredBookmark[]; loops?: LoopRegion[] }
 
 export function normalizeBookmarkName(value: unknown) {
   if (typeof value !== 'string') return undefined
@@ -307,7 +310,7 @@ export function normalizeBookmarks(values: readonly unknown[]): PlaybackBookmark
 export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, ref: MaterialRef, patch: MaterialMetadataPatch) {
   const ownerUid = localMaterialOwner(access)
   ref = snapshotMaterialRef(ref)
-  patch = { name: patch.name, bookmarks: patch.bookmarks ? normalizeBookmarks(patch.bookmarks) : undefined }
+  patch = { name: patch.name, bookmarks: patch.bookmarks ? normalizeBookmarks(patch.bookmarks) : undefined, loops: patch.loops ? normalizeLoopRegions(patch.loops) : undefined }
   const name = patch.name?.trim()
   if (name === '') throw new Error('Material name is empty.')
   return materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish, guard) => {
@@ -316,6 +319,7 @@ export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, re
       const updated = { ...requireRecord(request.result, ownerUid, ref) }
       if (name !== undefined) updated.name = name
       if (patch.bookmarks !== undefined) updated.bookmarks = normalizeBookmarks(patch.bookmarks)
+      if (patch.loops !== undefined) updated.loops = normalizeLoopRegions(patch.loops)
       store.put(updated)
       finish(updated)
     })

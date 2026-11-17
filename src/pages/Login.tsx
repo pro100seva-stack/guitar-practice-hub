@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { defaultLanguage, isLanguage, supportedLanguages, type Language } from '../lib/language'
 import { useI18n } from '../lib/i18n'
 import AppSelect from '../components/AppSelect'
 import { isValidAccountIdentifier, normalizeAccountIdentifier } from '../lib/accountIdentifier'
+import { registerPwaUpdateGuard, setPwaUpdateGuard } from '../lib/pwaUpdateRuntime'
 
 type LoginMode = 'sign-in' | 'create-account' | 'reset-password'
 type GatewayAction = Exclude<LoginMode, 'sign-in'> | 'get-recovery-question'
@@ -75,6 +76,9 @@ export default function Login() {
   const questionCooldown = mode === 'reset-password' ? remaining('get-recovery-question') : 0
   const cooldown = Math.max(submitCooldown, questionCooldown)
   const hasCooldown = Object.values(cooldowns).some((until) => until > now)
+  const safeToUpdate = !loading && !pendingRef.current && !loginName && !password && !securityQuestion && !securityAnswer && !newPassword && !loadedSecurityQuestion
+  useLayoutEffect(() => registerPwaUpdateGuard('login', false), [])
+  useLayoutEffect(() => { setPwaUpdateGuard('login', safeToUpdate) }, [safeToUpdate])
 
   useEffect(() => {
     if (!hasCooldown) return

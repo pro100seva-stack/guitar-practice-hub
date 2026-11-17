@@ -8,6 +8,27 @@ Historical dates through 0.5.0 below are the version-bearing commit dates, **not
 
 Still deferred or awaiting a product decision: guitar rotation, verified-email recovery, permanent song-library deletion, arpeggio subtype blocks, cleanup of historical zero-minute session rows, the Guitar Pro materials player (41) and shared materials library (42). The backlog retains each item's scope and authorization state.
 
+## [0.13.0] - 2026-11-17
+
+### Added
+
+- Saved video loop regions with names, colors, draggable boundaries, precise timestamp editing and a two-lane timeline with overflow access. Regions are scoped to the account and material in local browser storage, alongside existing bookmarks.
+- Separate Play All Loops playback in timestamp order, skipping gaps and stopping after the final region.
+
+### Changed
+
+- Learning-material entries use the bookmark-style pencil/X actions. The YouTube video option opens a manual field below the material icons; only Add video or Enter saves it, with no automatic clipboard read or paste-triggered save.
+- Shared media speed controls use a slim navy SVG thumbwheel with moving ticks, keyboard/touch/pointer support and actual-rate readback. Local media supports 0.25×–2× in 0.05× increments; YouTube uses only its supported speeds, as agreed. YouTube's native control bar is hidden through the documented embed setting.
+- A binary A–B icon replaces the loop dropdown and old A/B fields. It repeats the selected saved region; enabling it exits Play All, and starting Play All exits repeat.
+- The loop workspace hides while looping is off. Its timeline fits two unchanged-height region rows; dragging a whole region moves both boundaries while preserving duration. Current speed appears in the wheel's center bottom reference.
+- Double-clicking the speed wheel resets to supported 1.00× playback. Dragged regions and boundary circles snap to other region edges within 3 CSS pixels and remain attached until dragged more than 6 pixels away.
+- Browser diagnostics use a fresh technical-field allowlist, explicit private-data placeholders and an error-only outgoing boundary. Automatic session and other non-error telemetry are disabled; hosted Sentry configuration is unchanged.
+- PWA update offers are deferred to a fresh app opening and require an explicit Update click. Updates found during an active visit remain hidden; other open app windows block activation instead of being saved or forcibly reloaded. Browsers may already activate an update after all app windows close.
+
+### Fixed
+
+- Practice autosaves run without success messages or feedback scrolling. The explicit Save button shows “Practice progress saved”; automatic save errors remain visible and retryable.
+
 ## [0.12.0] - 2026-11-15
 
 ### Added

@@ -1205,7 +1205,7 @@ Object.assign(pageTranslations.fr, {
 
 Object.assign(pageTranslations.en, {
   'materials.addLearning': 'Add learning materials',
-  'materials.pasteYouTube': 'Paste YouTube link',
+  'materials.pasteYouTube': 'YouTube video',
   'materials.youTubeLink': 'YouTube link',
   'materials.addYouTube': 'Add video',
   'materials.youtubeRequired': 'Copy a valid YouTube link and try again.',
@@ -1213,7 +1213,7 @@ Object.assign(pageTranslations.en, {
 })
 Object.assign(pageTranslations.ru, {
   'materials.addLearning': 'Добавить учебные материалы',
-  'materials.pasteYouTube': 'Вставить ссылку YouTube',
+  'materials.pasteYouTube': 'Видео YouTube',
   'materials.youTubeLink': 'Ссылка YouTube',
   'materials.addYouTube': 'Добавить видео',
   'materials.youtubeRequired': 'Скопируйте корректную ссылку YouTube и повторите попытку.',
@@ -1221,7 +1221,7 @@ Object.assign(pageTranslations.ru, {
 })
 Object.assign(pageTranslations.it, {
   'materials.addLearning': 'Aggiungi materiali di studio',
-  'materials.pasteYouTube': 'Incolla link YouTube',
+  'materials.pasteYouTube': 'Video YouTube',
   'materials.youTubeLink': 'Link YouTube',
   'materials.addYouTube': 'Aggiungi video',
   'materials.youtubeRequired': 'Copia un link YouTube valido e riprova.',
@@ -1229,7 +1229,7 @@ Object.assign(pageTranslations.it, {
 })
 Object.assign(pageTranslations.fr, {
   'materials.addLearning': 'Ajouter des supports',
-  'materials.pasteYouTube': 'Coller un lien YouTube',
+  'materials.pasteYouTube': 'Vidéo YouTube',
   'materials.youTubeLink': 'Lien YouTube',
   'materials.addYouTube': 'Ajouter la vidéo',
   'materials.youtubeRequired': 'Copiez un lien YouTube valide et réessayez.',
@@ -1249,6 +1249,10 @@ Object.assign(pageTranslations.en, {
   'release.0120.updates': 'PWA updates are checked on launch and resume, and wait while you have unsaved work or an open dialog.',
   'release.0120.monitoring': 'Optional privacy-filtered error reports help diagnose app failures; reporting stays off unless a Sentry project is configured.',
   'release.0120.summary': 'Tap the version on Home to reopen this release summary.',
+  'release.0130.loops': 'Save named loops on this device, move and snap their edges, repeat one or play all in order on a two-row timeline.',
+  'release.0130.player': 'Use the slim speed wheel and double-click to reset to 1×. YouTube uses supported speeds; video links are entered manually.',
+  'release.0130.autosave': 'Done and Pause save progress quietly. Only the Save button shows a success message.',
+  'release.0130.updates': 'Update prompts wait until your next app opening. Optional error reports contain minimal technical details with private content withheld.',
   'release.0100.calendar': 'Schedule one-off, recurring or multi-date practice reminders, at a chosen time or for the whole day.',
   'release.0110.repertoire': 'Songs assigned in Plan now appear in Repertoire on every day of that week.',
   'release.0110.autosave': 'Done or Pause saves practice time to the selected day. Starting another block pauses the previous timer.',
@@ -1266,6 +1270,10 @@ Object.assign(pageTranslations.ru, {
   'release.0120.updates': 'Приложение проверяет обновления при запуске и возвращении; установка ждёт, пока у вас есть несохранённая работа или открытый диалог.',
   'release.0120.monitoring': 'Необязательные отчёты об ошибках с очисткой личных данных помогают находить сбои; отправка выключена, пока не настроен проект Sentry.',
   'release.0120.summary': 'Нажмите на версию на главном экране, чтобы снова открыть это описание.',
+  'release.0130.loops': 'Сохраняйте именованные петли на этом устройстве, перемещайте и привязывайте их границы на двухрядной шкале. Повторяйте одну или проигрывайте все по порядку.',
+  'release.0130.player': 'Компактное колесо скорости сбрасывается до 1× двойным нажатием. YouTube использует поддерживаемые скорости; ссылки на видео вводятся вручную.',
+  'release.0130.autosave': '«Готово» и пауза сохраняют прогресс без уведомлений. Сообщение об успехе появляется только при нажатии «Сохранить».',
+  'release.0130.updates': 'Предложение обновиться появится при следующем открытии приложения. Необязательные отчёты содержат минимум технических сведений без личного содержимого.',
   'release.0100.calendar': 'Планируйте разовые, повторяющиеся напоминания о практике или выбирайте несколько дат — на определённое время или весь день.',
   'release.0110.repertoire': 'Песни, выбранные в плане, теперь появляются в репертуаре каждого дня этой недели.',
   'release.0110.autosave': 'Отметка «Готово» или пауза сохраняет время практики за выбранный день. Запуск другого блока приостанавливает предыдущий таймер.',
@@ -1283,6 +1291,10 @@ Object.assign(pageTranslations.it, {
   'release.0120.updates': 'Gli aggiornamenti PWA vengono controllati all’avvio e alla ripresa e attendono se hai modifiche non salvate o una finestra di dialogo aperta.',
   'release.0120.monitoring': 'Le segnalazioni facoltative e filtrate per la privacy aiutano a diagnosticare gli errori; l’invio resta disattivato finché non viene configurato un progetto Sentry.',
   'release.0120.summary': 'Tocca la versione nella Home per riaprire questo riepilogo.',
+  'release.0130.loops': 'Salva loop con nome su questo dispositivo, spostane e agganciane i bordi su due righe. Ripeti un loop o riproducili tutti in ordine.',
+  'release.0130.player': 'Usa la rotella compatta della velocità; un doppio clic ripristina 1×. YouTube usa le velocità supportate; i link video si inseriscono manualmente.',
+  'release.0130.autosave': 'Completato e Pausa salvano i progressi senza notifiche. Solo il pulsante Salva mostra una conferma.',
+  'release.0130.updates': 'Gli aggiornamenti vengono proposti alla prossima apertura dell’app. I rapporti facoltativi contengono solo dettagli tecnici minimi, senza contenuti privati.',
   'release.0100.calendar': 'Programma promemoria di pratica singoli, ricorrenti o per più date, a un orario scelto o per tutto il giorno.',
   'release.0110.repertoire': 'I brani assegnati nel piano ora compaiono nel repertorio di ogni giorno della settimana.',
   'release.0110.autosave': 'Completato o Pausa salva il tempo di pratica nel giorno selezionato. Avviare un altro blocco mette in pausa il timer precedente.',
@@ -1300,6 +1312,10 @@ Object.assign(pageTranslations.fr, {
   'release.0120.updates': 'Les mises à jour PWA sont vérifiées au lancement et à la reprise, et attendent si votre travail n’est pas enregistré ou si une fenêtre de dialogue est ouverte.',
   'release.0120.monitoring': 'Les rapports d’erreur facultatifs et filtrés pour protéger la vie privée aident à diagnostiquer les problèmes ; l’envoi reste désactivé tant qu’un projet Sentry n’est pas configuré.',
   'release.0120.summary': 'Touchez la version sur l’accueil pour rouvrir ce résumé.',
+  'release.0130.loops': 'Enregistrez des boucles nommées sur cet appareil, déplacez et aimantez leurs limites sur deux lignes. Répétez-en une ou lisez-les toutes dans l’ordre.',
+  'release.0130.player': 'Utilisez la molette de vitesse compacte ; un double-clic rétablit 1×. YouTube utilise les vitesses prises en charge ; les liens vidéo se saisissent manuellement.',
+  'release.0130.autosave': 'Terminé et Pause enregistrent les progrès discrètement. Seul le bouton Enregistrer affiche une confirmation.',
+  'release.0130.updates': 'Les mises à jour sont proposées à la prochaine ouverture de l’app. Les rapports facultatifs contiennent un minimum de détails techniques, sans contenu privé.',
   'release.0100.calendar': 'Planifiez des rappels de pratique ponctuels, récurrents ou à plusieurs dates, à une heure choisie ou pour toute la journée.',
   'release.0110.repertoire': 'Les morceaux choisis dans le plan apparaissent désormais dans le répertoire de chaque jour de la semaine.',
   'release.0110.autosave': 'Terminé ou Pause enregistre le temps de pratique pour le jour sélectionné. Démarrer un autre bloc met le minuteur précédent en pause.',
@@ -1333,7 +1349,9 @@ Object.assign(pageTranslations.fr, {
 Object.assign(pageTranslations.en, {
   'pwa.updateReady': 'Update ready',
   'pwa.applying': 'Applying the update…',
-  'pwa.checkingTabs': 'Checking that every open tab is safe to update…',
+  'pwa.checkingTabs': 'Checking open app windows…',
+  'pwa.readyNextVisit': 'A new version is ready. Update now, or keep using this version for this visit.',
+  'pwa.otherWindows': 'Close other Pro100Practice tabs or app windows, then try again.',
   'pwa.safeAutomatic': 'The update will apply when it is safe for every open tab.',
   'pwa.offline': 'Reconnect to check and apply this update.',
   'pwa.safetyBlocked': 'Finish or save your current work, close dialogs, and try again.',
@@ -1346,7 +1364,9 @@ Object.assign(pageTranslations.en, {
 Object.assign(pageTranslations.ru, {
   'pwa.updateReady': 'Доступно обновление',
   'pwa.applying': 'Установка обновления…',
-  'pwa.checkingTabs': 'Проверяем, безопасно ли обновлять все открытые вкладки…',
+  'pwa.checkingTabs': 'Проверяем открытые окна приложения…',
+  'pwa.readyNextVisit': 'Новая версия готова. Обновите сейчас или продолжайте использовать эту версию до следующего открытия.',
+  'pwa.otherWindows': 'Закройте другие вкладки или окна Pro100Practice и повторите попытку.',
   'pwa.safeAutomatic': 'Обновление установится, когда это будет безопасно для всех открытых вкладок.',
   'pwa.offline': 'Подключитесь к сети, чтобы проверить и установить обновление.',
   'pwa.safetyBlocked': 'Завершите или сохраните текущую работу, закройте диалоги и повторите попытку.',
@@ -1359,7 +1379,9 @@ Object.assign(pageTranslations.ru, {
 Object.assign(pageTranslations.it, {
   'pwa.updateReady': 'Aggiornamento disponibile',
   'pwa.applying': 'Applicazione dell’aggiornamento…',
-  'pwa.checkingTabs': 'Verifica che ogni scheda aperta possa essere aggiornata in sicurezza…',
+  'pwa.checkingTabs': 'Verifica delle finestre aperte dell’app…',
+  'pwa.readyNextVisit': 'È pronta una nuova versione. Aggiorna ora o continua a usare questa versione per questa visita.',
+  'pwa.otherWindows': 'Chiudi le altre schede o finestre di Pro100Practice, poi riprova.',
   'pwa.safeAutomatic': 'L’aggiornamento verrà applicato quando sarà sicuro per tutte le schede aperte.',
   'pwa.offline': 'Riconnettiti per controllare e applicare questo aggiornamento.',
   'pwa.safetyBlocked': 'Completa o salva il lavoro in corso, chiudi le finestre di dialogo e riprova.',
@@ -1372,7 +1394,9 @@ Object.assign(pageTranslations.it, {
 Object.assign(pageTranslations.fr, {
   'pwa.updateReady': 'Mise à jour disponible',
   'pwa.applying': 'Installation de la mise à jour…',
-  'pwa.checkingTabs': 'Vérification que chaque onglet ouvert peut être mis à jour en toute sécurité…',
+  'pwa.checkingTabs': 'Vérification des fenêtres ouvertes de l’application…',
+  'pwa.readyNextVisit': 'Une nouvelle version est prête. Mettez à jour maintenant ou continuez avec cette version pour cette visite.',
+  'pwa.otherWindows': 'Fermez les autres onglets ou fenêtres Pro100Practice, puis réessayez.',
   'pwa.safeAutomatic': 'La mise à jour sera appliquée lorsqu’elle sera sûre pour tous les onglets ouverts.',
   'pwa.offline': 'Reconnectez-vous pour vérifier et appliquer cette mise à jour.',
   'pwa.safetyBlocked': 'Terminez ou enregistrez votre travail, fermez les fenêtres de dialogue et réessayez.',
@@ -1381,6 +1405,51 @@ Object.assign(pageTranslations.fr, {
   'pwa.workerFailed': 'Impossible d’appliquer la mise à jour. Reconnectez-vous si nécessaire, puis réessayez.',
   'pwa.later': 'Plus tard',
   'pwa.updateNow': 'Mettre à jour',
+})
+Object.assign(pageTranslations.en, { 'Remove {name}': 'Remove {name}' })
+Object.assign(pageTranslations.ru, { 'Remove {name}': 'Удалить {name}' })
+Object.assign(pageTranslations.it, { 'Remove {name}': 'Rimuovi {name}' })
+Object.assign(pageTranslations.fr, { 'Remove {name}': 'Supprimer {name}' })
+Object.assign(pageTranslations.en, {
+  'loops.timeline': 'Video timeline and loop regions', 'loops.unnamed': 'Unnamed loop', 'loops.defaultName': 'Loop {number}',
+  'loops.startHandle': '{name}: start A', 'loops.endHandle': '{name}: end B', 'loops.handleHint': 'Drag to adjust. Right-click, hold, or press Enter for an exact timestamp. Arrow keys adjust by 0.1 seconds; Shift by 0.01.',
+  'loops.enableRepeat': 'Enable A–B loop', 'loops.disableRepeat': 'Disable A–B loop', 'loops.seek': 'Playback position',
+  'loops.overlapCount': '+{count} overlapping loops', 'loops.title': 'Loops', 'loops.add': 'Add loop', 'loops.playAll': 'Play all loops', 'loops.stopSequence': 'End sequence',
+  'loops.empty': 'Add a loop at the current position to practice a phrase.', 'loops.playNamed': 'Play {name}',
+  'loops.editNamed': 'Edit loop boundaries: {name}', 'loops.renameNamed': 'Rename {name}', 'loops.deleteNamed': 'Delete {name}',
+  'loops.outsideDuration': 'Some saved regions are outside this video’s duration. Their data is kept; edit their boundaries to use them.',
+  'loops.rename': 'Rename loop', 'loops.precise': 'Exact boundary position', 'loops.name': 'Loop name', 'loops.start': 'Start A', 'loops.end': 'End B', 'loops.save': 'Save loop',
+  'loops.invalidBounds': 'Enter valid timestamps with 0 ≤ start < end ≤ video duration, for example 01:24.50.',
+})
+Object.assign(pageTranslations.ru, {
+  'loops.timeline': 'Шкала видео и участки повтора', 'loops.unnamed': 'Повтор без имени', 'loops.defaultName': 'Фрагмент {number}',
+  'loops.startHandle': '{name}: начало A', 'loops.endHandle': '{name}: конец B', 'loops.handleHint': 'Перетащите для настройки. Правая кнопка, удержание или Enter открывают точное время. Стрелки меняют на 0,1 секунды, с Shift — на 0,01.',
+  'loops.enableRepeat': 'Включить повтор A–B', 'loops.disableRepeat': 'Выключить повтор A–B', 'loops.seek': 'Позиция воспроизведения',
+  'loops.overlapCount': '+{count} перекрывающихся фрагментов', 'loops.title': 'Фрагменты', 'loops.add': 'Добавить фрагмент', 'loops.playAll': 'Играть все фрагменты', 'loops.stopSequence': 'Завершить последовательность',
+  'loops.empty': 'Добавьте фрагмент с текущей позиции для разучивания фразы.', 'loops.playNamed': 'Играть {name}', 'loops.editNamed': 'Изменить границы: {name}', 'loops.renameNamed': 'Переименовать {name}', 'loops.deleteNamed': 'Удалить {name}',
+  'loops.outsideDuration': 'Некоторые фрагменты выходят за длительность видео. Данные сохранены; измените границы для воспроизведения.',
+  'loops.rename': 'Название фрагмента', 'loops.precise': 'Точное положение границы', 'loops.name': 'Имя фрагмента', 'loops.start': 'Начало A', 'loops.end': 'Конец B', 'loops.save': 'Сохранить фрагмент',
+  'loops.invalidBounds': 'Введите время: 0 ≤ начало < конец ≤ длительность видео, например 01:24.50.',
+})
+Object.assign(pageTranslations.it, {
+  'loops.timeline': 'Timeline video e regioni di loop', 'loops.unnamed': 'Loop senza nome', 'loops.defaultName': 'Frase {number}',
+  'loops.startHandle': '{name}: inizio A', 'loops.endHandle': '{name}: fine B', 'loops.handleHint': 'Trascina per regolare. Clic destro, pressione prolungata o Invio per il tempo esatto. Frecce: 0,1 secondi; Maiusc: 0,01.',
+  'loops.enableRepeat': 'Attiva loop A–B', 'loops.disableRepeat': 'Disattiva loop A–B', 'loops.seek': 'Posizione di riproduzione',
+  'loops.overlapCount': '+{count} loop sovrapposti', 'loops.title': 'Loop', 'loops.add': 'Aggiungi loop', 'loops.playAll': 'Riproduci tutti i loop', 'loops.stopSequence': 'Termina sequenza',
+  'loops.empty': 'Aggiungi un loop alla posizione attuale per studiare una frase.', 'loops.playNamed': 'Riproduci {name}', 'loops.editNamed': 'Modifica limiti: {name}', 'loops.renameNamed': 'Rinomina {name}', 'loops.deleteNamed': 'Elimina {name}',
+  'loops.outsideDuration': 'Alcune regioni superano la durata del video. I dati sono conservati; modifica i limiti per utilizzarle.',
+  'loops.rename': 'Rinomina loop', 'loops.precise': 'Posizione esatta del limite', 'loops.name': 'Nome del loop', 'loops.start': 'Inizio A', 'loops.end': 'Fine B', 'loops.save': 'Salva loop',
+  'loops.invalidBounds': 'Inserisci tempi validi: 0 ≤ inizio < fine ≤ durata del video, ad esempio 01:24.50.',
+})
+Object.assign(pageTranslations.fr, {
+  'loops.timeline': 'Chronologie vidéo et régions de boucle', 'loops.unnamed': 'Boucle sans nom', 'loops.defaultName': 'Phrase {number}',
+  'loops.startHandle': '{name} : début A', 'loops.endHandle': '{name} : fin B', 'loops.handleHint': 'Faites glisser pour ajuster. Clic droit, appui long ou Entrée pour le temps exact. Flèches : 0,1 seconde ; Maj : 0,01.',
+  'loops.enableRepeat': 'Activer la boucle A–B', 'loops.disableRepeat': 'Désactiver la boucle A–B', 'loops.seek': 'Position de lecture',
+  'loops.overlapCount': '+{count} boucles superposées', 'loops.title': 'Boucles', 'loops.add': 'Ajouter une boucle', 'loops.playAll': 'Lire toutes les boucles', 'loops.stopSequence': 'Terminer la séquence',
+  'loops.empty': 'Ajoutez une boucle à la position actuelle pour travailler une phrase.', 'loops.playNamed': 'Lire {name}', 'loops.editNamed': 'Modifier les limites : {name}', 'loops.renameNamed': 'Renommer {name}', 'loops.deleteNamed': 'Supprimer {name}',
+  'loops.outsideDuration': 'Certaines régions dépassent la durée de cette vidéo. Les données sont conservées ; ajustez leurs limites pour les utiliser.',
+  'loops.rename': 'Renommer la boucle', 'loops.precise': 'Position exacte de la limite', 'loops.name': 'Nom de la boucle', 'loops.start': 'Début A', 'loops.end': 'Fin B', 'loops.save': 'Enregistrer la boucle',
+  'loops.invalidBounds': 'Saisissez des temps valides : 0 ≤ début < fin ≤ durée de la vidéo, par exemple 01:24.50.',
 })
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)

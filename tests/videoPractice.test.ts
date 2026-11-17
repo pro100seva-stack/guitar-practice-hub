@@ -100,6 +100,77 @@ describe('confirmed playback activation', () => {
 describe('video controls decisions', () => {
   const surface = {}
   const event = { key: ' ', repeat: false, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, isComposing: false, defaultPrevented: false, target: surface, currentTarget: surface }
+  it('keeps bookmark rename and remove buttons accessible, icon-only, and wired to their existing actions', () => {
+    const source = readFileSync('src/components/VideoPracticeControls.tsx', 'utf8').replace(/\r\n/g, '\n')
+    const renameStart = source.indexOf('<button type="button" data-bookmark-rename=')
+    const renameEnd = source.indexOf('</button>', renameStart) + '</button>'.length
+    const removeStart = source.indexOf(`<button type="button" disabled={saving} aria-label={t('Remove bookmark at {time}'`, renameEnd)
+    const removeEnd = source.indexOf('</button>', removeStart) + '</button>'.length
+    const rename = source.slice(renameStart, renameEnd)
+    const remove = source.slice(removeStart, removeEnd)
+
+    expect(rename).toContain("aria-label={t('Rename bookmark {name}', { name: label })}")
+    expect(rename).toContain("onClick={() => setRenaming({ seconds: bookmark.seconds, draft: bookmark.name ?? '' })}")
+    expect(rename).toContain('disabled={saving || renaming !== null}')
+    expect(rename).toContain('min-h-11 min-w-11 inline-flex items-center justify-center rounded px-2 text-slate-300 transition-colors hover:bg-slate-800 hover:text-sky-200 focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-40')
+    const renameChildStart = rename.indexOf('><svg')
+    expect(renameChildStart).toBeGreaterThan(-1)
+    expect(rename.slice(renameChildStart + 1, rename.lastIndexOf('</button>'))).toMatch(/^\s*<svg aria-hidden="true" focusable="false"[\s\S]*?<\/svg>\s*$/)
+
+    expect(remove).toContain("aria-label={t('Remove bookmark at {time}', { time })}")
+    expect(remove).toContain('onClick={() => { void save(list.filter((value) => value.seconds !== bookmark.seconds)) }}')
+    expect(remove).toContain('disabled={saving}')
+    expect(remove).toContain('min-h-11 min-w-11 inline-flex items-center justify-center rounded text-slate-300 transition-colors hover:bg-slate-800 hover:text-rose-300 focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-40')
+    const removeChildStart = remove.indexOf('><svg')
+    expect(removeChildStart).toBeGreaterThan(-1)
+    expect(remove.slice(removeChildStart + 1, remove.lastIndexOf('</button>'))).toMatch(/^\s*<svg aria-hidden="true" focusable="false"[\s\S]*?<\/svg>\s*$/)
+  })
+  it('keeps rename input above icon-only save/cancel actions with localized names and current keyboard behavior', () => {
+    const source = readFileSync('src/components/VideoPracticeControls.tsx', 'utf8').replace(/\r\n/g, '\n')
+    const formStart = source.indexOf('if (renaming?.seconds === bookmark.seconds)')
+    const formEnd = source.indexOf('return <span key={bookmark.seconds}', formStart)
+    const form = source.slice(formStart, formEnd)
+    const input = form.indexOf('<input autoFocus')
+    const actions = form.indexOf('<div className="flex gap-2">')
+    const help = form.indexOf("t('Leave the name empty to show the time.')")
+    const saveButton = form.indexOf('<button type="button" disabled={saving} aria-label={t(\'Save name\')}')
+    const cancelButton = form.indexOf('<button type="button" disabled={saving} aria-label={t(\'Cancel\')}')
+    expect(input).toBeGreaterThan(-1)
+    expect(actions).toBeGreaterThan(input)
+    expect(help).toBeGreaterThan(cancelButton)
+    expect(saveButton).toBeGreaterThan(actions)
+    expect(cancelButton).toBeGreaterThan(saveButton)
+    expect(form).toContain('className="flex w-full flex-col items-stretch gap-2 text-sm"')
+    expect(form).toContain('className={`${videoControlClass} w-full min-w-0 bg-slate-950`}')
+    for (const [start, key] of [[saveButton, 'Save name'], [cancelButton, 'Cancel']] as const) {
+      const end = form.indexOf('</button>', start) + '</button>'.length
+      const button = form.slice(start, end)
+      expect(button).toContain(`title={t('${key}')}`)
+      expect(button).toContain(`aria-label={t('${key}')}`)
+      expect(button).toContain('disabled={saving}')
+      expect(button).toContain('<svg aria-hidden="true" focusable="false"')
+      expect(button).toContain('inline-flex items-center justify-center')
+      expect(button.slice(button.indexOf('><svg') + 1, button.lastIndexOf('</button>'))).toMatch(/^\s*<svg aria-hidden="true" focusable="false"[\s\S]*?<\/svg>\s*$/)
+      expect(button).not.toContain(`>{t('${key}')}`)
+      expect(button).toContain('videoControlClass')
+    }
+    expect(source).toContain("export const videoControlClass = 'min-h-11 min-w-11")
+    expect(form).toContain("onClick={() => { void commitRename() }}")
+    expect(form).toContain("onClick={() => closeRename(bookmark.seconds)}")
+    expect(form).toContain("if (event.key === 'Enter')")
+    expect(form).toContain("else if (event.key === 'Escape')")
+  })
+  it('highlights selected and unselected Practice days on hover without changing selection behavior', () => {
+    const source = readFileSync('src/pages/Sessions.tsx', 'utf8').replace(/\r\n/g, '\n')
+    const dayStart = source.indexOf('const isSelectedDay = day === date')
+    const dayEnd = source.indexOf('\n            })}', dayStart)
+    const day = source.slice(dayStart, dayEnd)
+    expect(day).toContain("onClick={() => confirmDiscard(() => handleSelectDay(day))}")
+    expect(day).toContain("isSelectedDay\n                      ? 'border-sky-500 bg-sky-500/10 text-sky-100 hover:border-sky-400 hover:bg-sky-500/20'")
+    expect(day).toContain(" : isCompleted\n                        ? 'border-emerald-500/50 bg-emerald-500/5 text-emerald-100 hover:border-emerald-400 hover:bg-emerald-500/10'")
+    expect(day).toContain(": 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-slate-500 hover:bg-slate-800'")
+    expect(day).toContain('aria-pressed={isSelectedDay}')
+  })
   it('limits shortcuts to the focused surface and excludes repeats, fields and modifiers', () => {
     expect(videoShortcut(event)).toBe('toggle')
     expect(videoShortcut({ ...event, repeat: true })).toBeNull()

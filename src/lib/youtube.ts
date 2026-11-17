@@ -128,6 +128,7 @@ export function toYouTubeApiSrc(storedUrl: string, currentOrigin: string) {
   if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== currentOrigin || origin.username || origin.password) return null
   const url = new URL(plain)
   url.searchParams.set('enablejsapi', '1')
+  url.searchParams.set('controls', '0')
   url.searchParams.set('origin', origin.origin)
   return url.toString()
 }

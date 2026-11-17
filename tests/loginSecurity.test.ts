@@ -17,9 +17,24 @@ function loginHarness() {
   const effects = new Map<number, Effect>()
   let cursor = 0
   let pending: number[] = []
+  let pendingLayout: number[] = []
   let tree: Node[] = []
+  const updateGuards = new Map<string, boolean>()
+  const registerPwaUpdateGuard = vi.fn((key: string, safe: boolean) => {
+    updateGuards.set(key, safe)
+    return () => { updateGuards.delete(key) }
+  })
+  const setPwaUpdateGuard = vi.fn((key: string, safe: boolean) => { updateGuards.set(key, safe) })
   const invoke = vi.fn<(...args: unknown[]) => Promise<{ data: unknown; error: unknown }>>(async () => ({ data: { success: true }, error: null }))
   const signIn = vi.fn(async (_credentials: unknown) => ({ error: null }))
+  const scheduleEffect = (setup: Effect['setup'], dependencies: unknown[] | undefined, layout: boolean) => {
+    const index = cursor++
+    const previous = effects.get(index)
+    if (!previous || !dependencies || dependencies.some((value, position) => !Object.is(value, previous.dependencies?.[position]))) {
+      effects.set(index, { setup, dependencies, cleanup: previous?.cleanup })
+      ;(layout ? pendingLayout : pending).push(index)
+    }
+  }
   const react = {
     useRef: (initial: unknown) => { const index = cursor++; values[index] ??= { current: initial }; return values[index] },
     useState: (initial: unknown) => {
@@ -27,13 +42,8 @@ function loginHarness() {
       if (!(index in values)) values[index] = initial
       return [values[index], (next: unknown) => { values[index] = typeof next === 'function' ? next(values[index]) : next }]
     },
-    useEffect: (setup: Effect['setup'], dependencies?: unknown[]) => {
-      const index = cursor++
-      const previous = effects.get(index)
-      if (!previous || !dependencies || dependencies.some((value, position) => !Object.is(value, previous.dependencies?.[position]))) {
-        effects.set(index, { setup, dependencies, cleanup: previous?.cleanup }); pending.push(index)
-      }
-    },
+    useEffect: (setup: Effect['setup'], dependencies?: unknown[]) => scheduleEffect(setup, dependencies, false),
+    useLayoutEffect: (setup: Effect['setup'], dependencies?: unknown[]) => scheduleEffect(setup, dependencies, true),
   }
   const jsx = (type: string, props: Record<string, unknown>) => ({ type, props })
   const imports: Record<string, unknown> = {
@@ -41,6 +51,7 @@ function loginHarness() {
     '../lib/supabase': { supabase: { functions: { invoke }, auth: { signInWithPassword: signIn } } },
     '../lib/language': language,
     '../lib/accountIdentifier': accountIdentifier,
+    '../lib/pwaUpdateRuntime': { registerPwaUpdateGuard, setPwaUpdateGuard },
     '../lib/i18n': { useI18n: () => ({ language: 'en', setLanguage: vi.fn(), t: (key: string) => key }) },
   }
   const module = { exports: {} as { default: () => Node } }
@@ -53,9 +64,9 @@ function loginHarness() {
     return [node, ...nodes(node.props.children)]
   }
   const render = () => {
-    cursor = 0; pending = []
+    cursor = 0; pending = []; pendingLayout = []
     tree = nodes(module.exports.default())
-    for (const index of pending) { const effect = effects.get(index)!; effect.cleanup?.(); effect.cleanup = effect.setup() ?? undefined }
+    for (const index of [...pendingLayout, ...pending]) { const effect = effects.get(index)!; effect.cleanup?.(); effect.cleanup = effect.setup() ?? undefined }
   }
   const click = (label: string) => {
     const button = tree.find((node) => node.type === 'button' && node.props.children === label)!
@@ -72,8 +83,47 @@ function loginHarness() {
   }
   const submit = () => (tree.find((node) => node.type === 'form')!.props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault: vi.fn() })
   render()
-  return { render, click, change, changeLabel, submit, invoke, signIn, text: () => JSON.stringify(tree), close: () => { for (const effect of effects.values()) effect.cleanup?.() } }
+  return { render, click, change, changeLabel, submit, invoke, signIn, updateGuards, registerPwaUpdateGuard, setPwaUpdateGuard, text: () => JSON.stringify(tree), close: () => { for (const effect of effects.values()) effect.cleanup?.() } }
 }
+
+describe('Login PWA update safety', () => {
+  it('permits only a pristine idle form and removes its guard on unmount without submitting', () => {
+    const harness = loginHarness()
+    expect(harness.registerPwaUpdateGuard).toHaveBeenCalledWith('login', false)
+    expect(harness.updateGuards.get('login')).toBe(true)
+    harness.change('username', 'fixture@example.com'); harness.render()
+    expect(harness.updateGuards.get('login')).toBe(false)
+    harness.change('username', ''); harness.render()
+    expect(harness.updateGuards.get('login')).toBe(true)
+    harness.change('current-password', 'Private fixture password'); harness.render()
+    expect(harness.updateGuards.get('login')).toBe(false)
+    harness.change('current-password', ''); harness.render()
+    expect(harness.updateGuards.get('login')).toBe(true)
+    harness.click('Create account'); harness.render()
+    harness.changeLabel('Security answer', 'Private fixture answer'); harness.render()
+    expect(harness.updateGuards.get('login')).toBe(false)
+    harness.changeLabel('Security answer', ''); harness.render()
+    expect(harness.updateGuards.get('login')).toBe(true)
+    expect(harness.invoke).not.toHaveBeenCalled()
+    expect(harness.signIn).not.toHaveBeenCalled()
+    harness.close()
+    expect(harness.updateGuards.has('login')).toBe(false)
+  })
+
+  it('blocks a pending explicit sign-in even when the fixture has no field drafts', async () => {
+    const harness = loginHarness()
+    let finish!: (value: { error: null }) => void
+    harness.signIn.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    expect(harness.signIn).not.toHaveBeenCalled()
+    const pending = harness.submit(); harness.render()
+    expect(harness.signIn).toHaveBeenCalledOnce()
+    expect(harness.updateGuards.get('login')).toBe(false)
+    finish({ error: null }); await pending; harness.render()
+    expect(harness.updateGuards.get('login')).toBe(true)
+    expect(harness.signIn).toHaveBeenCalledOnce()
+    harness.close()
+  })
+})
 
 describe('frontend gateway error contract', () => {
   it('reads the actual non-2xx Edge payload and honors the longer Retry-After', async () => {

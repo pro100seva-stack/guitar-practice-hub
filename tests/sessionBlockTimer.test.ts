@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { ScriptTarget, transpileModule } from 'typescript'
 import { completeBlockTimer, editBlockTimer, pauseBlockTimer, resetBlockTimer, snapshotBlockTimers, timerElapsedSeconds, toggleBlockTimer } from '../src/lib/sessionBlockTimer'
-import { getSessionEditorState, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState } from '../src/lib/sessionEditorState'
+import { getSessionEditorState, isSessionEditorDirty, shouldDeleteClearedSession, type BlockTimerState, type SessionEditorState } from '../src/lib/sessionEditorState'
 import { createSessionSaveQueue } from '../src/lib/sessionSaveQueue'
 import { hasUnsupportedSessionBlocks, planSessionBlockSave, selectPracticedSessionBlocks, sessionBlockMinutes } from '../src/lib/sessionBlockSavePlan'
 
@@ -200,13 +200,17 @@ describe('Sessions save handler timer regressions', () => {
     }
     const sessionsRef = { current: context.sessions };
     const contextWithRefs = { ...context, sessionsRef };
-    const createHandler = new Function(...Object.keys(contextWithRefs), `${compiled}\nreturn handleSubmit;`) as
-      (...values: unknown[]) => (event: { preventDefault: () => void }) => Promise<void>
-    const handleSubmit = createHandler(...Object.values(contextWithRefs))
+    const createHandler = new Function(...Object.keys(contextWithRefs), `${compiled}\nreturn { handleSubmit, queueSessionSave };`) as
+      (...values: unknown[]) => {
+        handleSubmit: (event: { preventDefault: () => void }) => Promise<void>
+        queueSessionSave: (state: SessionEditorState, manual?: boolean) => Promise<void>
+      }
+    const { handleSubmit, queueSessionSave } = createHandler(...Object.values(contextWithRefs))
     return {
       state, initialTimers, request, payloads, setTimers, setSaving, setPendingDiscardAction, setError, setMessage, loadData,
       context: contextWithRefs,
       save: () => handleSubmit({ preventDefault: vi.fn() }),
+      autosave: () => queueSessionSave(contextWithRefs.latestEditorRef.current),
     }
   }
 
@@ -247,7 +251,7 @@ describe('Sessions save handler timer regressions', () => {
     await fixture.save()
     expect(fixture.payloads[0].payload).toMatchObject({ session_date: '2026-10-04' })
     expect(fixture.context.setEditorBaseline).not.toHaveBeenCalled()
-    expect(fixture.setMessage).not.toHaveBeenCalledWith('Session saved successfully.')
+    expect(fixture.setMessage).not.toHaveBeenCalledWith('practice.progressSaved')
     expect(fixture.loadData).not.toHaveBeenCalled()
   })
 
@@ -257,7 +261,7 @@ describe('Sessions save handler timer regressions', () => {
     } })
     await fixture.save()
     expect(fixture.context.setEditorBaseline).not.toHaveBeenCalled()
-    expect(fixture.setMessage).not.toHaveBeenCalledWith('Session saved successfully.')
+    expect(fixture.setMessage).not.toHaveBeenCalledWith('practice.progressSaved')
   })
 
   it('persists absolute seconds on retry without adding the previous saved duration twice', async () => {
@@ -346,9 +350,41 @@ describe('Sessions save handler timer regressions', () => {
     expect(fixture.payloads[0].payload).toMatchObject({ total_minutes: 5 })
     expect(fixture.payloads[1].payload).toMatchObject([{ actual_minutes: 3 }, { actual_minutes: 2 }])
     expect(fixture.loadData).not.toHaveBeenCalled()
-    expect(fixture.setMessage).toHaveBeenLastCalledWith('Session saved successfully.')
+    expect(fixture.setMessage).toHaveBeenLastCalledWith('practice.progressSaved')
     expect(fixture.setSaving).toHaveBeenLastCalledWith(false)
     expect(fixture.setPendingDiscardAction).toHaveBeenCalledWith(null)
+  })
+
+  it('silently checkpoints automatic progress without changing success feedback or the live timer', async () => {
+    const fixture = setup()
+    await fixture.autosave()
+    expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-upsert', 'blocks-delete', 'blocks-upsert'])
+    expect(fixture.payloads[1].payload).toMatchObject([{ actual_seconds: 150 }, { actual_seconds: 120 }])
+    expect(fixture.context.setEditorBaseline).toHaveBeenCalledOnce()
+    expect(fixture.setMessage).not.toHaveBeenCalled()
+    expect(fixture.setTimers).not.toHaveBeenCalled()
+    expect(fixture.loadData).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { clear: true },
+    { newDay: true, untouched: true },
+  ])('does not announce automatic clearing or an empty checkpoint: %j', async (options) => {
+    const fixture = setup(options)
+    await fixture.autosave()
+    expect(fixture.setMessage).not.toHaveBeenCalled()
+    expect(fixture.loadData).not.toHaveBeenCalled()
+    if (options.clear) expect(fixture.request.mock.calls.map(([step]) => step)).toEqual(['auth', 'session-delete'])
+    else expect(fixture.payloads).toEqual([])
+  })
+
+  it('still reports an automatic save failure and retains unsaved state', async () => {
+    const fixture = setup({ failure: 'blocks-upsert' })
+    await fixture.autosave()
+    expect(fixture.setError).toHaveBeenLastCalledWith('practice.autosaveFailed')
+    expect(fixture.context.setEditorBaseline).not.toHaveBeenCalled()
+    expect(fixture.setMessage).not.toHaveBeenCalled()
+    expect(fixture.setTimers).not.toHaveBeenCalled()
   })
 
   it('deletes a cleared session without reloading or readding configured defaults', async () => {

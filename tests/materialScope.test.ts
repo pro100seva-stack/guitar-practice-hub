@@ -4,6 +4,7 @@ import { getDefaultMaterials } from '../src/lib/defaultMaterials'
 import { practiceKeyPools } from '../src/lib/practiceKey'
 import * as localApi from '../src/lib/localMaterials'
 import { normalizeBookmarks, type LocalMaterial, type OwnedLocalMaterial } from '../src/lib/localMaterials'
+import type { LoopRegion } from '../src/lib/loopRegions'
 import { captureLocalMaterialAccess, watchLocalMaterialIdentity, type LocalMaterialAccess } from '../src/lib/localMaterialAccess'
 import { closeDeletedMaterial, createRequestTracker, findActiveMaterial, removeBlockMaterial, setBlockMaterials, updateBlockMaterial, type ActiveMaterial, type MaterialsByBlock } from '../src/lib/materialScope'
 
@@ -704,6 +705,82 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
       patchLocalMaterialMetadata('w1', 'chromatic', { bookmarks: [5] }),
     ])
     expect((await listLocalMaterials('chromatic'))[0]).toMatchObject({ name: 'Renamed', bookmarks: [{ seconds: 5 }] })
+  })
+
+  it('persists independent named loop regions and preserves bookmarks through rename/delete/reload', async () => {
+    const loops: LoopRegion[] = [
+      { id: 'phrase', name: 'Lick 1', start: 5.25, end: 12.5, color: 0, order: 0 },
+      { id: 'solo', name: 'Full solo', start: 5.25, end: 30, color: 4, order: 1 },
+    ]
+    await saveLocalMaterial({ ...material('loop-video', 'learning'), bookmarks: [{ seconds: 3, name: 'Intro' }], loops })
+    const loaded = (await listLocalMaterials('learning'))[0]
+    expect(loaded.loops).toEqual(loops)
+    await Promise.all([
+      patchLocalMaterialMetadata('loop-video', 'learning', { name: 'Renamed video' }),
+      patchLocalMaterialMetadata('loop-video', 'learning', { bookmarks: [{ seconds: 8, name: 'Target' }] }),
+      patchLocalMaterialMetadata('loop-video', 'learning', { loops: loops.map((loop) => loop.id === 'phrase' ? { ...loop, name: 'Renamed lick' } : loop) }),
+    ])
+    expect((await listLocalMaterials('learning'))[0]).toMatchObject({
+      name: 'Renamed video', bookmarks: [{ seconds: 8, name: 'Target' }],
+      loops: [{ ...loops[0], name: 'Renamed lick' }, loops[1]],
+    })
+    await patchLocalMaterialMetadata('loop-video', 'learning', { loops: [loops[1]] })
+    expect((await listLocalMaterials('learning'))[0]).toMatchObject({ loops: [loops[1]], bookmarks: [{ seconds: 8, name: 'Target' }] })
+    await patchLocalMaterialMetadata('loop-video', 'learning', { loops: [] })
+    expect((await listLocalMaterials('learning'))[0].loops).toEqual([])
+  })
+
+  it('isolates loop metadata by account, video ID and canonical song scope', async () => {
+    const loop: LoopRegion = { id: 'same-loop-id', name: 'A phrase', start: 1, end: 4, color: 2, order: 0 }
+    await saveLocalMaterial({ ...material('same-video-id', 'repertoire'), songId: 'song-A', loops: [loop] })
+    await saveLocalMaterial({ ...material('other-video', 'repertoire'), songId: 'song-A' })
+    expect((await listLocalMaterials('learn_song', 'song-A')).find((row) => row.id === 'same-video-id')?.loops).toEqual([loop])
+    expect((await listLocalMaterials('song', 'song-A')).find((row) => row.id === 'other-video')?.loops).toBeUndefined()
+    await expect(patchLocalMaterialMetadata('same-video-id', 'song', { loops: [] }, 'song-B')).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    auth.change('SIGNED_IN', sessionFor('B'))
+    access = captureLocalMaterialAccess()
+    expect(await listLocalMaterials('song', 'song-A')).toEqual([])
+    await expect(patchLocalMaterialMetadata('same-video-id', 'song', { loops: [] }, 'song-A')).rejects.toThrow('LOCAL_MATERIAL_UNAVAILABLE')
+    await saveLocalMaterial({ ...material('same-video-id', 'song'), songId: 'song-A', loops: [{ ...loop, name: 'B phrase' }] })
+    expect((await listLocalMaterials('song', 'song-A'))[0].loops?.[0].name).toBe('B phrase')
+    auth.change('SIGNED_IN', sessionFor('A'))
+    access = captureLocalMaterialAccess()
+    expect((await listLocalMaterials('song', 'song-A')).find((row) => row.id === 'same-video-id')?.loops).toEqual([loop])
+  })
+
+  it('snapshots loop arrays and controlled metadata before asynchronous work', async () => {
+    await saveLocalMaterial(material('video', 'learning'))
+    const loop = { id: 'phrase', name: 'Keep', start: 1, end: 5, color: 3, order: 0, ownerUid: 'forged', videoId: 'foreign' }
+    const patch = { loops: [loop] }
+    const pending = patchLocalMaterialMetadata('video', 'learning', patch)
+    loop.name = 'Late mutation'
+    loop.start = 3
+    patch.loops.push({ ...loop, id: 'late' })
+    expect((await pending).loops).toEqual([{ id: 'phrase', name: 'Keep', start: 1, end: 5, color: 3, order: 0 }])
+  })
+
+  it('retains committed loop/bookmark metadata after a failed write or stale-account update', async () => {
+    const loop: LoopRegion = { id: 'kept', name: 'Kept phrase', start: 2, end: 6, color: 1, order: 0 }
+    await saveLocalMaterial({ ...material('video', 'learning'), loops: [loop], bookmarks: [1] })
+    database.failNextWrite()
+    await expect(patchLocalMaterialMetadata('video', 'learning', { loops: [] })).rejects.toThrow()
+    expect((await listLocalMaterials('learning'))[0]).toMatchObject({ loops: [loop], bookmarks: [{ seconds: 1 }] })
+    const pending = patchLocalMaterialMetadata('video', 'learning', { loops: [] })
+    const rejection = expect(pending).rejects.toThrow('LOCAL_MATERIAL_ACCESS_DENIED')
+    auth.change('SIGNED_IN', sessionFor('B'))
+    await rejection
+    auth.change('SIGNED_IN', sessionFor('A'))
+    access = captureLocalMaterialAccess()
+    expect((await listLocalMaterials('learning'))[0].loops).toEqual([loop])
+  })
+
+  it('keeps legacy bookmarks byte-for-byte when adding loop metadata to an existing video', async () => {
+    const legacyBookmarks = [1.234, 4, { seconds: 8, name: '  Legacy name  ' }]
+    database.seed({ ...material('legacy-video', 'learning'), bookmarks: legacyBookmarks })
+    const loop: LoopRegion = { id: 'new-region', name: 'Phrase', start: 0, end: 2.5, color: 0, order: 0 }
+    await patchLocalMaterialMetadata('legacy-video', 'learning', { loops: [loop] })
+    expect((await listLocalMaterials('learning'))[0]).toMatchObject({ loops: [loop], bookmarks: legacyBookmarks })
+    expect(database.snapshot().find((row) => row.id === 'legacy-video')?.bookmarks).toEqual(legacyBookmarks)
   })
 
   it('normalizes finite nonnegative bookmarks to tenths', () => {

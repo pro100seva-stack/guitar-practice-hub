@@ -187,7 +187,10 @@ describe('API URLs and new-link titles', () => {
   it('uses the current HTTP(S) origin, strips stored parameters and preserves start', () => {
     const src = new URL(toYouTubeApiSrc(`${embed}?start=30&origin=https://evil.test&autoplay=1&controls=0`, 'http://localhost:5173')!)
     expect(src.origin).toBe('https://www.youtube.com')
-    expect(Object.fromEntries(src.searchParams)).toEqual({ start: '30', playsinline: '1', rel: '0', enablejsapi: '1', origin: 'http://localhost:5173' })
+    expect(Object.fromEntries(src.searchParams)).toEqual({ start: '30', playsinline: '1', rel: '0', enablejsapi: '1', controls: '0', origin: 'http://localhost:5173' })
+    const legacyControls = new URL(toYouTubeApiSrc(`${embed}?controls=1`, 'https://practice.example')!)
+    expect(legacyControls.searchParams.get('controls')).toBe('0')
+    expect(legacyControls.searchParams.get('origin')).toBe('https://practice.example')
     expect(toYouTubeApiSrc(embed, 'https://practice.example')).not.toBeNull()
     for (const origin of ['null', 'file:///', 'https://practice.example/path', 'https://evil.test@practice.example']) expect(toYouTubeApiSrc(embed, origin)).toBeNull()
     expect(toYouTubeApiSrc(`https://user@www.youtube.com/embed/${id}`, 'https://practice.example')).toBeNull()

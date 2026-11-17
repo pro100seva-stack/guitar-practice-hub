@@ -33,7 +33,7 @@ export default function PwaUpdateNotice() {
                 ? t('pwa.checkingTabs')
                 : reasonKey
                   ? t(reasonKey)
-                  : t('pwa.safeAutomatic')}
+                  : t('pwa.readyNextVisit')}
           </p>
         </div>
         {!state.applying && !locked && (

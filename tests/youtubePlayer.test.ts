@@ -5,6 +5,7 @@ import { transpileModule } from 'typescript'
 import type { YouTubeApi, YouTubePlayerOptions } from '../src/lib/youtubeApi'
 import * as practice from '../src/lib/youtubePractice'
 import * as youtube from '../src/lib/youtube'
+import * as regions from '../src/lib/loopRegions'
 import { bookmarkNameMaxLength, normalizeBookmarkName, normalizeBookmarks, type PlaybackBookmark } from '../src/lib/localMaterials'
 import { activateBlockTimer, completeBlockTimer, toggleBlockTimer } from '../src/lib/sessionBlockTimer'
 
@@ -106,7 +107,7 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   }
   const player = {
     getCurrentTime: vi.fn(() => time), getDuration: () => 60, getPlayerState: () => state,
-    getAvailablePlaybackRates: () => [0.5, 1, 1.5], getPlaybackRate: () => 1,
+    getAvailablePlaybackRates: vi.fn(() => [0.5, 1, 1.5]), getPlaybackRate: vi.fn(() => 1),
     setPlaybackRate: vi.fn(), seekTo: vi.fn(), playVideo: vi.fn(), pauseVideo: vi.fn(), destroy: vi.fn(),
   }
   const video = {
@@ -118,6 +119,12 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   const construct = vi.fn(function (_frame: unknown, config: YouTubePlayerOptions) { options = config; return player })
   const load = vi.fn(async () => ({ Player: construct }))
   const react = {
+    useMemo: (factory: () => unknown, dependencies: unknown[]) => {
+      const index = cursor++
+      const previous = values[index] as { value: unknown; dependencies: unknown[] } | undefined
+      if (!previous || dependencies.some((value, i) => !Object.is(value, previous.dependencies[i]))) values[index] = { value: factory(), dependencies }
+      return (values[index] as { value: unknown }).value
+    },
     useRef: (initial: unknown) => { const index = cursor++; values[index] ??= { current: initial }; return values[index] },
     useState: (initial: unknown) => {
       const index = cursor++
@@ -147,12 +154,15 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   const imports: Record<string, unknown> = {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     './AppSelect': { __esModule: true, default: (props: Record<string, unknown>): Element => ({ type: 'AppSelect', props }) },
+    './PlaybackSpeedThumbwheel': { __esModule: true, default: (props: Record<string, unknown>): Element => ({ type: 'PlaybackSpeedThumbwheel', props }) },
+    './PracticeLoopControls': { __esModule: true, default: (props: Record<string, unknown>): Element => ({ type: 'PracticeLoopControls', props: { ...props, children: (props.renderControls as (toggle: Element) => Element)({ type: 'button', props: { 'aria-label': 'loop-toggle-fixture' } }) } }) },
     '../lib/i18n': { useI18n: () => ({ t: (key: string) => key }) },
     '../lib/localMaterials': { bookmarkNameMaxLength, normalizeBookmarkName, normalizeBookmarks },
     '../lib/localMaterialAccess': authority,
     '../lib/youtubeApi': { loadYouTubeApi: load },
     '../lib/youtube': youtube,
     '../lib/youtubePractice': practice,
+    '../lib/loopRegions': regions,
   }
   const controlsModule = { exports: {} }
   const controlsCode = transpileModule(readFileSync('src/components/VideoPracticeControls.tsx', 'utf8'), { compilerOptions: { jsx: 4, module: 1 } }).outputText
@@ -162,11 +172,11 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   const browser = { location: { origin: 'http://localhost:5173' }, addEventListener: vi.fn(), removeEventListener: vi.fn() }
   const document = { createElement: () => {
     const element: Record<string, unknown> = {}
-    Object.defineProperty(element, 'src', { set: () => policyAtNavigation.push(element.referrerPolicy) })
+    Object.defineProperty(element, 'src', { set: (value) => { element.youtubeSrc = value; policyAtNavigation.push(element.referrerPolicy) } })
     return element
   } }
   runInNewContext(code, { exports: module.exports, require: (name: string) => imports[name], window: browser, navigator, document, setTimeout, clearTimeout, setInterval, clearInterval, Date })
-  let props: Record<string, unknown> = { materialId: 'one', url: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', name: 'Lesson', bookmarks: [{ seconds: 5 }], onBookmarksChange: vi.fn(async () => {}), onPlaybackConfirmed: vi.fn() }
+  let props: Record<string, unknown> = { materialId: 'one', url: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', name: 'Lesson', bookmarks: [{ seconds: 5 }], loops: [{ id: 'full', name: 'Full', start: 0, end: 60, color: 0, order: 0 }], onLoopsChange: vi.fn(async () => {}), onBookmarksChange: vi.fn(async () => {}), onPlaybackConfirmed: vi.fn() }
   function nodes(element: unknown): Element[] {
     if (Array.isArray(element)) return element.flatMap(nodes)
     if (!element || typeof element !== 'object' || !('props' in element)) return []
@@ -190,6 +200,10 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
   const event = (playback: number, position: number) => { state = playback; time = position; options?.events.onStateChange({ target: player, data: playback }) }
   return {
     render, load, player, video, construct, policyAtNavigation, browser,
+    loop: (mode: regions.LoopPlaybackMode, selectedId = 'full') => {
+      const controls = tree.find((node) => node.type === 'PracticeLoopControls')!
+      ;(controls.props.onStateChange as (state: regions.LoopPlaybackState) => void)({ mode, selectedId })
+    },
     invalidate: () => { authEpoch++; for (const callback of invalidations) callback() },
     verify: (ready: boolean) => { verified = ready; for (const callback of verifications) callback(ready) },
     native: (name: string) => {
@@ -197,6 +211,8 @@ function playerHarness(kind: 'youtube' | 'local' = 'youtube') {
       handler?.({ currentTarget: video })
     },
     ready: (playback = state) => { state = playback; options?.events.onReady({ target: player }) }, event,
+    iframeSrc: () => frame?.youtubeSrc as string | undefined,
+    acknowledgeRate: (actual: number, notification = actual) => { player.getPlaybackRate.mockReturnValue(actual); options?.events.onPlaybackRateChange({ target: player, data: notification }) },
     nodes: () => tree,
     strictReplay: () => { for (const effect of effects.values()) { effect.cleanup?.(); effect.cleanup = effect.setup() ?? undefined } },
     close: () => { for (const effect of effects.values()) effect.cleanup?.() },
@@ -303,8 +319,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     harness.event(1, 2)
     expect(confirm).toHaveBeenCalledExactlyOnceWith('explicit')
     harness.render()
-    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-    ;(mode.props.onValueChange as (value: string) => void)('whole')
+    harness.loop('repeat')
     harness.render()
     harness.event(0, 60)
     harness.event(2, 0)
@@ -369,8 +384,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
       harness.event(3, 1)
       harness.event(1, 2)
       harness.render()
-      const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-      ;(mode.props.onValueChange as (value: string) => void)('whole')
+      harness.loop('repeat')
       harness.render()
       harness.event(0, 60)
       expect(harness.player.playVideo).toHaveBeenCalledOnce()
@@ -393,7 +407,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     await Promise.resolve()
     if (failure === 'error153') harness.staleEvents()?.onError({ target: harness.player, data: 153 })
     harness.render()
-    const remove = harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Remove')!
+    const remove = harness.nodes().find((node) => node.type === 'button' && node.props['aria-label'] === 'Remove bookmark at {time}')!
     expect(remove.props.disabled).toBe(false)
     expect(harness.nodes().find((node) => node.props.children === 'Save position')?.props.disabled).toBe(true)
     expect(harness.nodes().find((node) => node.props.children === '0:05.0')?.props.disabled).toBe(true)
@@ -411,7 +425,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     let rejectSave: (error: Error) => void = () => {}
     const persist = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectSave = reject }))
     harness.render({ bookmarks: [{ seconds: 5 }, { seconds: 8, name: 'Chorus' }], onBookmarksChange: persist })
-    const remove = () => harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Remove')!
+    const remove = () => harness.nodes().find((node) => node.type === 'button' && node.props['aria-label'] === 'Remove bookmark at {time}')!
     ;(remove().props.onClick as () => void)()
     harness.render()
     expect(remove().props.disabled).toBe(true)
@@ -441,7 +455,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     expect(input().props.maxLength).toBe(bookmarkNameMaxLength)
     ;(input().props.onChange as (event: unknown) => void)({ target: { value: '  Intro riff  ' } })
     harness.render()
-    const saveName = () => harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Save name')!
+    const saveName = () => harness.nodes().find((node) => node.type === 'button' && node.props['aria-label'] === 'Save name')!
     ;(saveName().props.onClick as () => void)()
     await vi.advanceTimersByTimeAsync(0)
     expect(persist).toHaveBeenLastCalledWith([{ seconds: 5, name: 'Intro riff' }, { seconds: 8, name: 'Chorus' }])
@@ -468,12 +482,11 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     harness.render()
     expect(harness.policyAtNavigation).toEqual(['strict-origin-when-cross-origin'])
     expect(harness.player.playVideo).not.toHaveBeenCalled()
-    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-    ;(mode.props.onValueChange as (value: string) => void)('whole')
+    harness.loop('repeat')
     harness.render()
     harness.render({ name: 'Renamed', bookmarks: [5, 8] })
     expect(harness.construct).toHaveBeenCalledOnce()
-    expect(harness.nodes().some((node) => node.type === 'AppSelect' && node.props.value === 'whole')).toBe(true)
+    expect((harness.nodes().find((node) => node.type === 'PracticeLoopControls')!.props.state as regions.LoopPlaybackState).mode).toBe('repeat')
     harness.close()
     expect(harness.player.destroy).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
@@ -490,8 +503,7 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     expect(harness.player.seekTo).toHaveBeenCalledWith(5, true)
     expect(harness.player.pauseVideo).toHaveBeenCalledOnce()
     expect(harness.player.playVideo).not.toHaveBeenCalled()
-    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-    ;(mode.props.onValueChange as (value: string) => void)('whole')
+    harness.loop('repeat')
     harness.render()
     harness.event(1, 5)
     harness.render()
@@ -543,91 +555,209 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
     harness.ready()
     harness.render()
     expect(harness.nodes().some((node) => node.props.role === 'alert')).toBe(true)
-    expect(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')?.props.disabled).toBe(true)
+    expect(harness.nodes().find((node) => node.type === 'PracticeLoopControls')?.props.usable).toBe(false)
     harness.close()
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('applies speed, loop toggles and loop bounds during playback without pausing, reloading or seeking on partial input', async () => {
+  it('hides native YouTube controls while retaining the official inline API origin', async () => {
+    const harness = playerHarness()
+    harness.render({ url: 'https://www.youtube.com/embed/dQw4w9WgXcQ?controls=1&start=12' })
+    await Promise.resolve()
+    const src = new URL(harness.iframeSrc()!)
+    expect(src.searchParams.get('controls')).toBe('0')
+    expect(src.searchParams.get('enablejsapi')).toBe('1')
+    expect(src.searchParams.get('playsinline')).toBe('1')
+    expect(src.searchParams.get('origin')).toBe('http://localhost:5173')
+    expect(src.searchParams.get('start')).toBe('12')
+    expect(harness.construct.mock.calls[0][1].playerVars).toEqual({ controls: 0, playsinline: 1, enablejsapi: 1, origin: 'http://localhost:5173' })
+    harness.ready()
+    harness.render()
+    expect(harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')?.props.rate).toBe(1)
+    harness.close()
+  })
+
+  it('requests only supported rates and displays player acknowledgment rather than the requested value', async () => {
+    const harness = playerHarness()
+    harness.render()
+    await Promise.resolve()
+    harness.ready()
+    harness.render()
+    const speed = () => harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')!
+    const request = (rate: number) => (speed().props.onRate as (rate: number) => void)(rate)
+    expect(speed().props.rates).toEqual([0.5, 1, 1.5])
+    for (const rejected of [0, 0.3, 2, 3, NaN]) request(rejected)
+    expect(harness.player.setPlaybackRate).not.toHaveBeenCalled()
+    request(1.5)
+    expect(harness.player.setPlaybackRate).toHaveBeenCalledExactlyOnceWith(1.5)
+    harness.render()
+    expect(speed().props.rate).toBe(1)
+    harness.acknowledgeRate(0.5, 1.5)
+    harness.render()
+    expect(speed().props.rate).toBe(0.5)
+    expect(harness.player.playVideo).not.toHaveBeenCalled()
+    harness.close()
+  })
+
+  it('bounds available speeds and re-samples an applied rate when no rate event arrives', async () => {
+    const harness = playerHarness()
+    harness.player.getAvailablePlaybackRates.mockReturnValue([2, 0.1, 1, 0.25, 1, 3, NaN])
+    harness.render()
+    await Promise.resolve()
+    harness.ready()
+    harness.render()
+    expect(harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')?.props.rates).toEqual([0.25, 1, 2])
+    harness.event(1, 0)
+    harness.render()
+    harness.player.getPlaybackRate.mockReturnValue(2)
+    await vi.advanceTimersByTimeAsync(125)
+    harness.render()
+    expect(harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')?.props.rate).toBe(2)
+    harness.close()
+  })
+
+  it('resets the default rate for a new video and ignores old rate callbacks', async () => {
+    const harness = playerHarness()
+    harness.render()
+    await Promise.resolve()
+    harness.ready()
+    harness.acknowledgeRate(1.5)
+    harness.render()
+    const stale = harness.staleEvents()
+    expect(harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')?.props.rate).toBe(1.5)
+    harness.render({ materialId: 'two', url: 'https://www.youtube-nocookie.com/embed/b5SbZwd0egM' })
+    harness.player.getPlaybackRate.mockReturnValue(2)
+    stale?.onPlaybackRateChange({ target: harness.player, data: 2 })
+    harness.render()
+    expect(harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')?.props.rate).toBe(1)
+    await Promise.resolve()
+    harness.player.getPlaybackRate.mockReturnValue(1)
+    harness.ready()
+    harness.render()
+    expect(harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')?.props.rate).toBe(1)
+    harness.close()
+  })
+
+  it('keeps speed and region metadata edits non-disruptive during playback and while paused', async () => {
     const harness = playerHarness()
     const confirm = vi.fn()
-    harness.render({ onPlaybackConfirmed: confirm })
+    const loop = { id: 'phrase', name: 'Phrase', start: 20, end: 45, color: 1, order: 0 }
+    harness.render({ loops: [loop], onPlaybackConfirmed: confirm })
     await Promise.resolve()
     harness.ready()
     harness.event(1, 30)
-    // The harness's own Play above is a user play; only settings changes below must not confirm playback.
-    expect(confirm).toHaveBeenCalledExactlyOnceWith('explicit')
+    harness.render()
     confirm.mockClear()
-    harness.render()
-    const numberInputs = () => harness.nodes().filter((node) => node.type === 'input' && node.props.type === 'number')
-    const change = (node: Element, value: string) => node.type === 'AppSelect'
-      ? (node.props.onValueChange as (value: string) => void)(value)
-      : (node.props.onChange as (event: unknown) => void)({ target: { value } })
-    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === '1')!, '1.5')
+    ;(harness.nodes().find(node => node.type === 'PlaybackSpeedThumbwheel')!.props.onRate as (rate: number) => void)(1.5)
+    harness.loop('repeat', 'phrase')
+    harness.render({ loops: [{ ...loop, name: 'Renamed phrase', end: 44 }] })
+    await vi.advanceTimersByTimeAsync(250)
+    expect(harness.player.seekTo).not.toHaveBeenCalled()
+    expect(harness.player.pauseVideo).not.toHaveBeenCalled()
+    expect(harness.player.playVideo).not.toHaveBeenCalled()
     expect(harness.player.setPlaybackRate).toHaveBeenCalledExactlyOnceWith(1.5)
-    harness.render()
-    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!, 'whole')
-    harness.render()
-    await vi.advanceTimersByTimeAsync(250)
-    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'whole')!, 'section')
-    harness.render()
-    change(numberInputs()[0], '20')
-    harness.render()
-    change(numberInputs()[1], '4')
-    harness.render()
-    await vi.advanceTimersByTimeAsync(300)
-    harness.render()
-    expect(harness.player.seekTo).not.toHaveBeenCalled()
-    change(numberInputs()[1], '45')
-    harness.render()
-    await vi.advanceTimersByTimeAsync(700)
-    harness.render()
-    await vi.advanceTimersByTimeAsync(250)
-    expect(harness.nodes().some((node) => node.props.role === 'status' && String(node.props.children).includes('Loop suspended'))).toBe(false)
-    expect(harness.player.seekTo).not.toHaveBeenCalled()
-    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'section')!, 'off')
-    harness.render()
-    await vi.advanceTimersByTimeAsync(250)
-    expect(harness.player.pauseVideo).not.toHaveBeenCalled()
-    expect(harness.player.playVideo).not.toHaveBeenCalled()
-    expect(harness.player.destroy).not.toHaveBeenCalled()
     expect(harness.construct).toHaveBeenCalledOnce()
-
     harness.event(2, 30)
-    harness.render()
-    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === '1')!, '0.5')
-    change(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!, 'section')
-    harness.render()
-    change(numberInputs()[0], '40')
-    harness.render()
-    await vi.advanceTimersByTimeAsync(1000)
-    harness.render()
-    expect(harness.player.playVideo).not.toHaveBeenCalled()
-    expect(harness.player.pauseVideo).not.toHaveBeenCalled()
+    harness.render({ loops: [{ ...loop, start: 40 }] })
+    await vi.advanceTimersByTimeAsync(250)
     expect(harness.player.seekTo).not.toHaveBeenCalled()
     expect(confirm).not.toHaveBeenCalled()
     harness.close()
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('applies a typed loop bound immediately on blur and seeks into a new range while playing', async () => {
+  it('switches selected regions without restarting paused playback and applies the new range on resume', async () => {
+    const harness = playerHarness()
+    harness.render({ loops: [{ id: 'phrase', name: 'Phrase', start: 40, end: 50, color: 0, order: 0 }] })
+    await Promise.resolve()
+    harness.ready()
+    harness.loop('repeat', 'phrase')
+    harness.event(2, 30)
+    expect(harness.player.seekTo).not.toHaveBeenCalled()
+    harness.event(3, 30)
+    expect(harness.player.seekTo).not.toHaveBeenCalled()
+    harness.event(1, 30)
+    expect(harness.player.seekTo).toHaveBeenCalledExactlyOnceWith(40, true)
+    harness.event(1, 30)
+    expect(harness.player.seekTo).toHaveBeenCalledOnce()
+    expect(harness.player.pauseVideo).not.toHaveBeenCalled()
+    harness.close()
+  })
+
+  it('plays ordered regions across gaps, stops at the final boundary and does not confirm automatic transitions', async () => {
+    const harness = playerHarness()
+    const confirm = vi.fn()
+    harness.render({ onPlaybackConfirmed: confirm, loops: [
+      { id: 'second', name: 'Second', start: 30, end: 40, color: 1, order: 1 },
+      { id: 'first', name: 'First', start: 5, end: 10, color: 0, order: 0 },
+    ] })
+    await Promise.resolve()
+    harness.ready()
+    harness.event(1, 5)
+    confirm.mockClear()
+    harness.render()
+    harness.loop('sequence', 'first')
+    harness.event(1, 10.1)
+    expect(harness.player.seekTo).toHaveBeenLastCalledWith(30, true)
+    harness.event(1, 30)
+    harness.event(1, 40.1)
+    expect(harness.player.seekTo).toHaveBeenLastCalledWith(40, true)
+    expect(harness.player.pauseVideo).toHaveBeenCalledOnce()
+    harness.render()
+    expect((harness.nodes().find(node => node.type === 'PracticeLoopControls')!.props.state as regions.LoopPlaybackState)).toEqual({ mode: 'off', selectedId: 'second' })
+    expect(confirm).not.toHaveBeenCalled()
+    harness.close()
+  })
+
+  it('rejects missing persistence and resets deleted regions without replaying stale video events', async () => {
+    const harness = playerHarness()
+    harness.render({ onLoopsChange: undefined })
+    await Promise.resolve()
+    harness.ready()
+    harness.render()
+    const controls = harness.nodes().find(node => node.type === 'PracticeLoopControls')!
+    await expect((controls.props.onRegionsChange as (next: unknown[]) => Promise<void>)([])).rejects.toThrow('LOOP_PERSISTENCE_UNAVAILABLE')
+    harness.loop('repeat')
+    harness.render({ loops: [] })
+    harness.render()
+    expect((harness.nodes().find(node => node.type === 'PracticeLoopControls')!.props.state as regions.LoopPlaybackState).mode).toBe('off')
+    const stale = harness.staleEvents()
+    harness.render({ materialId: 'two', url: 'https://www.youtube-nocookie.com/embed/b5SbZwd0egM' })
+    stale?.onStateChange({ target: harness.player, data: 0 })
+    expect(harness.player.seekTo).not.toHaveBeenCalled()
+    harness.close()
+  })
+
+  it('explicit region play seeks and plays without toggling an already-playing video into pause', async () => {
     const harness = playerHarness()
     harness.render()
     await Promise.resolve()
     harness.ready()
-    harness.event(1, 30)
+    harness.event(1, 20)
     harness.render()
-    const numberInputs = () => harness.nodes().filter((node) => node.type === 'input' && node.props.type === 'number')
-    ;(harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!.props.onValueChange as (value: string) => void)('section')
-    harness.render()
-    ;(numberInputs()[0].props.onChange as (event: unknown) => void)({ target: { value: '40' } })
-    ;(numberInputs()[1].props.onChange as (event: unknown) => void)({ target: { value: '50' } })
-    harness.render()
-    ;(numberInputs()[1].props.onBlur as () => void)()
-    harness.render()
-    await vi.advanceTimersByTimeAsync(125)
-    expect(harness.player.seekTo).toHaveBeenCalledExactlyOnceWith(40, true)
+    const controls = harness.nodes().find(node => node.type === 'PracticeLoopControls')!
+    ;(controls.props.onPlayFrom as (position: number) => void)(5)
+    expect(harness.player.seekTo).toHaveBeenCalledExactlyOnceWith(5, true)
+    expect(harness.player.playVideo).toHaveBeenCalledOnce()
     expect(harness.player.pauseVideo).not.toHaveBeenCalled()
+    harness.close()
+  })
+
+  it('does not repeatedly seek short regions before YouTube acknowledges the changed position', async () => {
+    const harness = playerHarness()
+    harness.render({ loops: [{ id: 'short', name: 'Short', start: 5, end: 5.1, color: 0, order: 0 }] })
+    await Promise.resolve()
+    harness.ready()
+    harness.render()
+    harness.loop('repeat', 'short')
+    harness.event(1, 5.1)
+    harness.event(1, 5.1)
+    harness.event(3, 5.1)
+    harness.event(1, 5.1)
+    expect(harness.player.seekTo).toHaveBeenCalledExactlyOnceWith(5, true)
+    harness.event(1, 5)
+    harness.event(1, 5.1)
+    expect(harness.player.seekTo).toHaveBeenCalledTimes(2)
     harness.close()
   })
 
@@ -642,6 +772,60 @@ describe('player lifecycle with a shallow hook/official API mock (no browser pla
 })
 
 describe('local native player with shared controls', () => {
+  it('sequences regions across gaps, respects buffering/native seeking and stops at the final end', () => {
+    const harness = playerHarness('local')
+    const confirm = vi.fn()
+    harness.render({ url: 'blob:fixture', onPlaybackConfirmed: confirm, loops: [
+      { id: 'first', name: 'First', start: 5, end: 10, color: 0, order: 0 },
+      { id: 'second', name: 'Second', start: 20, end: 25, color: 1, order: 1 },
+    ] })
+    harness.native('onLoadedMetadata')
+    harness.video.paused = false
+    harness.native('onPlaying')
+    harness.render()
+    confirm.mockClear()
+    harness.loop('sequence', 'first')
+    harness.video.currentTime = 10.2
+    harness.native('onWaiting')
+    harness.native('onTimeUpdate')
+    expect(harness.video.currentTime).toBe(10.2)
+    harness.native('onPlaying')
+    harness.native('onSeeking')
+    harness.native('onTimeUpdate')
+    expect(harness.video.currentTime).toBe(10.2)
+    harness.native('onSeeked')
+    harness.native('onTimeUpdate')
+    expect(harness.video.currentTime).toBe(20)
+    harness.native('onSeeked')
+    harness.video.currentTime = 25.2
+    harness.native('onTimeUpdate')
+    expect(harness.video.currentTime).toBe(25)
+    expect(harness.video.paused).toBe(true)
+    harness.render()
+    expect(harness.nodes().find(node => node.type === 'PracticeLoopControls')!.props.state).toEqual({ mode: 'off', selectedId: 'second' })
+    expect(confirm).not.toHaveBeenCalled()
+    harness.close()
+  })
+
+  it('ignores stale source callbacks and rejects loop persistence when no writer is supplied', async () => {
+    const harness = playerHarness('local')
+    harness.render({ url: 'blob:first', onLoopsChange: undefined })
+    harness.native('onLoadedMetadata')
+    harness.render()
+    const stale = harness.nodes().find(node => node.type === 'video')!.props
+    const controls = harness.nodes().find(node => node.type === 'PracticeLoopControls')!.props
+    await expect((controls.onRegionsChange as (next: unknown[]) => Promise<void>)([])).rejects.toThrow('LOOP_PERSISTENCE_UNAVAILABLE')
+    harness.loop('repeat')
+    harness.render({ url: 'blob:second' })
+    harness.video.currentTime = 60
+    ;(stale.onEnded as (event: unknown) => void)({ currentTarget: harness.video })
+    ;(stale.onPlaying as () => void)()
+    expect(harness.video.play).not.toHaveBeenCalled()
+    harness.render()
+    expect(harness.nodes().find(node => node.type === 'PracticeLoopControls')!.props.state).toEqual({ mode: 'off', selectedId: null })
+    harness.close()
+  })
+
   it('confirms native play only on playing, suppresses rebuffer, and accepts native paused resume after loop seeks', () => {
     const harness = playerHarness('local')
     const confirm = vi.fn()
@@ -659,8 +843,7 @@ describe('local native player with shared controls', () => {
     harness.native('onPlaying')
     expect(confirm).toHaveBeenCalledTimes(1)
     harness.render()
-    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-    ;(mode.props.onValueChange as (value: string) => void)('whole')
+    harness.loop('repeat')
     harness.render()
     harness.video.currentTime = 60
     harness.native('onTimeUpdate')
@@ -680,7 +863,7 @@ describe('local native player with shared controls', () => {
     expect(confirm).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps jump/bookmark seeks paused, acknowledges rate, captures true Now and suspends invalid A-B', () => {
+  it('keeps bookmark seeks paused, acknowledges rate and ignores out-of-duration regions', () => {
     const harness = playerHarness('local')
     const persist = vi.fn(async () => {})
     harness.render({ url: 'blob:fixture', onBookmarksChange: persist })
@@ -691,20 +874,14 @@ describe('local native player with shared controls', () => {
     expect(harness.video.currentTime).toBe(5)
     expect(harness.video.paused).toBe(true)
     expect(harness.video.play).not.toHaveBeenCalled()
-    const speed = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === '1')!
-    ;(speed.props.onValueChange as (value: string) => void)('0.5')
+    const speed = harness.nodes().find((node) => node.type === 'PlaybackSpeedThumbwheel')!
+    ;(speed.props.onRate as (rate: number) => void)(0.5)
     harness.render()
     expect(harness.video.playbackRate).toBe(0.5)
-    expect(harness.nodes().some((node) => node.type === 'AppSelect' && node.props.value === '0.5')).toBe(true)
-    harness.video.currentTime = 7.2
-    const now = harness.nodes().find((node) => node.props['aria-label'] === 'Set A to current position')!
-    ;(now.props.onClick as () => void)()
-    harness.render()
-    expect(harness.nodes().some((node) => node.type === 'input' && node.props.value === '7.2')).toBe(true)
-    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-    ;(mode.props.onValueChange as (value: string) => void)('section')
-    harness.render()
-    expect(harness.nodes().some((node) => node.props.role === 'status' && String(node.props.children).includes('Loop suspended'))).toBe(true)
+    expect(harness.nodes().some((node) => node.type === 'PlaybackSpeedThumbwheel' && node.props.rate === 0.5)).toBe(true)
+    harness.native('onSeeked')
+    harness.render({ loops: [{ id: 'invalid', name: 'Outside', start: 70, end: 80, color: 0, order: 0 }] })
+    harness.loop('repeat', 'invalid')
     harness.video.paused = false
     harness.video.currentTime = 59
     harness.native('onTimeUpdate')
@@ -724,8 +901,7 @@ describe('local native player with shared controls', () => {
     harness.video.paused = false
     harness.native('onPlaying')
     expect(confirm).toHaveBeenCalledExactlyOnceWith('initial')
-    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-    ;(mode.props.onValueChange as (value: string) => void)('whole')
+    harness.loop('repeat')
     harness.render()
     harness.video.currentTime = 60
     harness.video.ended = true
@@ -760,7 +936,7 @@ describe('local native player with shared controls', () => {
     const surface = harness.nodes().find((node) => node.props.tabIndex === 0)!
     expect(surface.props['aria-label']).toBe('Audio practice: {name}')
     expect(harness.nodes().some((node) => node.props['aria-label'] === 'Play audio')).toBe(true)
-    expect(harness.nodes().some((node) => node.type === 'AppSelect' && (node.props.options as { label: string }[]).some((option) => option.label === 'Whole track'))).toBe(true)
+    expect(harness.nodes().some((node) => node.type === 'PracticeLoopControls' && node.props.usable === true)).toBe(true)
     expect(harness.nodes().some((node) => node.props['aria-label'] === 'Play video')).toBe(false)
 
     const keyDown = surface.props.onKeyDown as (event: unknown) => void
@@ -781,13 +957,10 @@ describe('local native player with shared controls', () => {
     expect(confirm).toHaveBeenCalledTimes(1)
 
     harness.render()
-    const now = harness.nodes().find((node) => node.props['aria-label'] === 'Set A to current position')!
-    ;(now.props.onClick as () => void)()
     const save = harness.nodes().find((node) => node.type === 'button' && node.props.children === 'Save position')!
     ;(save.props.onClick as () => void)()
     expect(persist).toHaveBeenCalledExactlyOnceWith([{ seconds: 20 }])
-    const mode = harness.nodes().find((node) => node.type === 'AppSelect' && node.props.value === 'off')!
-    ;(mode.props.onValueChange as (value: string) => void)('whole')
+    harness.loop('repeat')
     harness.render()
     harness.video.currentTime = 60
     harness.native('onTimeUpdate')

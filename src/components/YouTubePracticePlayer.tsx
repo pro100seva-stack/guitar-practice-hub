@@ -1,9 +1,10 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useMemo, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { isLocalMaterialIdentityReady, onLocalMaterialInvalidation, onLocalMaterialVerification } from '../lib/localMaterialAccess'
 import { useI18n } from '../lib/i18n'
 import { loadYouTubeApi, type YouTubePlayer } from '../lib/youtubeApi'
 import { toYouTubeApiSrc, toYouTubeWatchUrl } from '../lib/youtube'
-import { bookmarkSeek, clampVideoPosition, createPlaybackTransition, loopSeekTarget, supportedPlaybackRates, validDuration, videoShortcut, type LoopRange, type PlaybackIntent } from '../lib/youtubePractice'
+import { bookmarkSeek, clampVideoPosition, createPlaybackTransition, supportedPlaybackRates, validDuration, videoShortcut, type PlaybackIntent } from '../lib/youtubePractice'
+import { loopPlaybackDecision, normalizeLoopRegions, type LoopPlaybackState, type LoopRegion } from '../lib/loopRegions'
 import VideoPracticeControls, { videoControlClass as controlClass } from './VideoPracticeControls'
 import type { PlaybackBookmark } from '../lib/localMaterials'
 
@@ -12,16 +13,22 @@ type Props = {
   url: string
   name: string
   bookmarks: PlaybackBookmark[]
+  loops?: LoopRegion[]
+  onLoopsChange?: (loops: LoopRegion[]) => Promise<void>
   onBookmarksChange: (bookmarks: PlaybackBookmark[]) => Promise<void>
   onPlaybackConfirmed: (intent: PlaybackIntent) => void
 }
 
-export default function YouTubePracticePlayer({ materialId, url, name, bookmarks, onBookmarksChange, onPlaybackConfirmed }: Props) {
+export default function YouTubePracticePlayer({ materialId, url, name, bookmarks, loops = [], onLoopsChange, onBookmarksChange, onPlaybackConfirmed }: Props) {
   const { t } = useI18n()
   const hostRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<YouTubePlayer | null>(null)
-  const seekingRef = useRef<{ target: number; until: number } | null>(null)
-  const rangeRef = useRef<LoopRange | null>(null)
+  const seekingRef = useRef<{ target: number; from: number; until: number } | null>(null)
+  const [loopState, setLoopState] = useState<LoopPlaybackState>({ mode: 'off', selectedId: null })
+  const loopStateRef = useRef<LoopPlaybackState>(loopState)
+  const regionsRef = useRef<LoopRegion[]>([])
+  const regions = useMemo(() => normalizeLoopRegions(loops), [loops])
+  regionsRef.current = regions
   const transitionRef = useRef(createPlaybackTransition())
   const [retry, setRetry] = useState(0)
   const [ready, setReady] = useState(false)
@@ -37,6 +44,30 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
   const reportPlayback = useEffectEvent(onPlaybackConfirmed)
   const shortcuts = t('Video shortcuts: Space play/pause; Left/Right seek 5 seconds; Shift+Left/Right seek 15 seconds. Native video controls keep their own shortcuts.')
 
+  function changeLoopState(next: LoopPlaybackState) {
+    loopStateRef.current = next
+    setLoopState(next)
+  }
+
+  useEffect(() => {
+    if (loopStateRef.current.selectedId && !regionsRef.current.some((region) => region.id === loopStateRef.current.selectedId)) {
+      changeLoopState({ mode: 'off', selectedId: null })
+    }
+  }, [loops])
+
+  function readPlaybackRate(player: YouTubePlayer) {
+    const actual = player.getPlaybackRate()
+    if (Number.isFinite(actual) && actual > 0) setRate(actual)
+  }
+
+  function changePlaybackRate(value: number) {
+    const player = playerRef.current
+    if (!usable || !player || !Number.isFinite(value) || value < 0.25 || value > 2 || !rates.includes(value)) return
+    player.setPlaybackRate(value)
+    // A request is only a suggestion. Retain the applied rate until the player acknowledges it.
+    readPlaybackRate(player)
+  }
+
   useEffect(() => {
     const online = () => setOffline(!navigator.onLine)
     window.addEventListener('online', online)
@@ -50,7 +81,7 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
   function seek(target: number, play: boolean) {
     const player = playerRef.current
     if (!player) return
-    seekingRef.current = { target, until: Date.now() + 1500 }
+    seekingRef.current = { target, from: player.getCurrentTime(), until: Date.now() + 1500 }
     player.seekTo(target, true)
     if (play) player.playVideo()
     else player.pauseVideo()
@@ -61,6 +92,15 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
     if (!player) return
     if (player.getPlayerState() === 1) player.pauseVideo()
     else { transitionRef.current.requestPlay(); player.playVideo() }
+  }
+
+  function playFrom(position: number) {
+    const player = playerRef.current
+    if (!player || !usable || !isLocalMaterialIdentityReady()) return
+    const target = clampVideoPosition(position, player.getDuration())
+    if (target === null) return
+    transitionRef.current.requestPlay()
+    seek(target, true)
   }
 
   function seekPosition(position: number) {
@@ -79,15 +119,26 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
     const length = player.getDuration()
     setPosition(Number.isFinite(time) ? time : 0)
     setDuration(length)
+    readPlaybackRate(player)
     const seeking = seekingRef.current
-    if (seeking && (Math.abs(time - seeking.target) < 0.4 || Date.now() >= seeking.until)) {
+    const movedAfterSeek = seeking && Math.abs(time - seeking.from) >= Math.min(0.01, Math.abs(seeking.target - seeking.from) / 2)
+    if (seeking && ((movedAfterSeek && Math.abs(time - seeking.target) < 0.4) || Date.now() >= seeking.until)) {
       seekingRef.current = null
       transitionRef.current.settleAutomatic()
     }
-    const target = loopSeekTarget(rangeRef.current && rangeRef.current.end <= length ? rangeRef.current : null, time, playbackState, seekingRef.current !== null)
-    if (!offline && target !== null) {
+    const decision = loopPlaybackDecision({ ...loopStateRef.current,
+      regions: regionsRef.current.filter((region) => region.end <= length), time, state: playbackState,
+      seeking: seekingRef.current !== null,
+    })
+    if (!offline && decision?.kind === 'seek') {
+      if (decision.regionId !== loopStateRef.current.selectedId) changeLoopState({ ...loopStateRef.current, selectedId: decision.regionId })
       transitionRef.current.automaticPlay()
-      seek(target, true)
+      seek(decision.time, true)
+    } else if (!offline && decision?.kind === 'stop') {
+      const last = regionsRef.current.find((region) => region.id === loopStateRef.current.selectedId)
+      changeLoopState({ mode: 'off', selectedId: loopStateRef.current.selectedId })
+      if (last && time > last.end) seek(last.end, false)
+      else player.pauseVideo()
     }
   })
 
@@ -103,7 +154,8 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
     setDuration(0)
     setPosition(0)
     setRates([])
-    rangeRef.current = null
+    setRate(1)
+    changeLoopState({ mode: 'off', selectedId: null })
     transitionRef.current = createPlaybackTransition()
     seekingRef.current = null
     setError(src ? null : 'YouTube requires a valid HTTP or HTTPS origin.')
@@ -121,6 +173,7 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
       clearTimeout(readyTimer)
       playerRef.current = null
       seekingRef.current = null
+      loopStateRef.current = { mode: 'off', selectedId: null }
       player?.destroy()
       player = null
       host.replaceChildren()
@@ -139,14 +192,16 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
       host.replaceChildren(frame)
       readyTimer = setTimeout(() => fail('YouTube could not load. Check your connection or open on YouTube.'), 12000)
       player = new api.Player(frame, {
+        playerVars: { controls: 0, playsinline: 1, enablejsapi: 1, origin: window.location.origin },
         events: {
           onReady: ({ target }) => {
             if (cancelled || failed) return
             clearTimeout(readyTimer)
             playerRef.current = target
             setReady(true)
-            setRates(supportedPlaybackRates(target.getAvailablePlaybackRates()))
-            setRate(target.getPlaybackRate())
+            setRates(supportedPlaybackRates(target.getAvailablePlaybackRates()).filter((value) => value >= 0.25 && value <= 2))
+            if (target.getPlaybackRate() !== 1) target.setPlaybackRate(1)
+            readPlaybackRate(target)
             const playbackState = target.getPlayerState()
             transitionRef.current.observe(playbackState)
             setState(playbackState)
@@ -158,10 +213,10 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
             setState(data)
             const intent = transitionRef.current.observe(data)
             if (intent) reportPlayback(intent)
-            setRates(supportedPlaybackRates(target.getAvailablePlaybackRates()))
+            setRates(supportedPlaybackRates(target.getAvailablePlaybackRates()).filter((value) => value >= 0.25 && value <= 2))
             sample(target, data)
           },
-          onPlaybackRateChange: ({ data }) => { if (!cancelled && !failed) setRate(data) },
+          onPlaybackRateChange: ({ target }) => { if (!cancelled && !failed) readPlaybackRate(target) },
           onError: ({ data }) => fail(data === 153 ? 'YouTube could not verify this embed origin.' : 'This video is unavailable or cannot be embedded. Open on YouTube.'),
         },
       })
@@ -209,12 +264,14 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
       <div ref={hostRef} className="aspect-video w-full bg-black" />
       {!ready && !error && !offline && <p role="status" className="py-2 text-sm text-slate-300">{t('Loading YouTube player...')}</p>}
       {(error || offline) && <div className="flex flex-wrap items-center gap-2 py-2"><p role="alert" className="min-w-0 flex-1 text-sm text-amber-300">{t(offline ? 'YouTube is unavailable offline.' : error!)}</p><button type="button" disabled={offline} onClick={() => setRetry((value) => value + 1)} className={controlClass}>{t('Retry player')}</button></div>}
-      <VideoPracticeControls key={`${materialId}:${url}:${retry}`} usable={usable} playing={state === 1} duration={duration} position={position} rates={rates} rate={rate} bookmarks={bookmarks} shortcuts={shortcuts}
+      <VideoPracticeControls key={`${materialId}:${url}:${retry}`} usable={usable} playing={state === 1} duration={duration} position={position} rates={rates} rate={rate} rateMode="supported" bookmarks={bookmarks} shortcuts={shortcuts}
         getPosition={() => playerRef.current?.getCurrentTime() ?? NaN}
         onToggle={toggle}
         onSeek={seekPosition}
-        onRate={(value) => playerRef.current?.setPlaybackRate(value)}
-        onLoopRange={(range) => { rangeRef.current = range }} onBookmarksChange={onBookmarksChange} />
+        onRate={changePlaybackRate}
+        loops={regionsRef.current} loopState={loopState} onLoopStateChange={changeLoopState}
+        onLoopsChange={onLoopsChange ?? (() => Promise.reject(new Error('LOOP_PERSISTENCE_UNAVAILABLE')))} onPlayFrom={playFrom}
+        onBookmarksChange={onBookmarksChange} />
       <a href={toYouTubeWatchUrl(url) ?? url} target="_blank" rel="noreferrer" className="flex min-h-11 items-center py-2 text-sm text-sky-300">{t('Playback trouble? Open on YouTube')}</a>
     </div>
   )
