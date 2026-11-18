@@ -18,6 +18,7 @@ function fixture(persist = async () => ({ loops: regions })) {
     materialNavigationRef: { current: 3 }, materialsMountedRef: { current: true },
     materialsRequestTrackerRef: { current: { begin: vi.fn() } },
     patchLocalMaterialMetadata: patch, isLocalMaterialAccessCurrent: vi.fn(() => true),
+    synchronizeYoutubeMaterials: vi.fn(),
     setMaterialsByBlock, updateBlockMaterial,
   }
   const create = new Function(...Object.keys(context), `${code}; return saveMaterialLoops;`) as (...args: unknown[]) => (block: string, id: string, next: typeof regions, song?: string) => Promise<void>
@@ -32,6 +33,7 @@ describe('loop persistence from the selected material', () => {
     const update = item.setMaterialsByBlock.mock.calls[0][0]
     update({})
     expect(item.updateBlockMaterial).toHaveBeenCalledWith({}, 'song:song-one', 'video-one', { loops: regions })
+    expect(item.context.synchronizeYoutubeMaterials).toHaveBeenCalledWith(item.access)
   })
 
   it('keeps a failed write retryable without pretending the UI was saved', async () => {

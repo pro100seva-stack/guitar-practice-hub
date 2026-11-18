@@ -129,6 +129,7 @@ export function toYouTubeApiSrc(storedUrl: string, currentOrigin: string) {
   const url = new URL(plain)
   url.searchParams.set('enablejsapi', '1')
   url.searchParams.set('controls', '0')
+  url.searchParams.set('rel', '0')
   url.searchParams.set('origin', origin.origin)
   return url.toString()
 }

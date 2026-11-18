@@ -1,5 +1,6 @@
 import { localMaterialOwner, onLocalMaterialInvalidation, type LocalMaterialAccess } from './localMaterialAccess'
 import { normalizeLoopRegions, type LoopRegion } from './loopRegions'
+import { toYouTubeEmbedUrl } from './youtube'
 
 export type PlaybackBookmark = { seconds: number; name?: string }
 // Legacy records store bare seconds; they are only rewritten when that material's bookmarks change.
@@ -18,6 +19,8 @@ export type LocalMaterial = {
   blob?: Blob
   bookmarks?: StoredBookmark[]
   loops?: LoopRegion[]
+  looperOpen?: boolean
+  youtubeSync?: { revision: number; generation: number; pending: boolean; deleted?: boolean; conflict?: boolean }
   storage?: 'indexeddb' | 'cache'
   createdAt: string
 }
@@ -64,6 +67,42 @@ export type MaterialRef = MaterialScope & { id: string }
 // pendingDeletion marks an owned row whose cached bytes still need removal; it is hidden and cannot be reopened or patched.
 export type OwnedLocalMaterial = LocalMaterial & { ownerUid: string; pendingDeletion?: true }
 export type LocalMaterialInput = Omit<LocalMaterial, 'storage'>
+
+export function isYoutubeMaterial(material: LocalMaterial) {
+  return material.source === 'url' && !!material.url && !!toYouTubeEmbedUrl(material.url)
+}
+
+function pendingYoutubeSync(material: LocalMaterial): NonNullable<LocalMaterial['youtubeSync']> {
+  return { ...material.youtubeSync, revision: material.youtubeSync?.revision ?? 0, generation: (material.youtubeSync?.generation ?? 0) + 1, pending: true }
+}
+
+/** Includes owned URL tombstones so offline deletes survive reload and can reach the server. */
+export function listLocalYoutubeMaterials(access: LocalMaterialAccess) {
+  const ownerUid = localMaterialOwner(access)
+  return materialTransaction<OwnedLocalMaterial[]>(access, 'readonly', (store, finish, guard) => {
+    const request = store.index('ownerUid').getAll(ownerUid)
+    request.onsuccess = () => guard(() => finish((request.result as OwnedLocalMaterial[]).filter((row) => row.ownerUid === ownerUid && !row.pendingDeletion && isYoutubeMaterial(row))))
+  })
+}
+
+/** A guarded atomic cache/ack mutation; never touches file bytes or another owner's row. */
+export function mutateLocalYoutubeMaterial(access: LocalMaterialAccess, id: string, update: (current: OwnedLocalMaterial | undefined) => OwnedLocalMaterial | undefined) {
+  const ownerUid = localMaterialOwner(access)
+  if (!id || id === '.' || id === '..') return Promise.reject(new Error('LOCAL_MATERIAL_UNAVAILABLE'))
+  return materialTransaction<OwnedLocalMaterial | undefined>(access, 'readwrite', (store, finish, guard) => {
+    const request = store.get([ownerUid, id])
+    request.onsuccess = () => guard(() => {
+      const current = request.result as OwnedLocalMaterial | undefined
+      if (current && (current.ownerUid !== ownerUid || current.pendingDeletion || !isYoutubeMaterial(current))) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+      const next = update(current)
+      if (next) {
+        if (next.ownerUid !== ownerUid || next.id !== id || !isYoutubeMaterial(next) || next.blob) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+        store.put(next)
+      }
+      finish(next)
+    })
+  })
+}
 
 export const localMaterialCleanupPending = 'LOCAL_MATERIAL_CLEANUP_PENDING'
 const cacheDeleteRetryDelaysMs = [0, 150, 600]
@@ -152,7 +191,7 @@ async function materialTransaction<Result>(access: LocalMaterialAccess, mode: ID
 function requireRecord(record: OwnedLocalMaterial | undefined, ownerUid: string, ref: MaterialRef): OwnedLocalMaterial {
   const scope = normalizeMaterialScope(ref)
   const normalized = record ? { ...record, ...normalizeMaterialScope(record) } : undefined
-  if (!normalized || normalized.ownerUid !== ownerUid || normalized.id !== ref.id || normalized.blockKey !== scope.blockKey || normalized.songId !== scope.songId || normalized.pendingDeletion) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+  if (!normalized || normalized.ownerUid !== ownerUid || normalized.id !== ref.id || normalized.blockKey !== scope.blockKey || normalized.songId !== scope.songId || normalized.pendingDeletion || normalized.youtubeSync?.deleted) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
   return normalized
 }
 
@@ -168,7 +207,7 @@ export async function listLocalMaterials(access: LocalMaterialAccess, scope: Mat
         store.put(migrated)
         return migrated
       })
-      finish(owned.filter((record) => !record.pendingDeletion && record.blockKey === scope.blockKey && record.songId === scope.songId))
+      finish(owned.filter((record) => !record.pendingDeletion && !record.youtubeSync?.deleted && record.blockKey === scope.blockKey && record.songId === scope.songId))
     })
   })
 }
@@ -214,6 +253,8 @@ export async function saveLocalMaterial(access: LocalMaterialAccess, input: Loca
     name: input.name, type: input.type, size: input.size, source: input.source, url: input.url,
     blob: input.source === 'file' ? input.blob : undefined, bookmarks: input.bookmarks ? normalizeBookmarks(input.bookmarks) : undefined,
     loops: input.loops ? normalizeLoopRegions(input.loops) : undefined,
+    looperOpen: input.looperOpen,
+    ...(input.source === 'url' && input.url && toYouTubeEmbedUrl(input.url) ? { youtubeSync: { revision: 0, generation: 1, pending: true } } : {}),
     createdAt: input.createdAt, ownerUid, storage: 'indexeddb',
   }
   return withMaterialLock(ownerUid, material.id, async () => {
@@ -286,7 +327,7 @@ export async function loadLocalMaterialBlob(access: LocalMaterialAccess, ref: Ma
   })
 }
 
-export type MaterialMetadataPatch = { name?: string; bookmarks?: StoredBookmark[]; loops?: LoopRegion[] }
+export type MaterialMetadataPatch = { name?: string; bookmarks?: StoredBookmark[]; loops?: LoopRegion[]; looperOpen?: boolean }
 
 export function normalizeBookmarkName(value: unknown) {
   if (typeof value !== 'string') return undefined
@@ -310,7 +351,7 @@ export function normalizeBookmarks(values: readonly unknown[]): PlaybackBookmark
 export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, ref: MaterialRef, patch: MaterialMetadataPatch) {
   const ownerUid = localMaterialOwner(access)
   ref = snapshotMaterialRef(ref)
-  patch = { name: patch.name, bookmarks: patch.bookmarks ? normalizeBookmarks(patch.bookmarks) : undefined, loops: patch.loops ? normalizeLoopRegions(patch.loops) : undefined }
+  patch = { name: patch.name, bookmarks: patch.bookmarks ? normalizeBookmarks(patch.bookmarks) : undefined, loops: patch.loops ? normalizeLoopRegions(patch.loops) : undefined, looperOpen: patch.looperOpen }
   const name = patch.name?.trim()
   if (name === '') throw new Error('Material name is empty.')
   return materialTransaction<OwnedLocalMaterial>(access, 'readwrite', (store, finish, guard) => {
@@ -320,6 +361,8 @@ export async function patchLocalMaterialMetadata(access: LocalMaterialAccess, re
       if (name !== undefined) updated.name = name
       if (patch.bookmarks !== undefined) updated.bookmarks = normalizeBookmarks(patch.bookmarks)
       if (patch.loops !== undefined) updated.loops = normalizeLoopRegions(patch.loops)
+      if (patch.looperOpen !== undefined) updated.looperOpen = patch.looperOpen
+      if (isYoutubeMaterial(updated)) updated.youtubeSync = pendingYoutubeSync(updated)
       store.put(updated)
       finish(updated)
     })
@@ -336,6 +379,7 @@ export async function assignLocalMaterialToSong(access: LocalMaterialAccess, ref
     request.onsuccess = () => guard(() => {
       const owned = requireRecord(request.result, ownerUid, ref)
       const updated = { ...owned, blockKey: 'song', songId }
+      if (isYoutubeMaterial(updated)) updated.youtubeSync = pendingYoutubeSync(updated)
       store.put(updated)
       finish(updated)
     })
@@ -351,7 +395,8 @@ export async function deleteLocalMaterial(access: LocalMaterialAccess, ref: Mate
       const request = store.get([ownerUid, ref.id])
       request.onsuccess = () => guard(() => {
         const owned = requireRecord(request.result ? { ...request.result, pendingDeletion: undefined } : undefined, ownerUid, ref)
-        if (owned.storage === 'cache') store.put({ ...owned, pendingDeletion: true })
+        if (isYoutubeMaterial(owned)) store.put({ ...owned, youtubeSync: { ...pendingYoutubeSync(owned), deleted: true } })
+        else if (owned.storage === 'cache') store.put({ ...owned, pendingDeletion: true })
         else store.delete([ownerUid, ref.id])
         finish(owned)
       })

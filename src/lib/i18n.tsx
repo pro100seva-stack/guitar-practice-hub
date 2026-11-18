@@ -1416,6 +1416,10 @@ Object.assign(pageTranslations.it, { 'Remove {name}': 'Rimuovi {name}' })
 Object.assign(pageTranslations.fr, { 'Remove {name}': 'Supprimer {name}' })
 Object.assign(pageTranslations.en, {
   'loops.timeline': 'Video timeline and loop regions', 'loops.unnamed': 'Unnamed loop', 'loops.defaultName': 'Loop {number}',
+  'loops.multiLooper': 'Multi-Looper', 'loops.repeatCount': 'Times', 'loops.repeatNamed': 'Times to play {name}',
+  'loops.reorderNamed': 'Reorder {name}', 'loops.reorderHint': 'Drag up or down to change sequence order. Arrow keys, Home and End also move the loop.',
+  'loops.timeHint': 'Hold and drag up or down to adjust time.',
+  'player.skipBack': 'Back 5 seconds', 'player.skipForward': 'Forward 5 seconds', 'player.stop': 'Stop and return to start', 'player.play': 'Play',
   'loops.startHandle': '{name}: start A', 'loops.endHandle': '{name}: end B', 'loops.handleHint': 'Drag to adjust. Right-click, hold, or press Enter for an exact timestamp. Arrow keys adjust by 0.1 seconds; Shift by 0.01.',
   'loops.enableRepeat': 'Enable A–B loop', 'loops.disableRepeat': 'Disable A–B loop', 'loops.seek': 'Playback position',
   'loops.overlapCount': '+{count} overlapping loops', 'loops.title': 'Loops', 'loops.add': 'Add loop', 'loops.playAll': 'Play all loops', 'loops.stopSequence': 'End sequence',
@@ -1427,6 +1431,10 @@ Object.assign(pageTranslations.en, {
 })
 Object.assign(pageTranslations.ru, {
   'loops.timeline': 'Шкала видео и участки повтора', 'loops.unnamed': 'Повтор без имени', 'loops.defaultName': 'Фрагмент {number}',
+  'loops.multiLooper': 'Мульти-лупер', 'loops.repeatCount': 'Раз', 'loops.repeatNamed': 'Сколько раз играть {name}',
+  'loops.reorderNamed': 'Изменить порядок: {name}', 'loops.reorderHint': 'Перетащите вверх или вниз для изменения порядка. Также доступны стрелки, Home и End.',
+  'loops.timeHint': 'Удерживайте и тяните вверх или вниз для изменения времени.',
+  'player.skipBack': 'Назад на 5 секунд', 'player.skipForward': 'Вперёд на 5 секунд', 'player.stop': 'Остановить и вернуться в начало', 'player.play': 'Воспроизвести',
   'loops.startHandle': '{name}: начало A', 'loops.endHandle': '{name}: конец B', 'loops.handleHint': 'Перетащите для настройки. Правая кнопка, удержание или Enter открывают точное время. Стрелки меняют на 0,1 секунды, с Shift — на 0,01.',
   'loops.enableRepeat': 'Включить повтор A–B', 'loops.disableRepeat': 'Выключить повтор A–B', 'loops.seek': 'Позиция воспроизведения',
   'loops.overlapCount': '+{count} перекрывающихся фрагментов', 'loops.title': 'Фрагменты', 'loops.add': 'Добавить фрагмент', 'loops.playAll': 'Играть все фрагменты', 'loops.stopSequence': 'Завершить последовательность',
@@ -1437,6 +1445,10 @@ Object.assign(pageTranslations.ru, {
 })
 Object.assign(pageTranslations.it, {
   'loops.timeline': 'Timeline video e regioni di loop', 'loops.unnamed': 'Loop senza nome', 'loops.defaultName': 'Frase {number}',
+  'loops.multiLooper': 'Multi-Looper', 'loops.repeatCount': 'Volte', 'loops.repeatNamed': 'Ripetizioni di {name}',
+  'loops.reorderNamed': 'Riordina {name}', 'loops.reorderHint': 'Trascina in alto o in basso per cambiare ordine. Sono disponibili anche le frecce, Home e Fine.',
+  'loops.timeHint': 'Tieni premuto e trascina in alto o in basso per regolare il tempo.',
+  'player.skipBack': 'Indietro di 5 secondi', 'player.skipForward': 'Avanti di 5 secondi', 'player.stop': 'Ferma e torna all’inizio', 'player.play': 'Riproduci',
   'loops.startHandle': '{name}: inizio A', 'loops.endHandle': '{name}: fine B', 'loops.handleHint': 'Trascina per regolare. Clic destro, pressione prolungata o Invio per il tempo esatto. Frecce: 0,1 secondi; Maiusc: 0,01.',
   'loops.enableRepeat': 'Attiva loop A–B', 'loops.disableRepeat': 'Disattiva loop A–B', 'loops.seek': 'Posizione di riproduzione',
   'loops.overlapCount': '+{count} loop sovrapposti', 'loops.title': 'Loop', 'loops.add': 'Aggiungi loop', 'loops.playAll': 'Riproduci tutti i loop', 'loops.stopSequence': 'Termina sequenza',
@@ -1447,6 +1459,10 @@ Object.assign(pageTranslations.it, {
 })
 Object.assign(pageTranslations.fr, {
   'loops.timeline': 'Chronologie vidéo et régions de boucle', 'loops.unnamed': 'Boucle sans nom', 'loops.defaultName': 'Phrase {number}',
+  'loops.multiLooper': 'Multi-Looper', 'loops.repeatCount': 'Fois', 'loops.repeatNamed': 'Nombre de lectures de {name}',
+  'loops.reorderNamed': 'Réordonner {name}', 'loops.reorderHint': 'Faites glisser vers le haut ou le bas pour changer l’ordre. Les flèches, Début et Fin fonctionnent aussi.',
+  'loops.timeHint': 'Maintenez puis faites glisser vers le haut ou le bas pour ajuster le temps.',
+  'player.skipBack': 'Reculer de 5 secondes', 'player.skipForward': 'Avancer de 5 secondes', 'player.stop': 'Arrêter et revenir au début', 'player.play': 'Lire',
   'loops.startHandle': '{name} : début A', 'loops.endHandle': '{name} : fin B', 'loops.handleHint': 'Faites glisser pour ajuster. Clic droit, appui long ou Entrée pour le temps exact. Flèches : 0,1 seconde ; Maj : 0,01.',
   'loops.enableRepeat': 'Activer la boucle A–B', 'loops.disableRepeat': 'Désactiver la boucle A–B', 'loops.seek': 'Position de lecture',
   'loops.overlapCount': '+{count} boucles superposées', 'loops.title': 'Boucles', 'loops.add': 'Ajouter une boucle', 'loops.playAll': 'Lire toutes les boucles', 'loops.stopSequence': 'Terminer la séquence',
@@ -1454,6 +1470,46 @@ Object.assign(pageTranslations.fr, {
   'loops.outsideDuration': 'Certaines régions dépassent la durée de cette vidéo. Les données sont conservées ; ajustez leurs limites pour les utiliser.',
   'loops.rename': 'Renommer la boucle', 'loops.precise': 'Position exacte de la limite', 'loops.name': 'Nom de la boucle', 'loops.start': 'Début A', 'loops.end': 'Fin B', 'loops.save': 'Enregistrer la boucle',
   'loops.invalidBounds': 'Saisissez des temps valides : 0 ≤ début < fin ≤ durée de la vidéo, par exemple 01:24.50.',
+})
+Object.assign(pageTranslations.en, {
+  'loops.preferenceSaveFailed': 'Could not remember this video’s Multi-Looper setting.',
+  'youtubeSync.title': 'YouTube materials sync', 'youtubeSync.pending': 'YouTube changes are saved on this device and waiting to sync.',
+  'youtubeSync.unavailable': 'YouTube sync is unavailable. Changes saved on this device will be retried.',
+  'youtubeSync.conflict': '“{name}” was also changed on another device. Choose which copies to keep.',
+  'youtubeSync.keepBoth': 'Keep both copies', 'youtubeSync.useCloud': 'Use synced copy', 'youtubeSync.removeEverywhere': 'Remove everywhere',
+  'release.0140.sync': 'Your YouTube links, bookmarks and loop regions follow your account between devices. Uploaded files stay on this device.',
+  'release.0140.looper': 'Each video remembers whether Multi-Looper was open. Arrange loops in your own order and set how many times each plays in ALL mode.',
+  'release.0140.controls': 'Use the always-visible timeline, skip buttons and Pause/Stop controls. Hold a loop time field and drag up or down to adjust it.',
+})
+Object.assign(pageTranslations.ru, {
+  'loops.preferenceSaveFailed': 'Не удалось запомнить настройку Multi-Looper для этого видео.',
+  'youtubeSync.title': 'Синхронизация материалов YouTube', 'youtubeSync.pending': 'Изменения YouTube сохранены на этом устройстве и ожидают синхронизации.',
+  'youtubeSync.unavailable': 'Синхронизация YouTube недоступна. Изменения на этом устройстве будут отправлены позже.',
+  'youtubeSync.conflict': '«{name}» также изменён на другом устройстве. Выберите, какие копии оставить.',
+  'youtubeSync.keepBoth': 'Оставить обе копии', 'youtubeSync.useCloud': 'Использовать синхронизированную копию', 'youtubeSync.removeEverywhere': 'Удалить везде',
+  'release.0140.sync': 'Ссылки YouTube, закладки и петли теперь доступны на разных устройствах вашего аккаунта. Загруженные файлы остаются на устройстве.',
+  'release.0140.looper': 'Каждое видео запоминает, открыт ли Multi-Looper. Меняйте порядок петель и число повторов каждой в режиме ALL.',
+  'release.0140.controls': 'Шкала времени всегда видна. Добавлены перемотка и Пауза/Стоп. Удерживайте поле времени и двигайте вверх или вниз для настройки.',
+})
+Object.assign(pageTranslations.it, {
+  'loops.preferenceSaveFailed': 'Impossibile ricordare l’impostazione Multi-Looper di questo video.',
+  'youtubeSync.title': 'Sincronizzazione dei materiali YouTube', 'youtubeSync.pending': 'Le modifiche YouTube sono salvate su questo dispositivo, in attesa di sincronizzazione.',
+  'youtubeSync.unavailable': 'Sincronizzazione YouTube non disponibile. Le modifiche salvate qui verranno ritentate.',
+  'youtubeSync.conflict': 'Anche “{name}” è stato modificato su un altro dispositivo. Scegli quali copie conservare.',
+  'youtubeSync.keepBoth': 'Conserva entrambe le copie', 'youtubeSync.useCloud': 'Usa la copia sincronizzata', 'youtubeSync.removeEverywhere': 'Rimuovi ovunque',
+  'release.0140.sync': 'Link YouTube, segnalibri e loop seguono il tuo account sui vari dispositivi. I file caricati restano su questo dispositivo.',
+  'release.0140.looper': 'Ogni video ricorda se Multi-Looper era aperto. Ordina i loop e scegli quante volte ripeterli in modalità ALL.',
+  'release.0140.controls': 'Timeline sempre visibile, salti e controlli Pausa/Stop. Tieni premuto un campo orario e trascina in alto o in basso per regolarlo.',
+})
+Object.assign(pageTranslations.fr, {
+  'loops.preferenceSaveFailed': 'Impossible de mémoriser le réglage Multi-Looper de cette vidéo.',
+  'youtubeSync.title': 'Synchronisation des supports YouTube', 'youtubeSync.pending': 'Les modifications YouTube sont enregistrées sur cet appareil, en attente de synchronisation.',
+  'youtubeSync.unavailable': 'Synchronisation YouTube indisponible. Les modifications enregistrées ici seront réessayées.',
+  'youtubeSync.conflict': '« {name} » a aussi été modifié sur un autre appareil. Choisissez les copies à conserver.',
+  'youtubeSync.keepBoth': 'Conserver les deux copies', 'youtubeSync.useCloud': 'Utiliser la copie synchronisée', 'youtubeSync.removeEverywhere': 'Supprimer partout',
+  'release.0140.sync': 'Vos liens YouTube, signets et boucles suivent votre compte entre appareils. Les fichiers importés restent sur cet appareil.',
+  'release.0140.looper': 'Chaque vidéo mémorise si Multi-Looper était ouvert. Réordonnez les boucles et choisissez leurs répétitions en mode ALL.',
+  'release.0140.controls': 'Timeline toujours visible, sauts et commandes Pause/Stop. Maintenez un champ de temps et glissez vers le haut ou le bas pour l’ajuster.',
 })
 Object.assign(translations.en, pageTranslations.en)
 Object.assign(translations.ru, pageTranslations.ru)

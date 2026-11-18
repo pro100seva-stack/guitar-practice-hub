@@ -26,11 +26,13 @@ type Props = {
   onLoopStateChange: (state: LoopPlaybackState) => void
   onLoopsChange: (loops: LoopRegion[]) => Promise<void>
   onPlayFrom: (position: number) => void
+  looperOpen?: boolean
+  onLooperOpenChange?: (open: boolean) => Promise<void>
   onBookmarksChange: (bookmarks: PlaybackBookmark[]) => Promise<void>
 }
 
 export const videoControlClass = 'min-h-11 min-w-11 rounded border border-slate-600 px-3 text-sm text-slate-200 disabled:opacity-40'
-export default function VideoPracticeControls({ kind = 'video', usable, playing, duration, position, rates, rate, rateMode = 'supported', bookmarks, shortcuts, getPosition, onToggle, onSeek, onRate, loops, loopState, onLoopStateChange, onLoopsChange, onPlayFrom, onBookmarksChange }: Props) {
+export default function VideoPracticeControls({ kind = 'video', usable, playing, duration, position, rates, rate, rateMode = 'supported', bookmarks, shortcuts, getPosition, onToggle, onSeek, onRate, loops, loopState, onLoopStateChange, onLoopsChange, onPlayFrom, looperOpen, onLooperOpenChange, onBookmarksChange }: Props) {
   const { t } = useI18n()
   const isAudio = kind === 'audio'
   const toggleLabel = isAudio ? t(playing ? 'Pause audio' : 'Play audio') : t(playing ? 'Pause video' : 'Play video')
@@ -75,11 +77,17 @@ export default function VideoPracticeControls({ kind = 'video', usable, playing,
   return (
     <div className="px-2">
       <PracticeLoopControls usable={usable} playing={playing} duration={duration} position={position} regions={loops} state={loopState}
+        expanded={looperOpen} onExpandedChange={onLooperOpenChange}
         onStateChange={onLoopStateChange} onRegionsChange={onLoopsChange} onSeek={onSeek} onPlayFrom={onPlayFrom}
-        renderControls={(loopToggle) => <div className="flex flex-wrap items-end gap-2 py-2">
-        <button type="button" disabled={!usable} onClick={onToggle} title={toggleLabel} aria-label={toggleLabel} aria-description={shortcuts} className={videoControlClass}>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">{playing ? <path d="M6 4h4v16H6zM14 4h4v16h-4z" /> : <path d="m7 3 15 9-15 9z" />}</svg>
-        </button>
+        renderControls={(loopToggle) => <div className="flex flex-wrap items-center justify-center gap-2 py-2">
+        <div className="flex items-center gap-1">
+          <button type="button" disabled={!usable} aria-label={t('player.skipBack')} title={t('player.skipBack')} className={videoControlClass} onClick={() => onSeek(Math.max(0, Math.min(duration, getPosition() - 5)))}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m9 5-6 7 6 7M19 5l-6 7 6 7" /></svg></button>
+          <button type="button" disabled={!usable} aria-label={playing ? toggleLabel : t('player.stop')} title={playing ? toggleLabel : t('player.stop')} className={videoControlClass} onClick={() => { if (playing) onToggle(); else { onLoopStateChange({ mode: 'off', selectedId: loopState.selectedId }); onSeek(0) } }}><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">{playing ? <path d="M6 4h4v16H6zM14 4h4v16h-4z" /> : <path d="M5 5h14v14H5z" />}</svg></button>
+          <button type="button" disabled={!usable} onClick={() => { if (!playing) onPlayFrom(Math.max(0, Math.min(duration, getPosition()))) }} title={t('player.play')} aria-label={t('player.play')} aria-description={shortcuts} className={videoControlClass}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="m7 3 15 9-15 9z" /></svg>
+          </button>
+          <button type="button" disabled={!usable} aria-label={t('player.skipForward')} title={t('player.skipForward')} className={videoControlClass} onClick={() => onSeek(Math.max(0, Math.min(duration, getPosition() + 5)))}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m5 5 6 7-6 7M15 5l6 7-6 7" /></svg></button>
+        </div>
         <span className="py-3 text-sm tabular-nums text-slate-300">{formatPracticeTime(position)}</span>
         <PlaybackSpeedThumbwheel rate={rate} rates={rateMode === 'supported' ? rates : undefined} disabled={!usable} onRate={onRate} />
         {loopToggle}

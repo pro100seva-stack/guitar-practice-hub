@@ -730,6 +730,28 @@ describe('localMaterials block scoping (in-memory IndexedDB fake)', () => {
     expect((await listLocalMaterials('learning'))[0].loops).toEqual([])
   })
 
+  it('queues YouTube metadata edits and keeps deleted links as sync tombstones', async () => {
+    const url = 'https://www.youtube.com/watch?v=abcdefghijk'
+    await saveLocalMaterial({ ...material('youtube-video', 'learning'), url })
+    await saveLocalMaterial({ ...material('external-page', 'learning'), url: 'https://example.com/lesson' })
+    expect(await localApi.listLocalYoutubeMaterials(access)).toMatchObject([
+      { id: 'youtube-video', youtubeSync: { revision: 0, generation: 1, pending: true } },
+    ])
+    expect((await listLocalMaterials('learning')).find((row) => row.id === 'external-page')?.youtubeSync).toBeUndefined()
+
+    await patchLocalMaterialMetadata('youtube-video', 'learning', { looperOpen: true })
+    expect((await listLocalMaterials('learning')).find((row) => row.id === 'youtube-video')).toMatchObject({
+      looperOpen: true, youtubeSync: { revision: 0, generation: 2, pending: true },
+    })
+    await deleteLocalMaterial('youtube-video', 'learning')
+    expect(await listLocalMaterials('learning')).toEqual([
+      expect.objectContaining({ id: 'external-page' }),
+    ])
+    expect(await localApi.listLocalYoutubeMaterials(access)).toMatchObject([
+      { id: 'youtube-video', youtubeSync: { revision: 0, generation: 3, pending: true, deleted: true } },
+    ])
+  })
+
   it('isolates loop metadata by account, video ID and canonical song scope', async () => {
     const loop: LoopRegion = { id: 'same-loop-id', name: 'A phrase', start: 1, end: 4, color: 2, order: 0 }
     await saveLocalMaterial({ ...material('same-video-id', 'repertoire'), songId: 'song-A', loops: [loop] })

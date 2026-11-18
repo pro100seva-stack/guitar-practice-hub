@@ -14,6 +14,12 @@ describe('persistent loop regions', () => {
     expect(normalizeLoopRegions([null, 1, {}, region('valid'), region('valid'), region('unsafe"selector'), region(' space '), region('negative', -0.001, 1), region('zero', 1, 1), region('reverse', 4, 3), region('infinity', 0, Infinity), region('precision-zero', 1, 1.001)])).toEqual([region('valid')])
     expect(normalizeLoopRegions(undefined)).toEqual([])
   })
+  it('retains optional repetition counts while keeping older loops backward compatible', () => {
+    expect(normalizeLoopRegions([{ ...region('twice'), repeats: 2 }, { ...region('invalid'), repeats: 0 }, region('legacy')])).toEqual([
+      { ...region('twice'), repeats: 2 }, { ...region('invalid'), repeats: 1 }, region('legacy'),
+    ])
+    for (const repeats of [1.5, 1000, Infinity, '3']) expect(normalizeLoopRegions([{ ...region('invalid'), repeats }])[0].repeats).toBe(1)
+  })
   it('bounds names, normalizes color/order and imposes no two-region storage limit', () => {
     const values = Array.from({ length: 100 }, (_, index) => ({ ...region(`r${index}`, index, index + 1), name: `  ${'🎸'.repeat(70)}  `, color: -1, order: NaN }))
     const normalized = normalizeLoopRegions(values)
@@ -24,7 +30,7 @@ describe('persistent loop regions', () => {
 })
 
 describe('centisecond editing', () => {
-  it.each([['84.50', 84.5], ['01:24.50', 84.5], ['1:2.5', 62.5], ['01:02:03.45', 3723.45], ['90:00', 5400], ['00:00.01', 0.01], ['0', 0]])('parses %s without a beat/bar grid', (text, value) => {
+  it.each([['84.50', 84.5], ['01:24.50', 84.5], ['84,50', 84.5], ['01:24,50', 84.5], ['1:2.5', 62.5], ['01:02:03.45', 3723.45], ['90:00', 5400], ['00:00.01', 0.01], ['0', 0]])('parses %s without a beat/bar grid', (text, value) => {
     expect(parseLoopTimestamp(text)).toBe(value)
   })
   it.each(['', '-1', '1:60', '1:60:00', '1.234', 'abc', '1::2', 'Infinity', '1:2:3:4', '999999999999999999999'])('rejects invalid timestamp %s', (value) => {
@@ -88,7 +94,7 @@ describe('one selected-repeat / separate sequence architecture', () => {
     expect(decide({ mode: 'off' })).toBeNull()
     expect(decide({ selectedId: null })).toBeNull()
   })
-  it('plays in timestamp order, skips gaps, then stops instead of repeating the last region', () => {
+  it('plays in saved order, skips gaps, then stops instead of repeating the last region', () => {
     expect(decide({ mode: 'sequence' })).toEqual({ kind: 'seek', time: 15, regionId: 'second' })
     expect(decide({ mode: 'sequence', selectedId: 'second', time: 20 })).toEqual({ kind: 'seek', time: 25, regionId: 'third' })
     expect(decide({ mode: 'sequence', selectedId: 'third', time: 30 })).toEqual({ kind: 'stop' })
@@ -96,7 +102,16 @@ describe('one selected-repeat / separate sequence architecture', () => {
   })
   it('keeps overlapping loops independent and applies stable ties', () => {
     const rows = [region('later', 10, 20, 2), region('first-tie', 10, 15), region('intro', 0, 5, 3)]
-    expect(orderedLoopRegions(rows).map((row) => row.id)).toEqual(['intro', 'first-tie', 'later'])
+    expect(orderedLoopRegions(rows).map((row) => row.id)).toEqual(['first-tie', 'later', 'intro'])
     expect(decide({ mode: 'sequence', regions: rows, selectedId: 'first-tie', time: 15 })).toEqual({ kind: 'seek', time: 10, regionId: 'later' })
+  })
+  it('plays each saved repetition before advancing in custom order and stopping', () => {
+    const rows = [{ ...region('late-first', 40, 50), repeats: 3 }, { ...region('early-second', 0, 5, 1), repeats: 2 }]
+    expect(decide({ mode: 'sequence', regions: rows, selectedId: 'late-first', time: 50 })).toEqual({ kind: 'seek', time: 40, regionId: 'late-first', iteration: 2 })
+    expect(decide({ mode: 'sequence', regions: rows, selectedId: 'late-first', time: 50, iteration: 2 })).toEqual({ kind: 'seek', time: 40, regionId: 'late-first', iteration: 3 })
+    expect(decide({ mode: 'sequence', regions: rows, selectedId: 'late-first', time: 39.9, iteration: 2 })).toEqual({ kind: 'seek', time: 40, regionId: 'late-first', iteration: 2 })
+    expect(decide({ mode: 'sequence', regions: rows, selectedId: 'late-first', time: 50, iteration: 3 })).toEqual({ kind: 'seek', time: 0, regionId: 'early-second' })
+    expect(decide({ mode: 'sequence', regions: rows, selectedId: 'early-second', time: 5, iteration: 2 })).toEqual({ kind: 'stop' })
+    expect(decide({ mode: 'repeat', regions: rows, selectedId: 'early-second', time: 5, iteration: 2 })).toEqual({ kind: 'seek', time: 0, regionId: 'early-second' })
   })
 })

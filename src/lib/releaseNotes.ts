@@ -9,6 +9,7 @@ const releaseSummaries: Readonly<Record<string, readonly string[]>> = {
   '0.12.0': ['release.0120.updates', 'release.0120.monitoring', 'release.0120.summary'],
   '0.13.0': ['release.0130.loops', 'release.0130.player', 'release.0130.autosave', 'release.0130.updates'],
   '0.13.1': ['release.0131.pwa'],
+  '0.14.0': ['release.0140.sync', 'release.0140.looper', 'release.0140.controls'],
 }
 
 type ReleaseStorage = Pick<Storage, 'getItem' | 'setItem'>

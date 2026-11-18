@@ -8,7 +8,9 @@ The app is now named **Pro100Practice**, with `pro100practice.app` as its curren
 
 ## Release Updates
 
-**[Read the changelog](docs/CHANGELOG.md)** for version history and upcoming changes.
+**[Read the changelog](docs/CHANGELOG.md)** for a plain-language history of what each version adds, changes and fixes.
+
+- **0.14.0 — YouTube materials across devices:** keep YouTube links, bookmarks, loop regions and remembered Multi-Looper visibility with your account. Arrange an ALL sequence with per-loop repeat counts, use a centered transport row, and edit loop times by typing or holding and dragging. Local files remain on their original device. See the [release evidence](docs/evidence/acceptance/release-0.14.0-2026-11-18.md) for validation, schema availability and remaining device checks.
 
 - **0.13.1 — PWA update reliability:** completes the reload after a service worker activates, including browsers that do not send `controllerchange`. The app stays protected from new interaction during the brief activation step so work cannot become unsaved immediately before reload.
 
@@ -45,7 +47,7 @@ The app is now named **Pro100Practice**, with `pro100practice.app` as its curren
 - Use optional built-in exercise guidance and PDFs alongside device-local PDF, image, text, audio, and video files or YouTube/HTTP(S) links. Playback depends on browser codecs and network availability; remote links are not offline downloads.
 - Choose English, Russian, Italian, or French. Interface-language changes do not rewrite stored practice content.
 
-Account data uses Supabase authentication and row-level security. Repertoire and Learn a new song share materials by song identity; other exercises retain block-specific references. User-added files, material metadata, playback bookmarks and loop regions stay in browser-local storage for that device and origin, not Supabase. Local access is scoped to the authenticated UID and auth epoch; IndexedDB v2 holds owned metadata/bookmarks/loops, while file bytes use owner-scoped cache v2 when CacheStorage and Web Locks are available, or IndexedDB otherwise. Ownerless legacy records and bytes are preserved but hidden, with no automatic claim or legacy fallback. This is application-level isolation, not encryption or protection from OS/browser-profile access. Browser eviction or clearing storage can lose materials; deleting an account does not erase device-local files. Never clear owner/shared storage for QA. The PWA shell does not imply all data or linked media works offline.
+Account data uses Supabase authentication and row-level security. Repertoire and Learn a new song share materials by song identity; other exercises retain block-specific references. YouTube links, names, bookmarks, loop regions and Multi-Looper visibility use owned cloud metadata with a local cache and offline queue. Uploaded files and other URL materials remain local to their device and browser origin. Local access is scoped to the authenticated UID and auth epoch; IndexedDB v2 holds owned metadata, while file bytes use owner-scoped cache v2 when CacheStorage and Web Locks are available, or IndexedDB otherwise. Ownerless legacy records and bytes are preserved but hidden, with no automatic claim or legacy fallback. This is application-level isolation, not encryption or protection from OS/browser-profile access. Browser eviction or clearing storage can lose files and unsynced edits; deleting an account does not erase device-local files. Never clear owner/shared storage for QA. The PWA shell does not imply all data or linked media works offline. Schema availability and release validation are recorded separately in the handoff and release evidence.
 
 The PWA may discover updates during an active visit, but offers Update/Later only on a fresh app opening. It does not save drafts, pause timers or force an active session to reload. Applying an offered update requires an explicit click and the sole in-scope app window; other open app windows block activation. Browsers may already activate a waiting update after all app windows close, in which case the normal release summary appears.
 
@@ -53,7 +55,7 @@ Built with React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 8, Supabas
 
 ## Beta Limitations
 
-- Materials belong to an account on one device/browser origin, not a cross-device library. Changing accounts hides the previous account's materials; ownerless legacy bytes stay preserved but hidden. Local isolation does not protect against OS/DevTools access or XSS, and browser eviction or storage clearing can lose files.
+- YouTube links and their practice metadata can sync for the same account; uploaded files and other URL materials do not. Offline changes remain pending until synchronization succeeds, and conflicting device edits require a choice. Changing accounts hides the previous account's cache; ownerless legacy bytes stay preserved but hidden. Local isolation does not protect against OS/DevTools access or XSS, and browser eviction or storage clearing can lose files and unsynced changes.
 - Security-question recovery retains weak-answer, login-enumeration and quota-exhaustion risks. Durable throttling is not strong authentication; verified-email recovery is not implemented.
 - Plan/session saves span multiple requests and are not fully atomic. A later failure can leave earlier writes saved; review feedback before retrying.
 - Physical Safari/iOS/Android installation and cached-icon updates, the retained PDF's notation readability, and complete real-account save/reload/onboarding acceptance remain manual gaps. Earlier scoped checks do not close them.
@@ -118,7 +120,7 @@ The local [Cloudflare routing fix](docs/hosting.md) preserves app deep links whi
 ## Project Docs
 
 - [Documentation index](docs/README.md): current guides, review reports, plans and supporting evidence.
-- [Changelog](docs/CHANGELOG.md): recorded version history and unpublished work.
+- [Changelog](docs/CHANGELOG.md): user-facing version history with Added, Changed and Fixed sections.
 - [Technical overview](docs/technical.md) and [architecture](docs/architecture.md): implementation and domain model.
 - [Scope and backlog](docs/guitar-hub-v1-scope-and-backlog.md): approved work, acceptance status, and open decisions.
 - [Project handoff](docs/project-handoff.md): continuation notes and release context.

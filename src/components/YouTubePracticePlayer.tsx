@@ -15,11 +15,13 @@ type Props = {
   bookmarks: PlaybackBookmark[]
   loops?: LoopRegion[]
   onLoopsChange?: (loops: LoopRegion[]) => Promise<void>
+  looperOpen?: boolean
+  onLooperOpenChange?: (open: boolean) => Promise<void>
   onBookmarksChange: (bookmarks: PlaybackBookmark[]) => Promise<void>
   onPlaybackConfirmed: (intent: PlaybackIntent) => void
 }
 
-export default function YouTubePracticePlayer({ materialId, url, name, bookmarks, loops = [], onLoopsChange, onBookmarksChange, onPlaybackConfirmed }: Props) {
+export default function YouTubePracticePlayer({ materialId, url, name, bookmarks, loops = [], onLoopsChange, looperOpen, onLooperOpenChange, onBookmarksChange, onPlaybackConfirmed }: Props) {
   const { t } = useI18n()
   const hostRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<YouTubePlayer | null>(null)
@@ -35,6 +37,7 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
   const [state, setState] = useState(-1)
   const [duration, setDuration] = useState(0)
   const [position, setPosition] = useState(0)
+  const [seekPending, setSeekPending] = useState(false)
   const [rates, setRates] = useState<number[]>([])
   const [rate, setRate] = useState(1)
   const [error, setError] = useState<string | null>(null)
@@ -82,6 +85,8 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
     const player = playerRef.current
     if (!player) return
     seekingRef.current = { target, from: player.getCurrentTime(), until: Date.now() + 1500 }
+    setSeekPending(true)
+    setPosition(target)
     player.seekTo(target, true)
     if (play) player.playVideo()
     else player.pauseVideo()
@@ -117,21 +122,23 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
     if (!isLocalMaterialIdentityReady()) return
     const time = player.getCurrentTime()
     const length = player.getDuration()
-    setPosition(Number.isFinite(time) ? time : 0)
     setDuration(length)
     readPlaybackRate(player)
     const seeking = seekingRef.current
     const movedAfterSeek = seeking && Math.abs(time - seeking.from) >= Math.min(0.01, Math.abs(seeking.target - seeking.from) / 2)
     if (seeking && ((movedAfterSeek && Math.abs(time - seeking.target) < 0.4) || Date.now() >= seeking.until)) {
       seekingRef.current = null
+      setSeekPending(false)
       transitionRef.current.settleAutomatic()
     }
+    // A paused seek can be asynchronous: retain its preview until the provider settles.
+    setPosition(seekingRef.current?.target ?? (Number.isFinite(time) ? time : 0))
     const decision = loopPlaybackDecision({ ...loopStateRef.current,
       regions: regionsRef.current.filter((region) => region.end <= length), time, state: playbackState,
       seeking: seekingRef.current !== null,
     })
     if (!offline && decision?.kind === 'seek') {
-      if (decision.regionId !== loopStateRef.current.selectedId) changeLoopState({ ...loopStateRef.current, selectedId: decision.regionId })
+      if (decision.regionId !== loopStateRef.current.selectedId || decision.iteration !== undefined || loopStateRef.current.iteration !== undefined) changeLoopState({ ...loopStateRef.current, selectedId: decision.regionId, iteration: decision.iteration ?? 1 })
       transitionRef.current.automaticPlay()
       seek(decision.time, true)
     } else if (!offline && decision?.kind === 'stop') {
@@ -153,6 +160,7 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
     setState(-1)
     setDuration(0)
     setPosition(0)
+    setSeekPending(false)
     setRates([])
     setRate(1)
     changeLoopState({ mode: 'off', selectedId: null })
@@ -192,7 +200,7 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
       host.replaceChildren(frame)
       readyTimer = setTimeout(() => fail('YouTube could not load. Check your connection or open on YouTube.'), 12000)
       player = new api.Player(frame, {
-        playerVars: { controls: 0, playsinline: 1, enablejsapi: 1, origin: window.location.origin },
+        playerVars: { controls: 0, rel: 0, playsinline: 1, enablejsapi: 1, origin: window.location.origin },
         events: {
           onReady: ({ target }) => {
             if (cancelled || failed) return
@@ -235,16 +243,17 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
   }, [name, ready])
 
   useEffect(() => {
-    if (!ready || state !== 1 || offline) return
+    if (!ready || (state !== 1 && !seekPending) || offline) return
     const timer = setInterval(() => {
       const player = playerRef.current
       if (!player) return
       const playbackState = player.getPlayerState()
-      if (playbackState !== 1) { setState(playbackState); return }
+      if (playbackState !== 1 && !seekingRef.current) return
+      if (playbackState !== state) setState(playbackState)
       sample(player, playbackState)
     }, 125)
     return () => clearInterval(timer)
-  }, [ready, state, offline, materialId, url, retry])
+  }, [ready, state, seekPending, offline, materialId, url, retry])
 
   return (
     <div tabIndex={0} role="group" aria-label={t('Video practice: {name}', { name })} aria-description={shortcuts}
@@ -265,11 +274,12 @@ export default function YouTubePracticePlayer({ materialId, url, name, bookmarks
       {!ready && !error && !offline && <p role="status" className="py-2 text-sm text-slate-300">{t('Loading YouTube player...')}</p>}
       {(error || offline) && <div className="flex flex-wrap items-center gap-2 py-2"><p role="alert" className="min-w-0 flex-1 text-sm text-amber-300">{t(offline ? 'YouTube is unavailable offline.' : error!)}</p><button type="button" disabled={offline} onClick={() => setRetry((value) => value + 1)} className={controlClass}>{t('Retry player')}</button></div>}
       <VideoPracticeControls key={`${materialId}:${url}:${retry}`} usable={usable} playing={state === 1} duration={duration} position={position} rates={rates} rate={rate} rateMode="supported" bookmarks={bookmarks} shortcuts={shortcuts}
-        getPosition={() => playerRef.current?.getCurrentTime() ?? NaN}
+        getPosition={() => seekingRef.current?.target ?? playerRef.current?.getCurrentTime() ?? NaN}
         onToggle={toggle}
         onSeek={seekPosition}
         onRate={changePlaybackRate}
         loops={regionsRef.current} loopState={loopState} onLoopStateChange={changeLoopState}
+        looperOpen={looperOpen} onLooperOpenChange={onLooperOpenChange}
         onLoopsChange={onLoopsChange ?? (() => Promise.reject(new Error('LOOP_PERSISTENCE_UNAVAILABLE')))} onPlayFrom={playFrom}
         onBookmarksChange={onBookmarksChange} />
       <a href={toYouTubeWatchUrl(url) ?? url} target="_blank" rel="noreferrer" className="flex min-h-11 items-center py-2 text-sm text-sky-300">{t('Playback trouble? Open on YouTube')}</a>

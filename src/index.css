@@ -315,14 +315,15 @@ body {
 
 .loop-timeline-section { position: relative; padding-top: 0.5rem; }
 .loop-timeline-times { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.75rem; color: #cbd5e1; font-variant-numeric: tabular-nums; }
-.loop-timeline { position: relative; margin-top: 1rem; margin-inline: 1.375rem; background: #080f21; border-block: 1px solid #334155; }
+.loop-timeline { position: relative; isolation: isolate; margin-top: 1rem; margin-inline: 1.375rem; background: #080f21; border-block: 1px solid #334155; }
 .loop-time-markers { position: absolute; top: -1rem; inset-inline: 0; height: 1rem; pointer-events: none; }
 .loop-time-markers span { position: absolute; transform: translateX(-50%); font-size: 0.6rem; color: #94a3b8; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .loop-time-markers span:first-child { transform: none; }
 .loop-time-markers span:last-child { transform: translateX(-100%); }
 .loop-region-lane { position: relative; height: 2.75rem; pointer-events: none; }
-.loop-region { position: absolute; top: 0.4rem; height: 1.75rem; border: 1px solid var(--loop-color); border-radius: 0.25rem; background: color-mix(in srgb, var(--loop-color) 18%, #0f172a); color: #f8fafc; pointer-events: auto; }
-.loop-region.is-selected { outline: 2px solid #f8fafc; outline-offset: 1px; background: color-mix(in srgb, var(--loop-color) 32%, #0f172a); }
+.loop-region { position: absolute; z-index: 1; top: 0.4rem; height: 1.75rem; border: 1px solid var(--loop-color); border-radius: 0.25rem; background: color-mix(in srgb, var(--loop-color) 18%, #0f172a); color: #f8fafc; pointer-events: auto; }
+/* Every region owns its handles' stacking context; selection wins across both lanes. */
+.loop-region.is-selected { z-index: 5; outline: 2px solid #f8fafc; outline-offset: 1px; background: color-mix(in srgb, var(--loop-color) 32%, #0f172a); }
 .loop-region.is-unavailable { opacity: 0.5; }
 .loop-region-name { position: absolute; inset: 0; width: 100%; overflow: hidden; padding-inline: 0.8rem; white-space: nowrap; text-overflow: ellipsis; text-align: center; font-size: 0.72rem; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .loop-region-name:active { cursor: grabbing; }
@@ -330,9 +331,9 @@ body {
 .loop-boundary-start { left: -1.375rem; }
 .loop-boundary-end { right: -1.375rem; }
 .loop-boundary span { display: block; width: 0.6rem; height: 0.6rem; border: 1px solid #f8fafc; border-radius: 50%; background: var(--loop-color); pointer-events: none; }
-.loop-region.is-selected .loop-boundary span { width: 0.75rem; height: 0.75rem; }
-.loop-seek-track { position: absolute; inset: 0; cursor: crosshair; touch-action: none; user-select: none; }
-.loop-region-lane { z-index: 1; }
+.loop-boundary.is-priority { z-index: 5; }
+.loop-boundary.is-priority span { width: 0.75rem; height: 0.75rem; }
+.loop-seek-track { position: absolute; z-index: 0; inset: 0; cursor: crosshair; touch-action: none; user-select: none; }
 .loop-playhead { position: absolute; top: 0; bottom: 0; width: 1px; background: #f8fafc; pointer-events: none; z-index: 4; }
 .loop-playhead-grip { position: absolute; left: -1.375rem; top: -1.5rem; width: 2.75rem; height: 2.75rem; display: grid; place-items: center; pointer-events: auto; touch-action: none; cursor: ew-resize; }
 .loop-playhead-grip i { display: block; border-inline: 0.3rem solid transparent; border-top: 0.4rem solid #f8fafc; pointer-events: none; }
@@ -346,6 +347,16 @@ body {
 .loop-region-action:disabled,.loop-toggle:disabled { opacity: 0.4; }
 .loop-timeline-section button:focus-visible,.loop-seek-track:focus-visible,.loop-library :is(button,input):focus-visible,.loop-toggle:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }
 .loop-library { padding-block: 0.5rem; }
+.loop-workspace-toggle { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0.45rem 0.65rem; border: 1px solid #475569; border-radius: 0.3rem; color: #cbd5e1; font-size: 0.8rem; }
+.loop-workspace-toggle.is-active { color: #67e8f9; border-color: #22d3ee; }
+.loop-workspace-toggle:disabled { opacity: 0.4; }
+.loop-workspace-toggle:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }
+.loop-library-list { display: flex; flex-direction: column; }
+.loop-reorder-handle { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.loop-reorder-handle:active { cursor: grabbing; }
+.loop-library-row.is-reordering { outline: 1px dashed #67e8f9; background: #123047; }
+.loop-repeat-count { display: inline-flex; align-items: center; gap: 0.3rem; color: #94a3b8; font-size: 0.7rem; }
+.loop-repeat-count input { min-height: 2.75rem; width: 3.5rem; padding: 0.3rem; border: 1px solid #475569; border-radius: 0.3rem; background: #0f172a; color: #e2e8f0; text-align: center; }
 .loop-library-heading,.loop-library-heading > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .loop-library-heading h3 { color: #cbd5e1; font-size: 0.9rem; }
 .loop-library-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem; margin-top: 0.3rem; padding: 0.2rem; border: 1px solid transparent; border-radius: 0.3rem; }

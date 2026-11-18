@@ -389,6 +389,63 @@ export type Database = {
         }
         Relationships: []
       }
+      youtube_materials: {
+        Row: {
+          user_id: string
+          material_id: string
+          block_key: string
+          song_id: string | null
+          video_id: string
+          start_seconds: number
+          name: string
+          bookmarks: Json
+          loops: Json
+          looper_open: boolean
+          revision: number
+          created_at: string
+          updated_at: string
+          deleted_at: string | null
+        }
+        Insert: {
+          user_id: string
+          material_id: string
+          block_key: string
+          song_id?: string | null
+          video_id: string
+          start_seconds?: number
+          name: string
+          bookmarks?: Json
+          loops?: Json
+          looper_open?: boolean
+          revision?: number
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: {
+          user_id?: string
+          material_id?: string
+          block_key?: string
+          song_id?: string | null
+          video_id?: string
+          start_seconds?: number
+          name?: string
+          bookmarks?: Json
+          loops?: Json
+          looper_open?: boolean
+          revision?: number
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Relationships: [{
+          foreignKeyName: "youtube_materials_song_id_fkey"
+          columns: ["song_id"]
+          isOneToOne: false
+          referencedRelation: "songs"
+          referencedColumns: ["id"]
+        }]
+      }
       todos: {
         Row: {
           done: boolean
@@ -462,6 +519,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      save_youtube_material: {
+        Args: {
+          p_material_id: string
+          p_expected_revision: number
+          p_payload: Json
+          p_delete?: boolean
+        }
+        Returns: Database["public"]["Tables"]["youtube_materials"]["Row"]
+      }
       claim_release_notice: {
         Args: { p_expected_user_id: string; p_version: string }
         Returns: boolean

@@ -26,7 +26,7 @@ Maintained guides, release notes and the two current status documents remain at 
 | --- | --- |
 | [Scope and backlog](guitar-hub-v1-scope-and-backlog.md) | Approved scope, priorities, acceptance and open decisions. |
 | [Project handoff](project-handoff.md) | Continuation notes and current release context. |
-| [Changelog](CHANGELOG.md) | Released history and implemented work awaiting release. |
+| [Changelog](CHANGELOG.md) | User-facing version history: Added, Changed and Fixed. Pending work stays in the backlog/handoff. |
 | [Release workflow](release-workflow.md) | Actual release invocation, ownership, validation and Git delivery. |
 | [Architecture](architecture.md) / [technical guide](technical.md) | System design and implementation contracts. |
 | [Hosting](hosting.md) | Cloudflare routing configuration, validation and adoption. |
@@ -37,6 +37,7 @@ Maintained guides, release notes and the two current status documents remain at 
 
 | Record | Scope |
 | --- | --- |
+| [Original changelog, archived 2026-11-18](archive/changelog-before-user-edit-2026-11-18.md) | Preserved technical/development history from before the user-facing rewrite; not current release notes. |
 | [Registration failure diagnosis, 2026-11-04](reviews/technical/registration-failure-2026-11-04.md) | Source identifier mismatch, bounded read-only account findings, policy options and a guarded setup-repair proposal. |
 | [Project review, 2026-11-02](reviews/technical/project-review-2026-11-02.md) | Technical health, documentation drift, acceptance and maintenance findings at that snapshot. |
 | [UX/UI density and guidance review, 2026-11-04](reviews/ux/ux-density-and-guidance-review-2026-11-04.md) | Text/control density, task hierarchy, truthful guidance and proposed simplification; seven surfaces with recovered browser evidence. |
@@ -47,6 +48,10 @@ Maintained guides, release notes and the two current status documents remain at 
 
 | Record | Contents |
 | --- | --- |
+| [Release 0.14.0 acceptance, 2026-11-18](evidence/acceptance/release-0.14.0-2026-11-18.md) | Local release gates, disposable migration tests, production schema verification, artifact checks and remaining device/provider gaps. |
+| [Player sequences sandbox, 2026-11-18](evidence/acceptance/player-sequences-sandbox-2026-11-18.md) | Multi-Looper visibility, custom sequences, time input, targeted tests and device/provider acceptance gaps. |
+| [YouTube metadata sync contract, 2026-11-18](plans/youtube-material-sync-2026-11-18.md) | Account-owned sync model, offline/conflict behavior, migration contract and production boundary. |
+| [YouTube sync feasibility assessment, 2026-11-18](reviews/technical/youtube-metadata-sync-assessment-2026-11-18.md) | Historical feasibility baseline and current local implementation/production status. |
 | [Release 0.7.3 acceptance, 2026-11-07](evidence/acceptance/release-0.7.3-2026-11-07.md) | Responsive Home design, self-hosted fonts, silhouette interaction, final validation and release boundary. |
 | [Release 0.7.2 acceptance, 2026-11-07](evidence/acceptance/release-0.7.2-2026-11-07.md) | Approved Practice UI cleanup, final gates, focused acceptance and delivery boundary. |
 | [Release 0.7.1 acceptance, 2026-11-06](evidence/acceptance/release-0.7.1-2026-11-06.md) | Final versioned gates, artifact identity, scoped delivery and publication boundary. |

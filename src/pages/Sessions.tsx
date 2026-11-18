@@ -11,6 +11,7 @@ import { captureLocalMaterialAccess, isLocalMaterialAccessCurrent, localMaterial
 import { assignLocalMaterialToSong, deleteLocalMaterial, detectMaterialType, estimateLocalStorage, isAllowedMaterialType, listLocalMaterials, loadLocalMaterialBlob, localMaterialCleanupPending, materialFileAccept, normalizeBookmarks, patchLocalMaterialMetadata, practiceMediaKind, retryPendingLocalMaterialCleanup, saveLocalMaterial, type LocalMaterial, type LocalStorageEstimate, type PlaybackBookmark } from '../lib/localMaterials'
 import type { Database } from '../lib/database.types'
 import { normalizeLoopRegions, type LoopRegion } from '../lib/loopRegions'
+import { resolveYoutubeConflict, syncYoutubeMaterials, type YoutubeSyncStatus } from '../lib/youtubeMaterialSync'
 import { archivePracticeSong, createPracticeSong, fetchDaySongs, fetchPracticeSongs, fetchWeekPracticeSongs, withWeekPracticeSongs, isSongBlock, selectDaySong, withDaySongBlocks, type DaySong, type PracticeSong, type SongBlockKey } from '../lib/songPracticeApi'
 import { createSessionSaveQueue } from '../lib/sessionSaveQueue'
 import { catalogBlockLabel, createOtherBlock, isSelectableCatalogBlock, loadPlanWeekBlockKeys, loadProgramBlockKeys, loadSessionRestorationCatalog, readProgramBlockMode, type CatalogBlock } from '../lib/catalogApi'
@@ -244,6 +245,11 @@ export default function Sessions() {
   }))
   const [activeReferenceTone, setActiveReferenceTone] = useState<string | null>(null)
   const [materialsByBlock, setMaterialsByBlock] = useState<MaterialsByBlock>({})
+  const [youtubeSyncStatus, setYoutubeSyncStatus] = useState<YoutubeSyncStatus>({ pending: 0, conflicts: [], unavailable: false })
+  const [youtubeSyncBusy, setYoutubeSyncBusy] = useState(false)
+  const loadedMaterialScopesRef = useRef(new Map<string, { blockKey: string; songId?: string }>())
+  const youtubeSyncRunningRef = useRef(false)
+  const youtubeSyncAgainRef = useRef(false)
   const [materialUrlInputs, setMaterialUrlInputs] = useState<Record<string, string>>({})
   const [materialAddScope, setMaterialAddScope] = useState<string | null>(null)
   const [manualYouTubeScopes, setManualYouTubeScopes] = useState<Record<string, boolean>>({})
@@ -351,6 +357,7 @@ export default function Sessions() {
     materialsMountedRef.current = true
     const unsubscribe = onLocalMaterialInvalidation(() => {
       if (!isLocalMaterialAccessCurrent(materialAccess)) {
+        setYoutubeSyncStatus({ pending: 0, conflicts: [], unavailable: false })
         materialsMountedRef.current = false
         materialNavigationRef.current++
         dataRequestRef.current++
@@ -409,6 +416,7 @@ export default function Sessions() {
 
   async function loadBlockMaterials(blockKey: string, songId?: string) {
     const scopeKey = localMaterialScopeKey(blockKey, songId)
+    loadedMaterialScopesRef.current.set(scopeKey, { blockKey, songId })
     const requestId = materialsRequestTrackerRef.current.begin(scopeKey)
     let access: LocalMaterialAccess | undefined
     try {
@@ -418,10 +426,61 @@ export default function Sessions() {
       setMaterialsByBlock((current) => setBlockMaterials(current, scopeKey, materials, { blockKey, songId }))
       const estimate = await estimateLocalStorage()
       if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setLocalStorageEstimate(estimate)
+      void synchronizeYoutubeMaterials(access)
     } catch {
       if (materialsMountedRef.current && access && isLocalMaterialAccessCurrent(access)) patchMaterialFeedback(scopeKey, { error: t('Could not load local materials.') })
     }
   }
+
+  async function synchronizeYoutubeMaterials(access: LocalMaterialAccess) {
+    if (youtubeSyncRunningRef.current) { youtubeSyncAgainRef.current = true; return }
+    youtubeSyncRunningRef.current = true
+    if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setYoutubeSyncBusy(true)
+    try {
+      do {
+        youtubeSyncAgainRef.current = false
+        const status = await syncYoutubeMaterials(access)
+        if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+        setYoutubeSyncStatus(status)
+        for (const [scopeKey, scope] of loadedMaterialScopesRef.current) {
+          const request = materialsRequestTrackerRef.current.begin(scopeKey)
+          const rows = await listLocalMaterials(access, scope)
+          if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+          if (materialsRequestTrackerRef.current.isCurrent(scopeKey, request)) setMaterialsByBlock((current) => setBlockMaterials(current, scopeKey, rows, scope))
+        }
+      } while (youtubeSyncAgainRef.current)
+    } catch {
+      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setYoutubeSyncStatus((current) => ({ ...current, unavailable: true }))
+    } finally {
+      youtubeSyncRunningRef.current = false
+      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setYoutubeSyncBusy(false)
+    }
+  }
+
+  async function resolveMaterialConflict(id: string, choice: 'cloud' | 'device') {
+    let access: LocalMaterialAccess
+    try { access = captureMaterialAccess() } catch { return }
+    setYoutubeSyncBusy(true)
+    try {
+      const status = await resolveYoutubeConflict(access, id, choice)
+      if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
+      setYoutubeSyncStatus(status)
+      await synchronizeYoutubeMaterials(access)
+    } catch {
+      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setYoutubeSyncStatus((current) => ({ ...current, unavailable: true }))
+    } finally {
+      if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setYoutubeSyncBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    const retry = () => { if (isLocalMaterialAccessCurrent(materialAccess)) void synchronizeYoutubeMaterials(materialAccess) }
+    const visible = () => { if (document.visibilityState === 'visible') retry() }
+    retry()
+    window.addEventListener('online', retry)
+    document.addEventListener('visibilitychange', visible)
+    return () => { window.removeEventListener('online', retry); document.removeEventListener('visibilitychange', visible) }
+  }, [materialAccess])
 
   const activeMaterialRecord = findActiveMaterial(materialsByBlock, activeMaterial)
   const bookmarks = normalizeBookmarks(activeMaterialRecord?.bookmarks ?? [])
@@ -681,6 +740,7 @@ export default function Sessions() {
       materialsRequestTrackerRef.current.begin(scopeKey)
       setMaterialsByBlock((current) => updateBlockMaterial(current, scopeKey, id, { name: updated.name }))
       setMaterialRename((current) => current?.id === id ? null : current)
+      void synchronizeYoutubeMaterials(access)
     } catch {
       if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setMaterialRename((current) => current?.id === id ? { ...current, saving: false, error: t('Could not save material changes.') } : current)
     }
@@ -701,6 +761,7 @@ export default function Sessions() {
       await deleteLocalMaterial(access, { id, blockKey, songId })
       if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
       closeRemoved()
+      void synchronizeYoutubeMaterials(access)
       const estimate = await estimateLocalStorage()
       if (materialsMountedRef.current && isLocalMaterialAccessCurrent(access)) setLocalStorageEstimate(estimate)
     } catch (removeError) {
@@ -724,6 +785,7 @@ export default function Sessions() {
     if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access)) return
     materialsRequestTrackerRef.current.begin(scopeKey)
     setMaterialsByBlock((current) => updateBlockMaterial(current, scopeKey, id, { bookmarks: updated.bookmarks }))
+    void synchronizeYoutubeMaterials(access)
   }
 
   async function saveMaterialLoops(blockKey: string, id: string, next: LoopRegion[], songId?: string) {
@@ -735,6 +797,19 @@ export default function Sessions() {
     if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access) || navigation !== materialNavigationRef.current) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
     materialsRequestTrackerRef.current.begin(scopeKey)
     setMaterialsByBlock((current) => updateBlockMaterial(current, scopeKey, id, { loops: updated.loops }))
+    void synchronizeYoutubeMaterials(access)
+  }
+
+  async function saveMaterialLooperState(blockKey: string, id: string, open: boolean, songId?: string) {
+    const access = captureMaterialAccess()
+    const scopeKey = localMaterialScopeKey(blockKey, songId)
+    const navigation = materialNavigationRef.current
+    materialsRequestTrackerRef.current.begin(scopeKey)
+    const updated = await patchLocalMaterialMetadata(access, { id, blockKey, songId }, { looperOpen: open })
+    if (!materialsMountedRef.current || !isLocalMaterialAccessCurrent(access) || navigation !== materialNavigationRef.current) throw new Error('LOCAL_MATERIAL_UNAVAILABLE')
+    materialsRequestTrackerRef.current.begin(scopeKey)
+    setMaterialsByBlock((current) => updateBlockMaterial(current, scopeKey, id, { looperOpen: updated.looperOpen }))
+    void synchronizeYoutubeMaterials(access)
   }
 
   function getExternalMediaKind(material: LocalMaterial) {
@@ -845,6 +920,8 @@ export default function Sessions() {
             name={viewingMaterial.name}
             bookmarks={bookmarks}
             loops={loops}
+            looperOpen={viewingMaterial.looperOpen ?? false}
+            onLooperOpenChange={(open) => saveMaterialLooperState(blockKey, viewingMaterial.id, open, songId)}
             onLoopsChange={(next) => saveMaterialLoops(blockKey, viewingMaterial.id, next, songId)}
             onBookmarksChange={(next) => saveMaterialBookmarks(blockKey, viewingMaterial.id, next, songId)}
             onPlaybackConfirmed={(intent) => { if (templateId && !standalone && (!songRowKey || songViewerRowRef.current === songRowKey)) confirmMaterialPlayback(date, planWeek?.id ?? null, templateId, blockKey, viewingMaterial.id, intent, scopeKey, songId) }}
@@ -863,6 +940,7 @@ export default function Sessions() {
           </div>
         ) : uploadedMediaKind || externalMediaKind === 'video' ? (
           <LocalVideoPracticePlayer key={`${date}:${viewingMaterial.id}:${activeMaterialUrl}`} kind={uploadedMediaKind ?? 'video'} url={activeMaterialUrl} name={viewingMaterial.name} bookmarks={bookmarks} loops={loops}
+            looperOpen={viewingMaterial.looperOpen ?? false} onLooperOpenChange={(open) => saveMaterialLooperState(blockKey, viewingMaterial.id, open, songId)}
             onLoopsChange={(next) => saveMaterialLoops(blockKey, viewingMaterial.id, next, songId)}
             onBookmarksChange={(next) => saveMaterialBookmarks(blockKey, viewingMaterial.id, next, songId)}
             onPlaybackConfirmed={(intent) => { if (templateId && !standalone && (!songRowKey || songViewerRowRef.current === songRowKey)) confirmMaterialPlayback(date, planWeek?.id ?? null, templateId, blockKey, viewingMaterial.id, intent, scopeKey, songId) }} />
@@ -2529,6 +2607,10 @@ export default function Sessions() {
         </div>
       </section>
 
+      {(youtubeSyncStatus.pending > 0 || youtubeSyncStatus.unavailable || youtubeSyncStatus.conflicts.length > 0) && <aside className="my-2 rounded border border-amber-700/50 p-3 text-sm text-slate-300" aria-label={t('youtubeSync.title')}>
+        <div className="flex flex-wrap items-center gap-2"><p>{t(youtubeSyncStatus.unavailable ? 'youtubeSync.unavailable' : 'youtubeSync.pending')}</p><button type="button" disabled={youtubeSyncBusy} onClick={() => { void synchronizeYoutubeMaterials(materialAccess) }} className="min-h-11 rounded px-3 text-sky-300 disabled:opacity-40">{t('Retry')}</button></div>
+        {youtubeSyncStatus.conflicts.map((material) => <div key={material.id} className="mt-2 flex flex-wrap items-center gap-2"><p className="w-full">{t('youtubeSync.conflict', { name: material.name })}</p><button type="button" disabled={youtubeSyncBusy} onClick={() => { void resolveMaterialConflict(material.id, 'device') }} className="min-h-11 rounded border border-slate-600 px-3 text-sky-300 disabled:opacity-40">{t(material.youtubeSync?.deleted ? 'youtubeSync.removeEverywhere' : 'youtubeSync.keepBoth')}</button><button type="button" disabled={youtubeSyncBusy} onClick={() => { void resolveMaterialConflict(material.id, 'cloud') }} className="min-h-11 rounded border border-slate-600 px-3 text-slate-200 disabled:opacity-40">{t('youtubeSync.useCloud')}</button></div>)}
+      </aside>}
       <section
         ref={blocksSectionRef}
         tabIndex={-1}

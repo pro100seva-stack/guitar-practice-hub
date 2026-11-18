@@ -1,6 +1,6 @@
-export type LoopRegion = { id: string; name: string; start: number; end: number; color: number; order: number }
+export type LoopRegion = { id: string; name: string; start: number; end: number; color: number; order: number; repeats?: number }
 export type LoopPlaybackMode = 'off' | 'repeat' | 'sequence'
-export type LoopPlaybackState = { mode: LoopPlaybackMode; selectedId: string | null }
+export type LoopPlaybackState = { mode: LoopPlaybackMode; selectedId: string | null; iteration?: number }
 export const loopNameMaxLength = 60
 export const loopPalette = ['#f87171', '#fb923c', '#facc15', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#f472b6'] as const
 
@@ -24,14 +24,15 @@ export function normalizeLoopRegions(values: readonly unknown[] | undefined | nu
     const name = typeof row.name === 'string' ? [...row.name.trim()].slice(0, loopNameMaxLength).join('') : ''
     const color = typeof row.color === 'number' && Number.isInteger(row.color) && row.color >= 0 && row.color < loopPalette.length ? row.color : index % loopPalette.length
     const order = typeof row.order === 'number' && Number.isSafeInteger(row.order) && row.order >= 0 ? row.order : index
-    result.push({ id: row.id, name, start, end, color, order })
+    const repeats = typeof row.repeats === 'number' && Number.isSafeInteger(row.repeats) && row.repeats >= 1 && row.repeats <= 999 ? row.repeats : 1
+    result.push({ id: row.id, name, start, end, color, order, ...(row.repeats === undefined ? {} : { repeats }) })
     ids.add(row.id)
   }
   return result
 }
 
 export function parseLoopTimestamp(value: string): number | null {
-  const input = value.trim()
+  const input = value.trim().replace(',', '.')
   if (!/^\d+(?::\d{1,2}){0,2}(?:\.\d{1,2})?$/.test(input)) return null
   const parts = input.split(':').map(Number)
   if (parts.some((part) => !Number.isFinite(part))) return null
@@ -67,7 +68,7 @@ export function editLoopBoundary(region: LoopRegion, side: 'start' | 'end', valu
 }
 
 export function orderedLoopRegions(regions: readonly LoopRegion[]): LoopRegion[] {
-  return [...regions].sort((left, right) => left.start - right.start || left.order - right.order || left.id.localeCompare(right.id))
+  return [...regions].sort((left, right) => left.order - right.order || left.start - right.start || left.id.localeCompare(right.id))
 }
 
 /** At most two rendered lanes; overflow stays available in the saved Loops list. */
@@ -91,20 +92,22 @@ export function layoutLoopRegions(regions: readonly LoopRegion[], selectedId?: s
   return { lanes, overflow }
 }
 
-export type LoopPlaybackDecision = { kind: 'seek'; time: number; regionId: string } | { kind: 'stop' }
+export type LoopPlaybackDecision = { kind: 'seek'; time: number; regionId: string; iteration?: number } | { kind: 'stop' }
 
 /** One playback architecture for selected repeat and the separate once-through sequence. */
-export function loopPlaybackDecision({ mode, regions, selectedId, time, state, seeking }: {
-  mode: LoopPlaybackMode; regions: readonly LoopRegion[]; selectedId: string | null; time: number; state: number; seeking: boolean
+export function loopPlaybackDecision({ mode, regions, selectedId, iteration = 1, time, state, seeking }: {
+  mode: LoopPlaybackMode; regions: readonly LoopRegion[]; selectedId: string | null; iteration?: number; time: number; state: number; seeking: boolean
 }): LoopPlaybackDecision | null {
   if (mode === 'off' || seeking || !Number.isFinite(time) || (state !== 1 && state !== 0)) return null
   const sorted = orderedLoopRegions(regions)
   const index = sorted.findIndex((region) => region.id === selectedId)
   if (index < 0) return null
   const selected = sorted[index]
-  if (state === 1 && time < selected.start) return { kind: 'seek', time: selected.start, regionId: selected.id }
+  const pass = Number.isSafeInteger(iteration) && iteration >= 1 ? iteration : 1
+  if (state === 1 && time < selected.start) return { kind: 'seek', time: selected.start, regionId: selected.id, ...(mode === 'sequence' && pass > 1 ? { iteration: pass } : {}) }
   if (state !== 0 && time < selected.end) return null
   if (mode === 'repeat') return { kind: 'seek', time: selected.start, regionId: selected.id }
+  if (pass < (selected.repeats ?? 1)) return { kind: 'seek', time: selected.start, regionId: selected.id, iteration: pass + 1 }
   const next = sorted[index + 1]
   return next ? { kind: 'seek', time: next.start, regionId: next.id } : { kind: 'stop' }
 }

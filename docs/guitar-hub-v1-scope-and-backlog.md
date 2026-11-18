@@ -1,8 +1,26 @@
 # Pro100Practice — scope and backlog
 
+## Item86: cross-device YouTube metadata and remembered Multi-Looper (2026-11-18)
+
+Owner approves implementation and migration preparation/local testing, followed by `/release-app`. Sync owned YouTube links, titles, bookmarks, loop regions/order/repeat counts and panel preference; preserve uploaded files locally. Durable offline pending changes, revision conflicts and deletion tombstones protect existing data and account isolation. The implementation and additive migration are prepared locally; the migration and rollback-only SQL suite passed 76/76 assertions in a disposable tmpfs-only PostgreSQL container. See [YT-SYNC-v1](plans/youtube-material-sync-2026-11-18.md).
+
+New0.14.0 minor scope includes previous item85 sandbox refinements and user-facing changelog cleanup. Package metadata reflects0.14.0 locally; the final full gates are recorded as passed. The owner separately authorized and the exact production migration `20261118093056_youtube_material_sync.sql` was applied and verified on 2026-11-18; catalog-level schema availability is confirmed. End-to-end authenticated sync and hosted/device behavior remain unverified. Next unique ID **87**.
+
+## Item85 follow-up: player controls and custom ALL sequence (2026-11-18)
+
+Further owner correction: hide all region graphics while settings are collapsed, retaining the one-row seek timeline. Selected handles must win shared-join pointer hit priority; fixed region/lane stacking and added selected-drag regressions (23 UI checks). Public changelog now follows the owner-requested released-version Added/Changed/Fixed format; pending work and technical records remain here/handoff/evidence rather than public release notes. No version bump/release.
+
+Sandbox after0.13.1: rel0 embeds; always-visible one-row collapsed/two-row expanded timeline; paused-seek playhead correction; centered back5/pause-stop/play/forward5 transport; overlap-only selected pin priority; independent Multi-Looper settings; A–B and ALL buttons; persistent reorder and repeat counts for ALL; mobile-friendly timestamps and hold-to-scrub. Existing metadata remains local and backwards compatible. Source ownership/REGION-PLAYER-v2 in handoff; focused QA after freeze, no release/provider/schema operations.
+
+Implemented for owner sandbox review:251 targeted tests/10files, TypeScript and lint passed (two existing warnings), with corrected rel0 type declaration and affected96player/URL checks. [Evidence](evidence/acceptance/player-sequences-sandbox-2026-11-18.md). No new build/release or physical-device/provider acceptance is claimed.
+
+The [initial cross-device feasibility assessment](reviews/technical/youtube-metadata-sync-assessment-2026-11-18.md) predates item86's local implementation. Production application remains separately authorized. Next unique ID remains86.
+
 ## Release 0.13.1 — PWA Update activation reload (2026-11-17)
 
 Patch **0.13.0 → 0.13.1**, bug fix only. The explicit Update action reloads when the waiting ServiceWorker reaches `activated`, including when `controllerchange` is not emitted (`clientsClaim: false`), while preserving the safety lock through activation. Regression coverage verifies the activation/reload behavior.
+
+Commit `0a12cc546b24c2233947e2c203ed130bd1addb07` was normally pushed to `origin/master`, and the remote branch was verified to equal this commit. **Operational status: pushed; deployment not independently verified.**
 
 **Live hosted/device behavior is unverified.** Versioned-snapshot gates: tests **1,061/1,061 across 58 files**; lint exit 0 with two warnings (i18n Fast Refresh; Sessions hook dependencies); build exit 0 (TypeScript/Vite/PWA, 21 precache entries, 1,159.67 KiB; Sentry disabled with a one-space environment override). Artifact review: 61 files, zero source maps, 21 precache references, manifest icons present, no PDF/default-exercise/local-media/map entries in precache, coordinator companion byte-identical with import before generic `SKIP_WAITING`, navigation denylist covers assets/default-exercises/local media, and exact local DSN absent. SHA-256: index `B29ED4EB5F2AAFE71BCFEA38736398F9259E0466D0415E870E640CE9D568DFE4`; manifest `1C1834DD290B5B9D24CC3CDFDB35D49285C201A5163E518296A6B8DB6AAD3BAC`; service worker `CC0C9797CBCD664CE3B9CBC9DE8F9322162CDC4534B4E6E14C33609149A21724`; coordinator `5A61976C5D6DAEF9693B070E0A14C6BCC565CF700C46E7787192F8B6D3DC9737`.
 

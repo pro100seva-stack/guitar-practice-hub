@@ -13,13 +13,15 @@ type Props = {
   bookmarks: PlaybackBookmark[]
   loops?: LoopRegion[]
   onLoopsChange?: (loops: LoopRegion[]) => Promise<void>
+  looperOpen?: boolean
+  onLooperOpenChange?: (open: boolean) => Promise<void>
   onBookmarksChange: (bookmarks: PlaybackBookmark[]) => Promise<void>
   onPlaybackConfirmed: (intent: PlaybackIntent) => void
 }
 
 type MediaEvent = SyntheticEvent<HTMLMediaElement>
 
-export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bookmarks, loops = [], onLoopsChange, onBookmarksChange, onPlaybackConfirmed }: Props) {
+export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bookmarks, loops = [], onLoopsChange, looperOpen, onLooperOpenChange, onBookmarksChange, onPlaybackConfirmed }: Props) {
   const { t } = useI18n()
   const videoRef = useRef<HTMLVideoElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -128,7 +130,7 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
       state, seeking: seekingRef.current,
     })
     if (decision?.kind === 'seek') {
-      if (decision.regionId !== loopStateRef.current.selectedId) changeLoopState({ ...loopStateRef.current, selectedId: decision.regionId })
+      if (decision.regionId !== loopStateRef.current.selectedId || decision.iteration !== undefined || loopStateRef.current.iteration !== undefined) changeLoopState({ ...loopStateRef.current, selectedId: decision.regionId, iteration: decision.iteration ?? 1 })
       seek(decision.time)
       if (state === 0) play(false)
     } else if (decision?.kind === 'stop') {
@@ -196,10 +198,11 @@ export default function LocalVideoPracticePlayer({ kind = 'video', url, name, bo
         : <video ref={videoRef} {...mediaProps} playsInline className="max-h-[420px] w-full" />}
       {error && <p role="alert" className="py-2 text-sm text-rose-300">{kind === 'audio' ? t('The audio codec is not supported by this browser.') : t('This video codec or container is not fully supported by this browser.')}</p>}
       {!validDuration(duration) && !error && <p role="status" className="py-2 text-sm text-slate-300">{kind === 'audio' ? t('Loading audio...') : t('Loading video...')}</p>}
-      <VideoPracticeControls kind={kind} usable={validDuration(duration) && !error} playing={playing} duration={duration} position={position} rates={[0.25, 0.5, 1, 1.5, 2]} rate={rate} rateMode="continuous" bookmarks={bookmarks} shortcuts={shortcuts}
+      <VideoPracticeControls key={`${kind}:${url}`} kind={kind} usable={validDuration(duration) && !error} playing={playing} duration={duration} position={position} rates={[0.25, 0.5, 1, 1.5, 2]} rate={rate} rateMode="continuous" bookmarks={bookmarks} shortcuts={shortcuts}
         getPosition={() => mediaElement()?.currentTime ?? NaN} onToggle={toggle} onSeek={seek}
         onRate={(value) => { const media = mediaElement(); if (!media) return; try { media.playbackRate = value; setRate(media.playbackRate) } catch { setRate(media.playbackRate) } }}
         loops={regionsRef.current} loopState={loopState} onLoopStateChange={changeLoopState}
+        looperOpen={looperOpen} onLooperOpenChange={onLooperOpenChange}
         onLoopsChange={onLoopsChange ?? (() => Promise.reject(new Error('LOOP_PERSISTENCE_UNAVAILABLE')))} onPlayFrom={playFrom}
         onBookmarksChange={onBookmarksChange} />
     </div>

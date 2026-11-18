@@ -5,13 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as model from '../src/lib/loopRegions'
 
 type Node = { type: unknown; props: Record<string, any> }
-type Props = { usable: boolean; playing: boolean; duration: number; position: number; regions: model.LoopRegion[]; state: model.LoopPlaybackState; onStateChange: ReturnType<typeof vi.fn>; onRegionsChange: ReturnType<typeof vi.fn>; onSeek: ReturnType<typeof vi.fn>; onPlayFrom: ReturnType<typeof vi.fn>; renderControls: (node: Node) => Node }
+type Props = { usable: boolean; playing: boolean; duration: number; position: number; regions: model.LoopRegion[]; state: model.LoopPlaybackState; onStateChange: ReturnType<typeof vi.fn>; onRegionsChange: ReturnType<typeof vi.fn>; onSeek: ReturnType<typeof vi.fn>; onPlayFrom: ReturnType<typeof vi.fn>; renderControls: (node: Node) => Node; expanded?: boolean; onExpandedChange?: (open: boolean) => Promise<void> }
 const region = (id = 'first', start = 10, end = 20): model.LoopRegion => ({ id, name: id, start, end, color: 0, order: start })
-function fixture(initial: Partial<Props> = {}) {
+function fixture(initial: Partial<Props> = {}, expanded = true) {
   const slots: any[] = [], effects: (() => void)[] = [], cleanups: (() => void)[] = []
   let cursor = 0
   let props: Props = { usable: true, playing: false, duration: 100, position: 12, regions: [region()], state: { mode: 'repeat', selectedId: null }, onStateChange: vi.fn(), onRegionsChange: vi.fn().mockResolvedValue(undefined), onSeek: vi.fn(), onPlayFrom: vi.fn(), renderControls: (node) => node, ...initial }
-  const jsx = (type: unknown, value: Record<string, any>): Node => ({ type, props: value })
+  const jsx = (type: unknown, value: Record<string, any>): Node => type === 'timecode-input'
+    ? { type: 'input', props: { ...value, ref: value.inputRef, onChange: (event: { target: { value: string } }) => value.onChange(event.target.value) } }
+    : { type, props: value }
   const same = (a: unknown[], b: unknown[]) => a?.length === b?.length && a.every((value, index) => Object.is(value, b[index]))
   const imports: Record<string, unknown> = {
     react: {
@@ -24,11 +26,12 @@ function fixture(initial: Partial<Props> = {}) {
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     '../lib/i18n': { useI18n: () => ({ t: (key: string, values?: Record<string, unknown>) => key + (values?.name ? ':' + values.name : '') }) },
     '../lib/loopRegions': model,
+    './TimecodeInput': { __esModule: true, default: 'timecode-input' },
   }
   const module = { exports: {} as { default?: (props: Props) => Node } }
   const compiled = transpileModule(readFileSync('src/components/PracticeLoopControls.tsx', 'utf8'), { compilerOptions: { jsx: 4, module: 1, target: 9 } }).outputText
   runInNewContext(compiled, { exports: module.exports, require: (name: string) => imports[name], setTimeout, clearTimeout, crypto: { randomUUID: () => 'new-loop' } })
-  const target = { getBoundingClientRect: () => ({ left: 0, width: 100 }), setPointerCapture: vi.fn(), hasPointerCapture: () => true, releasePointerCapture: vi.fn(), focus: vi.fn() }
+  const target = { getBoundingClientRect: () => ({ left: 0, width: 100 }), querySelectorAll: () => model.orderedLoopRegions(props.regions).map((entry, index) => ({ dataset: { loopListRow: entry.id }, getBoundingClientRect: () => ({ top: index * 60, height: 60 }) })), setPointerCapture: vi.fn(), hasPointerCapture: () => true, releasePointerCapture: vi.fn(), focus: vi.fn() }
   function flatten(value: any): Node[] { if (Array.isArray(value)) return value.flatMap(flatten); if (!value || typeof value !== 'object' || !('props' in value)) return []; return [value, ...flatten(value.props.children)] }
   let tree: Node
   function render(next: Partial<Props> = {}) { cursor = 0; props = { ...props, ...next }; tree = module.exports.default!(props); for (const node of flatten(tree)) if (node.props.ref) node.props.ref.current = target; effects.splice(0).forEach((effect) => effect()); return tree }
@@ -41,13 +44,130 @@ function fixture(initial: Partial<Props> = {}) {
   const click = (node: Node) => { if (!node.props.disabled) dispatch(node, 'onClick') }
   const input = (index: number, value: string) => dispatch(nodes().filter((node) => node.type === 'input')[index], 'onChange', { target: { value } })
   const submit = async () => { dispatch(find((node) => node.type === 'form'), 'onSubmit'); await flush() }
-  const pointer = (x: number) => ({ currentTarget: target, clientX: x, pointerId: 1, button: 0, isPrimary: true })
+  const pointer = (x: number, y = x) => ({ currentTarget: target, clientX: x, clientY: y, pointerId: 1, button: 0, isPrimary: true })
+  if (expanded) { click(text('loops.multiLooper')); render() }
   return { render, nodes, find, label, text, click, input, submit, dispatch, pointer, props: () => props, unmount: () => cleanups.forEach((cleanup) => cleanup()) }
 }
 async function flush() { for (let index = 0; index < 12; index++) await Promise.resolve() }
 afterEach(() => vi.useRealTimers())
 
 describe('executed loop region controls', () => {
+  it('restores a saved open or closed preference without enabling a playback mode', async () => {
+    const save = vi.fn().mockResolvedValue(undefined)
+    const f = fixture({ expanded: true, onExpandedChange: save, state: { mode: 'off', selectedId: null } }, false)
+    expect(f.text('loops.multiLooper').props['aria-expanded']).toBe(true)
+    expect(f.nodes().filter((node) => node.props['data-loop-lane'] !== undefined)).toHaveLength(2)
+    f.click(f.text('loops.multiLooper')); await flush()
+    expect(save).toHaveBeenLastCalledWith(false)
+    expect(f.props().onStateChange).not.toHaveBeenCalled()
+    const reopened = fixture({ expanded: false, state: { mode: 'off', selectedId: null } }, false)
+    expect(reopened.text('loops.multiLooper').props['aria-expanded']).toBe(false)
+    expect(reopened.nodes().filter((node) => node.props['data-loop-lane'] !== undefined)).toHaveLength(1)
+  })
+  it('hydrates the stored flag once it arrives without resetting on ordinary playback renders', () => {
+    const f = fixture({}, false)
+    expect(f.text('loops.multiLooper').props['aria-expanded']).toBe(false)
+    f.render({ expanded: true })
+    expect(f.text('loops.multiLooper').props['aria-expanded']).toBe(true)
+    f.render({ position: 35 })
+    expect(f.text('loops.multiLooper').props['aria-expanded']).toBe(true)
+    expect(f.props().onStateChange).not.toHaveBeenCalled()
+  })
+  it('serializes preference writes and retains a failed desired value for retry', async () => {
+    let reject!: (error: Error) => void
+    const first = new Promise<void>((_resolve, fail) => { reject = fail })
+    const save = vi.fn().mockReturnValueOnce(first).mockResolvedValue(undefined)
+    const f = fixture({ expanded: true, onExpandedChange: save }, false)
+    f.click(f.text('loops.multiLooper'))
+    expect(f.text('loops.multiLooper').props.disabled).toBe(true)
+    f.click(f.text('loops.multiLooper'))
+    expect(save).toHaveBeenCalledTimes(1)
+    f.render({ position: 22, expanded: true })
+    expect(f.text('loops.multiLooper').props['aria-expanded']).toBe(false)
+    reject(new Error('Storage unavailable')); await flush()
+    expect(f.nodes().some((node) => node.props.children?.[0] === 'loops.preferenceSaveFailed')).toBe(true)
+    f.click(f.text('Retry')); await flush()
+    expect(save).toHaveBeenLastCalledWith(false)
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(f.text('loops.multiLooper').props['aria-expanded']).toBe(false)
+    expect(f.text('loops.multiLooper').props.disabled).toBe(false)
+    expect(f.nodes().some((node) => node.props.children?.[0] === 'loops.preferenceSaveFailed')).toBe(false)
+  })
+  it('saves a dragged sequence order only on release and restores cancellation', async () => {
+    const f = fixture({ regions: [region('one', 10, 20), region('two', 30, 40), region('three', 60, 70)] })
+    const handle = f.label('loops.reorderNamed:one')
+    f.dispatch(handle, 'onPointerDown', f.pointer(0, 30)); f.dispatch(handle, 'onPointerMove', f.pointer(0, 160))
+    expect(f.props().onRegionsChange).not.toHaveBeenCalled()
+    expect(f.nodes().find((node) => node.props['data-loop-list-row'] === 'one')?.props.style.order).toBe(2)
+    f.dispatch(handle, 'onPointerCancel', f.pointer(0, 160))
+    expect(f.nodes().find((node) => node.props['data-loop-list-row'] === 'one')?.props.style.order).toBe(10)
+    f.dispatch(handle, 'onPointerDown', f.pointer(0, 30)); f.dispatch(handle, 'onPointerMove', f.pointer(0, 160)); f.dispatch(handle, 'onPointerUp', f.pointer(0, 160)); await flush()
+    const saved = f.props().onRegionsChange.mock.calls[0][0] as model.LoopRegion[]
+    expect(model.orderedLoopRegions(saved).map((entry) => entry.id)).toEqual(['two', 'three', 'one'])
+  })
+  it('supports keyboard reordering and makes ALL begin with the new sequence order', async () => {
+    const f = fixture({ regions: [region('one', 10, 20), region('two', 30, 40)] })
+    f.dispatch(f.label('loops.reorderNamed:two'), 'onKeyDown', { key: 'Home' }); await flush()
+    const saved = f.props().onRegionsChange.mock.calls[0][0] as model.LoopRegion[]
+    expect(model.orderedLoopRegions(saved).map((entry) => entry.id)).toEqual(['two', 'one'])
+    f.click(f.label('loops.playAll'))
+    expect(f.props().onStateChange).toHaveBeenLastCalledWith({ mode: 'sequence', selectedId: 'two' })
+    expect(f.props().onPlayFrom).toHaveBeenCalledWith(30)
+  })
+  it('shows counts only during ALL, persists edits and retains repeats through rename', async () => {
+    const f = fixture({ regions: [{ ...region(), repeats: 2 }] })
+    expect(f.nodes().some((node) => node.props['aria-label'] === 'loops.repeatNamed:first')).toBe(false)
+    f.render({ state: { mode: 'sequence', selectedId: 'first' } })
+    f.dispatch(f.label('loops.repeatNamed:first'), 'onChange', { target: { value: '4' } })
+    f.dispatch(f.label('loops.repeatNamed:first'), 'onBlur'); await flush()
+    expect(f.props().onRegionsChange).toHaveBeenLastCalledWith([expect.objectContaining({ repeats: 4 })])
+    f.click(f.label('loops.renameNamed:first'))
+    const input = f.nodes().find((node) => node.type === 'input' && node.props.maxLength === 60)!
+    f.dispatch(input, 'onChange', { target: { value: 'Four runs' } }); await f.submit()
+    expect(f.props().onRegionsChange).toHaveBeenLastCalledWith([expect.objectContaining({ name: 'Four runs', repeats: 4 })])
+  })
+  it('rejects invalid repeat counts without changing saved metadata', async () => {
+    const f = fixture({ state: { mode: 'sequence', selectedId: 'first' } })
+    for (const value of ['0', '-1', '1.5', '1000', '']) {
+      f.dispatch(f.label('loops.repeatNamed:first'), 'onChange', { target: { value } })
+      f.dispatch(f.label('loops.repeatNamed:first'), 'onBlur'); await flush()
+      expect(f.label('loops.repeatNamed:first').props.value).toBe('1')
+    }
+    expect(f.props().onRegionsChange).not.toHaveBeenCalled()
+  })
+  it('enlarges only the selected overlapping circle while ordinary selected circles stay uniform', () => {
+    const f = fixture({ regions: [region('one', 0, 20), region('two', 20, 40)], state: { mode: 'repeat', selectedId: 'one' } })
+    expect(f.label('loops.endHandle:one').props.className).toContain('is-priority')
+    expect(f.label('loops.startHandle:one').props.className).not.toContain('is-priority')
+    expect(f.label('loops.startHandle:two').props.className).not.toContain('is-priority')
+    f.render({ state: { mode: 'repeat', selectedId: 'two' } })
+    expect(f.label('loops.startHandle:two').props.className).toContain('is-priority')
+    expect(f.label('loops.endHandle:one').props.className).not.toContain('is-priority')
+  })
+  it('keeps selected region handles above other regions and the playhead without lane stacking traps', () => {
+    const css = readFileSync('src/index.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const declarations = (selector: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter((rule) => rule[1].trim() === selector).map((rule) => rule[2]).join(';')
+    const layer = (selector: string) => Number(declarations(selector).match(/z-index:\s*(\d+)/)?.[1])
+    expect(layer('.loop-seek-track')).toBeLessThan(layer('.loop-region'))
+    expect(layer('.loop-region')).toBeLessThan(layer('.loop-region.is-selected'))
+    expect(layer('.loop-playhead')).toBeLessThan(layer('.loop-region.is-selected'))
+    expect(declarations('.loop-region-lane')).not.toMatch(/z-index:\s*\d/)
+    expect(declarations('.loop-timeline')).toContain('isolation: isolate')
+  })
+  it('drags only the selected connection at a shared join, preserving the neighboring region', async () => {
+    for (const selectedId of ['one', 'two']) {
+      const f = fixture({ regions: [region('one', 0, 20), region('two', 20, 40)], state: { mode: 'repeat', selectedId } })
+      const handle = f.label(selectedId === 'one' ? 'loops.endHandle:one' : 'loops.startHandle:two')
+      expect(handle.props.className).toContain('is-priority')
+      f.dispatch(handle, 'onPointerDown', f.pointer(20))
+      f.dispatch(handle, 'onPointerMove', f.pointer(30))
+      f.dispatch(handle, 'onPointerUp', f.pointer(30)); await flush()
+      const saved = f.props().onRegionsChange.mock.calls[0][0] as model.LoopRegion[]
+      expect(saved.find((entry) => entry.id === selectedId)).toMatchObject(selectedId === 'one' ? { end: 30 } : { start: 30 })
+      expect(saved.find((entry) => entry.id !== selectedId)).toEqual(selectedId === 'one' ? region('two', 20, 40) : region('one', 0, 20))
+    }
+  })
   it('snaps the nearest whole-region edge within 3px, holds through 6px and then releases', async () => {
     const f = fixture({ regions: [region(), region('target', 40, 90)] })
     const body = f.find((node) => node.props.className === 'loop-region-name')
@@ -79,17 +199,24 @@ describe('executed loop region controls', () => {
     expect(f.label('loops.endHandle:first').props.title).toBe('00:10.01')
     expect(f.props().onRegionsChange).not.toHaveBeenCalled()
   })
-  it('hides the loop workspace while off, opens it when enabled and hides it again when switched off', () => {
-    const f = fixture({ state: { mode: 'off', selectedId: 'first' } })
+  it('keeps a one-row timeline visible and expands settings without changing playback mode', () => {
+    const f = fixture({ state: { mode: 'off', selectedId: 'first' } }, false)
     expect(f.nodes().some((node) => node.props.className === 'loop-library')).toBe(false)
-    expect(f.nodes().some((node) => node.props.className === 'loop-timeline')).toBe(false)
-    f.click(f.label('loops.enableRepeat'))
-    expect(f.props().onStateChange).toHaveBeenLastCalledWith({ mode: 'repeat', selectedId: 'first' })
-    f.render({ state: { mode: 'repeat', selectedId: 'first' } })
+    expect(f.nodes().filter((node) => node.props['data-loop-lane'] !== undefined)).toHaveLength(1)
+    expect(f.nodes().some((node) => node.props.className === 'loop-region-name')).toBe(false)
+    expect(f.nodes().some((node) => String(node.props.className).startsWith('loop-boundary '))).toBe(false)
+    expect(f.label('loops.seek')).toBeDefined()
+    f.click(f.text('loops.multiLooper'))
+    expect(f.props().onStateChange).not.toHaveBeenCalled()
     expect(f.nodes().some((node) => node.props.className === 'loop-library')).toBe(true)
-    f.click(f.label('loops.disableRepeat'))
-    f.render({ state: { mode: 'off', selectedId: 'first' } })
+    expect(f.nodes().filter((node) => node.props['data-loop-lane'] !== undefined)).toHaveLength(2)
+    expect(f.nodes().filter((node) => node.props.className === 'loop-region-name')).toHaveLength(1)
+    expect(f.label('loops.startHandle:first')).toBeDefined()
+    f.click(f.text('loops.multiLooper'))
     expect(f.nodes().some((node) => node.props.className === 'loop-library')).toBe(false)
+    expect(f.nodes().some((node) => node.props.className === 'loop-timeline')).toBe(true)
+    expect(f.nodes().some((node) => node.props.className === 'loop-region-name')).toBe(false)
+    expect(f.nodes().some((node) => String(node.props.className).startsWith('loop-boundary '))).toBe(false)
   })
   it('moves a complete region, preserves duration, clamps both ends and saves only on release', async () => {
     const f = fixture()
@@ -148,9 +275,9 @@ describe('executed loop region controls', () => {
   it('closes first-loop setup on cancel without enabling an undefined repeat', () => {
     const f = fixture({ regions: [], state: { mode: 'off', selectedId: null } })
     f.click(f.label('loops.enableRepeat'))
-    expect(f.label('loops.disableRepeat').props['aria-pressed']).toBe(true)
+    expect(f.label('loops.enableRepeat').props['aria-pressed']).toBe(false)
     f.click(f.text('Cancel'))
-    expect(f.nodes().some((node) => node.props.className === 'loop-timeline')).toBe(false)
+    expect(f.nodes().some((node) => node.props.className === 'loop-timeline')).toBe(true)
     expect(f.props().onStateChange).not.toHaveBeenCalled()
     expect(f.props().onRegionsChange).not.toHaveBeenCalled()
   })
@@ -159,7 +286,7 @@ describe('executed loop region controls', () => {
     const f = fixture({ regions: [], onRegionsChange: save })
     f.click(f.text('loops.add')); await f.submit()
     expect(f.label('loops.disableRepeat').props.disabled).toBe(true)
-    expect(f.text('loops.playAll').props.disabled).toBe(true)
+    expect(f.label('loops.playAll').props.disabled).toBe(true)
     expect(f.nodes().find((node) => node.props.className === 'loop-library-select')?.props.disabled).toBe(true)
     expect(f.props().onStateChange).not.toHaveBeenCalled()
     f.click(f.text('Retry')); await flush()
@@ -185,7 +312,7 @@ describe('executed loop region controls', () => {
   })
   it('sorts sequence playback and keeps it separate from binary repeat', () => {
     const f = fixture({ regions: [region('later', 40, 50), region('early', 5, 8)], state: { mode: 'repeat', selectedId: 'later' } })
-    f.click(f.text('loops.playAll'))
+    f.click(f.label('loops.playAll'))
     expect(f.props().onStateChange).toHaveBeenCalledWith({ mode: 'sequence', selectedId: 'early' })
     expect(f.props().onPlayFrom).toHaveBeenCalledWith(5)
   })

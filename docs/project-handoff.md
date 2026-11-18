@@ -1,8 +1,36 @@
 # Project handoff
 
+## Active release scope: YouTube sync and remembered looper (2026-11-18)
+
+Owner requested remembered per-video Multi-Looper open/closed preference, cross-device YouTube metadata and `/release-app`. Owner separately approved applying the exact YouTube metadata migration to production on 2026-11-18. Version0.14.0 is selected and reflected in package metadata.
+
+Contract/ownership: [YT-SYNC-v1 brief](plans/youtube-material-sync-2026-11-18.md). Backend owns additive migration `20261118093056_youtube_material_sync.sql`, database types and exclusive isolated Docker database tests. Sync frontend owns owned local cache/outbox, Sessions/i18n/release-summary integration and tests. Player frontend owns preference props through both players/shared controls and remembered UI expansion. Planner owns canonical status/brief; Release Engineer will own the final version/docs/Git/full gate after writers freeze. Existing0.13.1 PWA fix and user delivery notes remain preserved. Local file bytes do not move to the cloud.
+
+The feature and additive migration are implemented locally. The canonical migration was copied into the ignored local-test mirror, and the migration plus its rollback-only pgTAP suite passed **76/76 assertions** in a disposable tmpfs-only PostgreSQL container. Client reconciliation and local outbox/tombstone regression tests are present. After production preflight confirmed the target schema, table and RPC were absent and `public.songs.id/user_id` existed, the exact migration was applied through the Supabase SQL Editor. Its version was recorded in `supabase_migrations.schema_migrations`. Read-only catalog checks confirmed the private schema, metadata table, RPC, RLS and owner-select policy; authenticated SELECT and RPC EXECUTE are granted, while direct INSERT is not. No existing YouTube material was imported or changed. End-to-end authenticated sync remains untested.
+
+Final local release gates are recorded as passed: **1,093/1,093 tests across 60 files**, lint exit0 with two existing warnings, and production build exit0 (21 precache entries). See [0.14.0 acceptance evidence](evidence/acceptance/release-0.14.0-2026-11-18.md) for artifact checks and production migration verification. Hosted app publication, end-to-end authenticated sync, and device/provider behavior remain unverified.
+
+## Current sandbox: player transport and custom loop sequences (2026-11-18)
+
+Owner follow-up: collapsed Multi-Looper leaves a one-row seek timeline/playhead with no loop bars/names/handles. Expanded restores both region lanes. Shared-join handle priority is repaired with explicit stacking contexts for every region, selected-region layer above other regions/playhead, no isolated lane layers and seek track below. This fixes the prior selected-parent context trapping its handles behind nonselected handles.23 focused UI tests and scoped lint pass; rendered browser/iPhone hit testing remains manual.
+
+Owner sets a new documentation policy: public CHANGELOG is plain-language version history only, with Added/Changed/Fixed sections. No Unreleased roadmap, development narrative, deployment evidence or test/commit details. Those stay in backlog/handoff/acceptance; the original changelog is preserved under docs/archive. README/index and release workflow are aligned so future releases keep this format. No release/Git operation is authorized by these edits.
+
+Owner requests a new local sandbox after released0.13.1. Preserve Copilot's worker-activation reload fix and the existing uncommitted delivery-status additions in this document/backlog. No version bump, release/Git delivery or production operation in this task.
+
+REGION-PLAYER-v2 adds optional per-region `repeats` (1–999, default1) and controlled sequence `iteration` (default1). Sequence follows saved custom `order`, while timeline placement remains chronological. Multi-Looper expansion is independent from OFF/A–B/ALL playback modes. Timeline always renders: one row collapsed, two expanded. New centered transport order is back5seconds, pause/stop, explicit Play, forward5seconds, speed wheel and Multi-Looper. Stop when paused clears loop playback and seeks0. Paused YouTube seek updates the playhead and reconciles provider readback; both embed construction paths use rel0.
+
+UI owns PracticeLoopControls/CSS/i18n and its handler tests; playback owns loop model, parent/shared controls, URL config and player/model tests. Planner/root owns new TimecodeInput and tests, planning documents and the sync assessment. QA owns the final combined targeted test/type/lint gate only after source freeze; no duplicate full build or live/browser-profile checks. Timecode input uses full text keyboard, supports comma decimals and350ms hold to scrub in0.1s increments per6verticalpixels (Shift0.01), with bounds and cancel restoration. Metadata uses existing local persistence; no schema change.
+
+The earlier feasibility assessment predates this implementation; see the [current sync brief](plans/youtube-material-sync-2026-11-18.md) and [updated assessment](reviews/technical/youtube-metadata-sync-assessment-2026-11-18.md). Video bytes remain on YouTube. Production schema application is still separately authorized; personal-storage mode avoiding Supabase remains a separate design.
+
+Local implementation complete: **251 targeted tests/10 files**, global lint (two existing warnings) and final TypeScript pass. The missing rel0 options declaration was repaired and affected96 URL/player tests plus type-file lint passed; all202 selected inputs stable. No production build/full unrelated suite or real-browser/device/live-provider assertion. [Acceptance evidence and manual checklist](evidence/acceptance/player-sequences-sandbox-2026-11-18.md). Await owner sandbox review; version remains0.13.1 and no release/Git/production operation occurred.
+
 ## Release 0.13.1 — PWA Update activation reload (2026-11-17)
 
 **Live hosted/device behavior is unverified.** Patch version moves from **0.13.0 to 0.13.1** for a bug fix only. The explicit Update flow now reloads when its waiting ServiceWorker reaches `activated`, even if `controllerchange` is not emitted (`clientsClaim: false`); the safety lock remains held through activation. Regression tests cover this activation/reload path.
+
+Commit `0a12cc546b24c2233947e2c203ed130bd1addb07` was normally pushed to `origin/master`, and the remote branch was verified to equal this commit. **Operational status: pushed; deployment not independently verified.**
 
 Verified on the versioned snapshot: `npm test` **1,061/1,061 across 58 files**; `npm run lint` exit 0 with two warnings (i18n Fast Refresh; Sessions hook dependencies); `npm run build` exit 0 (TypeScript/Vite/PWA, **21 precache entries, 1,159.67 KiB**). Build disabled Sentry through a one-space environment override.
 
